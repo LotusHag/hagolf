@@ -178,6 +178,7 @@ function players(rid) {
     players(rid);
     const el = document.getElementById("addf");
     el.classList.add("open");
+    document.querySelector(".addbtn").classList.add("hidden");
     document.getElementById("pname").focus();
   });
   if (f.classList.contains("open")) nameEl.focus();

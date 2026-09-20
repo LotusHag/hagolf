@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #0B1A3F; --panel: #122452; --panel2: #1B3266; --line: #2B4380; --accent: #F2C118; --ink: #fff; --ink2: #C9D2EE; --ink3: #8593BF;
   --under: #E0A800; --par: #E9E4D2; --bogey: #A3C0FF; --double: #3A5EC2; --bronze: #D9A066; --danger: #D9534F; --ok: #1E6B45;
   --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
@@ -51,7 +52,11 @@ button { font: inherit; }
 .tile small { color: var(--ink3); font-weight: 400; }
 
 label { display: block; color: var(--ink3); font-size: 13px; margin: 12px 0 0; }
-input, select { width: 100%; margin-top: 6px; font-size: 17px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+input, select, button, textarea { font-family: inherit; }
+input, select { width: 100%; margin-top: 6px; font-size: 17px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); -webkit-appearance: none; appearance: none; }
+select { background-image: linear-gradient(45deg, transparent 50%, var(--ink3) 50%), linear-gradient(135deg, var(--ink3) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 36px; }
+input[type=checkbox] { -webkit-appearance: checkbox; appearance: checkbox; accent-color: var(--accent); }
+input::placeholder { color: var(--ink3); opacity: .7; }
 input[type=checkbox] { width: auto; margin: 0 8px 0 0; transform: scale(1.3); vertical-align: middle; }
 .search { margin: 4px 0 8px; font-size: 16px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
