@@ -1,7 +1,7 @@
 {
-  "name": "Apeliotes Golf",
-  "short_name": "Apeliotes",
-  "description": "Score a society golf round on the phone and generate the posters and player cards.",
+  "name": "Hagolf",
+  "short_name": "Hagolf",
+  "description": "Score a golf round on the phone, keep leagues with your friends and generate the posters and player cards.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

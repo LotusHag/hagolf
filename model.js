@@ -203,22 +203,11 @@ export function compute(courseIn, round) {
   const noReturn = players.filter(p => p.nr).sort((a, b) => cmpTuple([-a.holes_played, -a.pts], [-b.holes_played, -b.pts]));
   M.gross_board = [...finished, ...noReturn];
   M.stbl_board = [...players].sort((a, b) => cmpTuple(keyPts(a), keyPts(b)));
-  ranks(finished.map(p => p.gross), true).forEach((r, i) => { finished[i].gplace = r; });
+  // positions run 1, 2, 3 in board order: equal scores are separated by the countback, which the footer explains
+  finished.forEach((p, i) => { p.gplace = i + 1; });
   noReturn.forEach(p => { p.gplace = null; });
-  ranks(M.stbl_board.map(p => p.pts), false).forEach((r, i) => { M.stbl_board[i].splace = r; });
-  for (const [board, key] of [["gross_board", "g"], ["stbl_board", "s"]]) {
-    const groups = new Map();
-    for (const p of M[board]) {
-      const place = p[key + "place"];
-      if (place !== null) { if (!groups.has(place)) groups.set(place, []); groups.get(place).push(p); }
-    }
-    for (const p of M[board]) {
-      const place = p[key + "place"];
-      const tied = place !== null && groups.get(place).length > 1;
-      p[key + "tied"] = tied;
-      p[key + "cb"] = tied ? groups.get(place).indexOf(p) + 1 : null;
-    }
-  }
+  M.stbl_board.forEach((p, i) => { p.splace = i + 1; });
+  players.forEach(p => { p.gtied = p.stied = false; p.gcb = p.scb = null; });
 
   const dt = course.tees[defaultTee];
   const metres = dt.metres;
@@ -298,8 +287,21 @@ export function standings(results, memberIds, bestN = 0) {
     };
   });
   out.sort((a, b) => b.counted - a.counted || b.avg - a.avg || b.best - a.best || a.name.localeCompare(b.name));
-  const places = out.map(r => 1 + out.filter(o => o.counted > r.counted || (o.counted === r.counted && o.avg > r.avg) ||
-    (o.counted === r.counted && o.avg === r.avg && o.best > r.best)).length);
-  out.forEach((r, i) => { r.place = places[i]; r.tied = places.filter(x => x === places[i]).length > 1; });
+  out.forEach((r, i) => { r.place = i + 1; r.tied = false; });
   return { rows: out, rounds: roundsIn, bestN };
+}
+
+/** Two players in a league: every attached round they both finished, who took more points, and the tally. */
+export function headToHead(results, a, b) {
+  const rounds = [];
+  for (const M of results) {
+    const pa = M.players.find(p => p.id === a), pb = M.players.find(p => p.id === b);
+    if (!pa || !pb) continue;
+    rounds.push({ id: M.id, name: M.name, date: M.date, ptsA: pa.pts, ptsB: pb.pts, grossA: pa.gross, grossB: pb.gross,
+      winner: pa.pts > pb.pts ? "a" : pb.pts > pa.pts ? "b" : "tie" });
+  }
+  rounds.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+  const sumBy = k => rounds.reduce((s, r) => s + r[k], 0);
+  return { rounds, winsA: rounds.filter(r => r.winner === "a").length, winsB: rounds.filter(r => r.winner === "b").length,
+    ties: rounds.filter(r => r.winner === "tie").length, ptsA: sumBy("ptsA"), ptsB: sumBy("ptsB") };
 }

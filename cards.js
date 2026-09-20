@@ -111,11 +111,11 @@ export function renderCard(M, p, T) {
     grossTile = ["Gross", "NR", `picked up, ${p.holes_played} of ${n} holes`];
     netTile = ["Net", "NR", "no return"];
   } else {
-    grossTile = ["Gross", String(p.gross), `${fmtToPar(p.topar)}  ·  ${p.gplace} of ${N}` + (p.gtied ? ", tied" : "")];
+    grossTile = ["Gross", String(p.gross), `${fmtToPar(p.topar)}  ·  ${p.gplace} of ${N}`];
     netTile = ["Net", String(p.net), `${fmtToPar(p.net - sum(PAR))} to par`];
   }
   const tiles = [grossTile, netTile,
-    ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}` + (p.stied ? ", tied" : "")],
+    ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}`],
     ["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"} than the rest`]];
   const axt = fig.axes(rect(0.28, 1.0, 0.50), [0, 4], [0, 1]);
   tiles.forEach(([lab, big, small], k) => {

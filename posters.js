@@ -61,12 +61,6 @@ function dPos(key) {
   return (ax, c, y, r) => {
     const T = ax.fig.T;
     posChip(ax, cx(c), y, r[key + "place"], 0.8, 12);
-    const cb = r[key + "cb"];
-    if (cb) {
-      const fc = cb === 1 ? T.ACCENT : T.PANEL_2;
-      ax.rbox(c.x1 - 0.14, y + 0.2, 0.2, 0.22, fc, 0.04);
-      ax.text(c.x1 - 0.04, y + 0.31, String(cb), { size: 6.5, family: "display", color: on(T, fc), ha: "center", va: "center" });
-    }
   };
 }
 
@@ -97,9 +91,10 @@ function pointsMeter(scaleMax, level, key = "pts") {
   };
 }
 
+const countbackText = n => n === 18 ? "last 9, 6 and 3 holes, then hole by hole from the last" : "last 6 and 3 holes, then hole by hole from the last";
+
 function notes(rows, key) {
   let out = "";
-  if (rows.some(r => r[key + "cb"])) out += " Tiny numbers on tied positions give the countback order (last holes first): 1 takes the tie.";
   if (rows.some(r => r.penalty_total)) out += " Pen badge: penalty strokes handed out after the round, counted on their hole.";
   if (rows.some(r => r.nr)) out += " NR: no return, the player picked up on a hole; that hole scores no points.";
   if (rows.some(r => r.ph < 0)) out += " A plus handicap (+1) gives a stroke back, so net can be higher than gross.";
@@ -121,7 +116,7 @@ export function grossLeaderboard(M, T) {
   let summary = `Field ${N}`;
   if (finished.length) summary += `  ·  best ${Math.min(...finished)}  ·  average ${fix(finished.reduce((a, b) => a + b, 0) / finished.length)}`;
   return tablePoster(M, T, "Gross leaderboard", cols, rows, W, `Stroke play, no handicap\n${summary}`,
-    "Lowest gross wins. Equal scores share a position and the next place skips. The round bar has one block per hole, " +
+    `Lowest gross wins. Equal scores are separated on countback (${countbackText(n)}). The round bar has one block per hole, ` +
     "grouped by result against par, best results first." + notes(rows, "g"));
 }
 
@@ -146,7 +141,7 @@ export function stablefordLeaderboard(M, T) {
   const allowance = M.allowance === 100 ? "" : `, ${M.allowance}% allowance`;
   return tablePoster(M, T, "Stableford leaderboard", cols, rows, W,
     `Net, course handicap${allowance}${tees.length > 1 ? ", tees: " + tees.join(", ") : ""}\nField ${N}  ·  best ${best} pts  ·  average ${fix(avg)}`,
-    `Most points wins. Equal points share a position. ${level} points is playing to handicap: 2 points per hole for a net par, ` +
+    `Most points wins. Equal points are separated on countback (${countbackText(n)}). ${level} points is playing to handicap: 2 points per hole for a net par, ` +
     "3 for a net birdie, 1 for a net bogey, nothing for worse." + notes(rows, "s"));
 }
 
