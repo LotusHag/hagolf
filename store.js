@@ -112,6 +112,7 @@ export function roundOpen(r) {
 /** Stamps a record as changed now and queues it. */
 export function touch(table, rec, key = null) {
   rec.updated_at = now();
+  rec.dev = state.settings.deviceId;  // tie-breaker when two phones change a record in the same millisecond
   mark(table, key ?? rec.id, rec.updated_at);
   return rec;
 }

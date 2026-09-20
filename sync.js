@@ -7,6 +7,9 @@ import * as S from "./store.js";
 const ts = s => s ? new Date(s).getTime() : 0;  // Postgres returns +00:00, phones write Z: compare as numbers
 const iso = s => s ? new Date(s).toISOString() : s;
 const dev = () => S.state.settings.deviceId;
+/** Newest updated_at wins; on an exact tie the higher device id wins, the same rule the server applies, so every phone converges. */
+const newer = (row, existing) => ts(row.updated_at) > ts(existing.updated_at)
+  || (ts(row.updated_at) === ts(existing.updated_at) && String(row.device_id || "") > String(existing.dev ?? dev()));
 
 function findEntry(r, pid) {
   const i = r.entries.findIndex(e => e.playerId === pid), j = r.removed.findIndex(e => e.playerId === pid);
@@ -24,28 +27,28 @@ const holesOf = c => c ? (c.par || []).length : 18;
 /** Each table: rows to push for a set of keys, and how to apply an incoming row. */
 const TABLES = {
   players: {
-    collect: keys => S.state.players.filter(p => keys.includes(p.id)).map(p => ({ id: p.id, name: p.name, hi: p.hi, gender: p.gender || "m",
+    collect: keys => S.state.players.filter(p => keys.has(p.id)).map(p => ({ id: p.id, name: p.name, hi: p.hi, gender: p.gender || "m",
       hi_updated: p.hiUpdated || null, aliases: p.aliases || [], created: p.created || null, deleted: !!p.deleted, updated_at: p.updated_at, device_id: dev() })),
     apply(r) {
       const rec = { id: r.id, name: r.name, hi: r.hi === null ? null : Number(r.hi), gender: r.gender || "m", hiUpdated: iso(r.hi_updated),
-        aliases: r.aliases || [], created: r.created, deleted: !!r.deleted, updated_at: iso(r.updated_at) };
-      return lww(S.state.players, p => p.id === r.id, rec);
+        aliases: r.aliases || [], created: r.created, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id };
+      return lww(S.state.players, p => p.id === r.id, rec, r);
     },
   },
   courses: {
-    collect: keys => S.state.courses.filter(c => keys.includes(c.slug)).map(c => ({ slug: c.slug, data: c.data, source: c.source || "phone",
+    collect: keys => S.state.courses.filter(c => keys.has(c.slug)).map(c => ({ slug: c.slug, data: c.data, source: c.source || "phone",
       deleted: !!c.deleted, updated_at: c.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.courses, c => c.slug === r.slug, { slug: r.slug, data: r.data, source: r.source, deleted: !!r.deleted, updated_at: iso(r.updated_at) }),
+    apply: r => lww(S.state.courses, c => c.slug === r.slug, { slug: r.slug, data: r.data, source: r.source, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   rounds: {
-    collect: keys => S.state.rounds.filter(r => keys.includes(r.id) && !r.stub).map(r => ({ id: r.id, name: r.name, date: r.date || null, course: r.course,
+    collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, name: r.name, date: r.date || null, course: r.course,
       default_tee: r.defaultTee, allowance: r.allowance || 100, status: r.status, hole: r.hole || 0, created: r.created || null,
       deleted: !!r.deleted, updated_at: r.updated_at, device_id: dev() })),
     apply(r) {
       const mine = roundFor(r.id);
-      if (mine.updated_at && ts(mine.updated_at) >= ts(r.updated_at)) return false;
+      if (mine.updated_at && !newer(r, mine)) return false;
       Object.assign(mine, { name: r.name, date: r.date, course: r.course, defaultTee: r.default_tee, allowance: r.allowance || 100,
-        status: r.status, hole: r.hole || 0, created: iso(r.created), deleted: !!r.deleted, updated_at: iso(r.updated_at), stub: false });
+        status: r.status, hole: r.hole || 0, created: iso(r.created), deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
       const n = holesOf(S.courseBy(mine.course));
       for (const e of [...mine.entries, ...mine.removed]) {  // entries that arrived before the header were sized at 18
         if (e.scores.length !== n) { e.scores = Array.from({ length: n }, (_, h) => e.scores[h] ?? null); e.scoreTs = Array.from({ length: n }, (_, h) => e.scoreTs[h] ?? null); }
@@ -57,7 +60,7 @@ const TABLES = {
     collect(keys) {
       const rows = [];
       for (const r of S.state.rounds) for (const e of [...r.entries, ...r.removed]) {
-        if (!keys.includes(`${r.id}|${e.playerId}`)) continue;
+        if (!keys.has(`${r.id}|${e.playerId}`)) continue;
         rows.push({ round_id: r.id, player_id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", course_handicap: e.courseHandicap ?? null,
           grp: e.group || 1, from_hole: e.fromHole || 1, penalties: e.penalties || [], deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() });
       }
@@ -66,11 +69,11 @@ const TABLES = {
     apply(row) {
       const r = roundFor(row.round_id);
       const { e, i, j } = findEntry(r, row.player_id);
-      if (e && ts(e.updated_at) >= ts(row.updated_at)) return false;
+      if (e && !newer(row, e)) return false;
       const n = holesOf(S.courseBy(r.course));
       const rec = { playerId: row.player_id, name: row.name, hi: row.hi === null ? null : Number(row.hi), tee: row.tee, gender: row.gender || "m",
         courseHandicap: row.course_handicap, group: row.grp || 1, fromHole: row.from_hole || 1, penalties: row.penalties || [],
-        deleted: !!row.deleted, updated_at: iso(row.updated_at), scores: e ? e.scores : new Array(n).fill(null), scoreTs: e ? e.scoreTs : new Array(n).fill(null) };
+        deleted: !!row.deleted, updated_at: iso(row.updated_at), dev: row.device_id, scores: e ? e.scores : new Array(n).fill(null), scoreTs: e ? e.scoreTs : new Array(n).fill(null) };
       if (i >= 0) r.entries.splice(i, 1);
       if (j >= 0) r.removed.splice(j, 1);
       (rec.deleted ? r.removed : r.entries).push(rec);
@@ -82,7 +85,7 @@ const TABLES = {
       const rows = [];
       for (const r of S.state.rounds) for (const e of [...r.entries, ...r.removed]) e.scores.forEach((v, h) => {
         const k = `${r.id}|${e.playerId}|${h}`;
-        if (keys.includes(k)) rows.push({ round_id: r.id, player_id: e.playerId, hole: h, strokes: v, updated_at: e.scoreTs[h] || e.updated_at, device_id: dev() });
+        if (keys.has(k)) rows.push({ round_id: r.id, player_id: e.playerId, hole: h, strokes: v, updated_at: e.scoreTs[h] || e.updated_at, device_id: dev() });
       });
       return rows;
     },
@@ -98,26 +101,26 @@ const TABLES = {
     },
   },
   leagues: {
-    collect: keys => S.state.leagues.filter(g => keys.includes(g.id)).map(g => ({ id: g.id, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
+    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
       created: g.created || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, deleted: !!r.deleted, updated_at: iso(r.updated_at) }),
+    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_rounds: {
-    collect: keys => S.state.leagueRounds.filter(x => keys.includes(`${x.league_id}|${x.round_id}`)).map(x => ({ league_id: x.league_id, round_id: x.round_id,
+    collect: keys => S.state.leagueRounds.filter(x => keys.has(`${x.league_id}|${x.round_id}`)).map(x => ({ league_id: x.league_id, round_id: x.round_id,
       deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagueRounds, x => x.league_id === r.league_id && x.round_id === r.round_id, { league_id: r.league_id, round_id: r.round_id, deleted: !!r.deleted, updated_at: iso(r.updated_at) }),
+    apply: r => lww(S.state.leagueRounds, x => x.league_id === r.league_id && x.round_id === r.round_id, { league_id: r.league_id, round_id: r.round_id, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   player_course_handicap: {
-    collect: keys => S.state.pch.filter(x => keys.includes(`${x.player_id}|${x.course}|${x.tee}`)).map(x => ({ player_id: x.player_id, course: x.course, tee: x.tee, ch: x.ch ?? 0,
+    collect: keys => S.state.pch.filter(x => keys.has(`${x.player_id}|${x.course}|${x.tee}`)).map(x => ({ player_id: x.player_id, course: x.course, tee: x.tee, ch: x.ch ?? 0,
       deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.pch, x => x.player_id === r.player_id && x.course === r.course && x.tee === r.tee, { player_id: r.player_id, course: r.course, tee: r.tee, ch: r.ch, deleted: !!r.deleted, updated_at: iso(r.updated_at) }),
+    apply: r => lww(S.state.pch, x => x.player_id === r.player_id && x.course === r.course && x.tee === r.tee, { player_id: r.player_id, course: r.course, tee: r.tee, ch: r.ch, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
 };
 const CONFLICT = { league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
 
-function lww(list, match, rec) {
+function lww(list, match, rec, row) {
   const i = list.findIndex(match);
-  if (i >= 0 && ts(list[i].updated_at) >= ts(rec.updated_at)) return false;
+  if (i >= 0 && !newer(row, list[i])) return false;
   if (i >= 0) list[i] = rec; else list.push(rec);
   return true;
 }
@@ -183,7 +186,8 @@ function headers(extra = {}) {
 async function rest(path, init = {}) {
   const res = await fetch(`${sync.config.url}/rest/v1/${path}`, { ...init, headers: headers(init.headers) });
   if (!res.ok) { const e = new Error(`${init.method || "GET"} ${path.split("?")[0]}: ${res.status} ${(await res.text()).slice(0, 200)}`); e.status = res.status; throw e; }
-  return res.status === 204 || res.headers.get("content-length") === "0" ? null : res.json();
+  const text = await res.text();
+  return text.trim() ? JSON.parse(text) : null;
 }
 
 let pushPromise = null, pullPromise = null;
@@ -205,19 +209,24 @@ async function doPush() {
   try {
     let refused = null;
     for (const table of Object.keys(TABLES)) {
-      const sent = { ...(dirty[table] || {}) };
-      const keys = Object.keys(sent);
-      if (!keys.length) continue;
-      const rows = TABLES[table].collect(keys);
-      try {
-        if (rows.length) {
-          await rest(`${table}?on_conflict=${CONFLICT[table] || "id"}`, { method: "POST", body: JSON.stringify(rows),
-            headers: { Prefer: "resolution=merge-duplicates,return=minimal" } });
+      const all = Object.keys(dirty[table] || {});
+      for (let i = 0; i < all.length; i += BATCH) {  // a season of offline scoring goes out in slices the server can take in one transaction
+        const sent = Object.fromEntries(all.slice(i, i + BATCH).map(k => [k, dirty[table][k]]));
+        const rows = TABLES[table].collect(new Set(Object.keys(sent)));
+        try {
+          const out = rows.length ? await rest(`${table}?on_conflict=${CONFLICT[table] || "id"}`, { method: "POST", body: JSON.stringify(rows),
+            headers: { Prefer: "resolution=merge-duplicates,return=minimal" } }) : null;
+          if (out && Array.isArray(out.rejected) && out.rejected.length) {  // the Worker took the rest and named the rows it will never take
+            const bad = {};
+            for (const x of out.rejected) if (x.key in sent) { bad[x.key] = sent[x.key]; delete sent[x.key]; }
+            S.quarantine(table, bad, out.rejected[0].message);
+            refused = out.rejected[0].message;
+          }
+          S.clearDirty(table, sent);
+        } catch (e) {
+          if (e.status && e.status >= 400 && e.status < 500) { S.quarantine(table, sent, e.message); refused = e.message; continue; }  // the server will never take these: park them, keep going
+          throw e;
         }
-        S.clearDirty(table, sent);
-      } catch (e) {
-        if (e.status && e.status >= 400 && e.status < 500) { S.quarantine(table, sent, e.message); refused = e.message; continue; }  // the server will never take these: park them, keep going
-        throw e;
       }
     }
     const changed = drainHeld();
@@ -236,7 +245,7 @@ async function doPush() {
   }
 }
 
-const PAGE = 1000;
+const PAGE = 1000, BATCH = 200;
 
 /**
  * Pulls rows the server accepted since the last pull (by the server's clock, so a phone with a slow clock cannot

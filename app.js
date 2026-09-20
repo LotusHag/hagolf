@@ -876,14 +876,14 @@ function newCourse() {
 // ---------------------------------------------------------------- scan an old scorecard
 const scanState = { result: null, imageUrl: null, busy: false };
 
-async function downscale(file, max = 1600) {
+async function downscale(file, max = 1400) {
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
   const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
   const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : Object.assign(document.createElement("canvas"), { width: w, height: h });
   cv.getContext("2d").drawImage(bmp, 0, 0, w, h);
   if (bmp.close) bmp.close();
-  const blob = cv.convertToBlob ? await cv.convertToBlob({ type: "image/jpeg", quality: 0.85 }) : await new Promise(res => cv.toBlob(res, "image/jpeg", 0.85));
+  const blob = cv.convertToBlob ? await cv.convertToBlob({ type: "image/jpeg", quality: 0.8 }) : await new Promise(res => cv.toBlob(res, "image/jpeg", 0.8));  // ~300 KB: fits the scan service's CPU budget
   const b64 = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result.split(",")[1]); rd.readAsDataURL(blob); });
   return { b64, blob };
 }
