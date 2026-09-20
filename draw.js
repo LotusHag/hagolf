@@ -112,7 +112,7 @@ export class Fig {
     const R = Math.min(this.px(r), this.px(w) / 2, this.px(h) / 2);
     ctx.globalAlpha = alpha;
     ctx.beginPath();
-    ctx.roundRect(this.px(x), this.px(y), this.px(w), this.px(h), Math.max(0, R));
+    roundRectPath(ctx, this.px(x), this.px(y), this.px(w), this.px(h), Math.max(0, R));
     if (fc && fc !== "none") { ctx.fillStyle = fc; ctx.fill(); }
     if (ec && lw) { ctx.strokeStyle = ec; ctx.lineWidth = lw / 72 * this.dpi; ctx.stroke(); }
     ctx.globalAlpha = 1;
@@ -167,6 +167,17 @@ export class Fig {
     if (this.canvas.convertToBlob) return this.canvas.convertToBlob({ type: "image/png" });
     return new Promise(res => this.canvas.toBlob(res, "image/png"));
   }
+}
+
+/** ctx.roundRect arrived in iOS 16; older Safari gets the same shape from arcTo. */
+function roundRectPath(ctx, x, y, w, h, r) {
+  if (ctx.roundRect) return ctx.roundRect(x, y, w, h, r);
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 export class Ax {

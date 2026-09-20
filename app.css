@@ -128,6 +128,6 @@ input[type=checkbox] { width: auto; margin: 0 8px 0 0; transform: scale(1.3); ve
 .stand td { text-align: right; padding: 8px 4px; border-top: 1px solid var(--line); }
 .stand .l { text-align: left; } .stand td.acc { font-weight: 800; font-size: 16px; }
 
-#toast { position: fixed; left: 50%; bottom: calc(110px + var(--sab)); transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; opacity: 0; transition: all .2s; z-index: 20; max-width: 90vw; text-align: center; pointer-events: none; }
+#toast { position: fixed; left: 50%; top: calc(70px + var(--sat)); transform: translateX(-50%) translateY(-20px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; opacity: 0; transition: all .2s; z-index: 20; max-width: 90vw; text-align: center; pointer-events: none; }
 #toast.show { opacity: 1; transform: translateX(-50%); }
 details > summary { list-style: none; } details > summary::-webkit-details-marker { display: none; }

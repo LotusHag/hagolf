@@ -2,7 +2,7 @@
 // #roster #groups #group/<gid> #groupposter/<gid> #backup
 import { DATA } from "./data.js";
 import * as S from "./store.js";
-import { compute, standings, handicapFor, outcome, stableford, fmtToPar, fmtHcp, fmtIndex } from "./model.js";
+import { compute, standings, handicapFor, outcome, stableford, fmtToPar, fmtHcp, fmtIndex, fix } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
 import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster } from "./posters.js";
 import { renderCards } from "./cards.js";
@@ -19,7 +19,7 @@ const ui = { expanded: null, selHole: null, draftCourse: null, thumbs: [], blobs
 function toast(msg, ms = 2600) {
   let t = document.getElementById("toast");
   if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
-  t.textContent = msg;
+  t.textContent = msg.charAt(0).toUpperCase() + msg.slice(1);
   t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), ms);
@@ -159,7 +159,12 @@ function players(rid) {
   const nameEl = document.getElementById("pname");
   nameEl.addEventListener("change", () => {
     const p = S.findPlayer(nameEl.value);
-    if (p) { document.getElementById("phi").value = fmtIndex(p.hi); document.getElementById("pgender").value = p.gender || "m"; }
+    if (p) {
+      document.getElementById("phi").value = fmtIndex(p.hi);
+      document.getElementById("pgender").value = p.gender || "m";
+      const k = S.roundsOf(p.id).length;
+      toast(`${p.name} is already known: index ${fmtIndex(p.hi)}, ${k} round${k === 1 ? "" : "s"}. Change the name slightly if this is someone else.`, 4500);
+    }
   });
   f.addEventListener("submit", ev => {
     ev.preventDefault();
@@ -229,6 +234,8 @@ function score(rid, hArg) {
   const barNext = `
     ${h < n - 1 ? `<a class="btn primary" href="#score/${rid}/${h + 1}">Hole ${c.first_hole + h + 1} ›</a>` : `<a class="btn primary" href="#review/${rid}">Review ›</a>`}`;
   page(`Hole ${c.first_hole + h} of ${n}`, body, { back: "#home", bar: bar + barNext });
+  const stripEl = document.querySelector(".strip"), cur = document.querySelector(".hchip.cur");
+  if (stripEl && cur) stripEl.scrollLeft = cur.offsetLeft - stripEl.clientWidth / 2 + cur.clientWidth / 2;
   bind(ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
@@ -348,7 +355,7 @@ function graphics(rid) {
       <label><input type="checkbox" name="g" value="gross" checked> Gross leaderboard</label>
       <label><input type="checkbox" name="g" value="stbl" checked> Stableford leaderboard</label>
       <label><input type="checkbox" name="g" value="holes" checked> How the holes played</label>
-      <label><input type="checkbox" name="g" value="cards" checked> Player cards <span class="muted">(${M.field})</span></label>
+      <label><input type="checkbox" name="g" value="cards" checked> Player cards <span class="muted">&nbsp;(${M.field})</span></label>
       <details><summary class="muted small">Only some players' cards</summary>${M.players.map(p => `<label><input type="checkbox" name="card" value="${esc(p.name)}" checked> ${esc(p.name)}</label>`).join("")}</details>
     </div>
     <h2>Theme</h2>
@@ -477,6 +484,7 @@ function roster() {
     if (!(hi >= -10 && hi <= 54)) return toast("Handicap index between +10 and 54");
     const other = S.findPlayer(f.name.value);
     if (other && other.id !== p.id) return toast("Another player already has that name");
+    if (hi !== p.hi) p.hiUpdated = new Date().toISOString();
     p.name = f.name.value.trim(); p.hi = hi; p.gender = f.gender.value;
     S.save(); toast("Saved"); roster();
   }));
@@ -520,7 +528,7 @@ function group(gid) {
   const ps = [...S.state.players].sort((a, b) => a.name.localeCompare(b.name));
   const Sx = groupResults(g);
   const table = Sx.rows.length ? `<table class="stand"><thead><tr><th>Pos</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Total"}</th></tr></thead>
-    <tbody>${Sx.rows.map(r => `<tr><td>${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${r.avg.toFixed(1)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>
+    <tbody>${Sx.rows.map(r => `<tr><td>${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>
     <div class="muted small">${Sx.rounds.length} round${Sx.rounds.length === 1 ? "" : "s"} counted: ${Sx.rounds.map(m => esc(m.name)).join(", ")}</div>`
     : `<p class="muted center">No finished rounds with these members yet.</p>`;
   page(g.name, `

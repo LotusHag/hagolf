@@ -1,6 +1,6 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
 import { Fig, MARGIN, section, scoreGlyph, glyphLegend, outcomeBar, on } from "./draw.js";
-import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug } from "./model.js";
+import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
 const plural = (n, s = "s") => n === 1 ? "" : s;
@@ -26,10 +26,10 @@ export function story(M, p) {
     const beat = played.filter(h => vs[h] < 0).length;
     let line = `Fewer strokes than the field average on ${beat} of ${played.length} holes.`;
     if (vs[best] < -0.05) {
-      line += ` Best hole ${L[best]}, ${Math.abs(vs[best]).toFixed(1)} strokes fewer than the rest`;
-      line += vs[worst] > 0.05 ? `; toughest hole ${L[worst]}, ${vs[worst].toFixed(1)} more.` : ", never more than the field.";
+      line += ` Best hole ${L[best]}, ${fix(Math.abs(vs[best]))} strokes fewer than the rest`;
+      line += vs[worst] > 0.05 ? `; toughest hole ${L[worst]}, ${fix(vs[worst])} more.` : ", never more than the field.";
     } else if (vs[worst] > 0.05) {
-      line += ` Toughest hole ${L[worst]}, ${vs[worst].toFixed(1)} strokes more than the rest.`;
+      line += ` Toughest hole ${L[worst]}, ${fix(vs[worst])} strokes more than the rest.`;
     }
     out.push(line);
   }
@@ -62,10 +62,10 @@ export function story(M, p) {
   const verdict = h => {
     if (s[h] === null) return "picked up";
     const v = vs[h];
-    return `a ${s[h]}, ` + (Math.abs(v) < 0.1 ? "level with the rest of the field" : `${Math.abs(v).toFixed(1)} ${v < 0 ? "fewer" : "more"} than the rest of the field`);
+    return `a ${s[h]}, ` + (Math.abs(v) < 0.1 ? "level with the rest of the field" : `${fix(Math.abs(v))} ${v < 0 ? "fewer" : "more"} than the rest of the field`);
   };
-  out.push(`Hardest hole of the day (${L[hardest]}, field average ${avg[hardest].toFixed(1)}): ${verdict(hardest)}. ` +
-    `Easiest (${L[easiest]}, average ${avg[easiest].toFixed(1)}): ${verdict(easiest)}.`);
+  out.push(`Hardest hole of the day (${L[hardest]}, field average ${fix(avg[hardest])}): ${verdict(hardest)}. ` +
+    `Easiest (${L[easiest]}, average ${fix(avg[easiest])}): ${verdict(easiest)}.`);
   if (played.length) {
     const counts = new Map();
     for (const h of played) counts.set(s[h], (counts.get(s[h]) || 0) + 1);
@@ -98,7 +98,9 @@ export function renderCard(M, p, T) {
   if (M.allowance !== 100) bits.push(`playing handicap ${fmtHcp(p.ph)} at ${M.allowance}%`);
   if (Object.keys(M.course.tees).length > 1) bits.push(`${p.tee} tees` + (p.gender === "f" ? ", women's rating" : ""));
   if (p.ph < 0) bits.push(`plus handicap: gives ${-p.ph} stroke${p.ph !== -1 ? "s" : ""} back`);
-  fig.text(Mx, 1.12, bits.join("  ·  "), { size: 10, color: T.INK_3, va: "top" });
+  const metaW = (0.50 - MARGIN - 0.02) * W_IN;
+  const metaLines = fig.wrap(bits.join("  ·  "), metaW, 10);
+  fig.text(Mx, 1.12, metaLines.slice(0, 2).join("\n"), { size: metaLines.length > 1 ? 8.5 : 10, color: T.INK_3, va: "top", lineSpacing: 1.35 });
   fig.line(Mx, 1.45, W_IN - Mx, 1.45, T.ACCENT, 1.6);
 
   // stat tiles
@@ -143,7 +145,8 @@ export function renderCard(M, p, T) {
   axs.rbox(LX - 0.05, y0, ncol + 0.1, h0, T.PANEL, 0.06);
   axs.line(0, ROWS.strokes[0], xmax, ROWS.strokes[0], T.LINE, 0.8);
   axs.line(0, ROWS.points[0] + ROWS.points[1], xmax, ROWS.points[0] + ROWS.points[1], T.LINE, 0.8);
-  const [big, mid, small] = n <= 9 ? [17, 10, 7.5] : [14, 9, 7];
+  const [big, mid, small0] = n <= 9 ? [17, 10, 7.5] : [14, 9, 7];
+  const small = axs.fitSize(columns.filter(c => c[0] === "hole").map(([, h]) => `par ${PAR[h]}  ·  SI ${SI[h]}`), 0.96, small0, 5, "text");
   columns.forEach(([kind, ref], k) => {
     const x = LX + k + 0.5;
     if (kind === "hole") {

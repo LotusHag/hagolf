@@ -1,6 +1,6 @@
 // Port of golf/posters.py: gross leaderboard, Stableford leaderboard, how the holes played; plus season standings.
 import { Fig, MARGIN, HEADER_IN, header, footer, section, posChip, outcomeBar, legend, on } from "./draw.js";
-import { fmtToPar, fmtSigned, fmtHcp } from "./model.js";
+import { fmtToPar, fmtSigned, fmtHcp, fix } from "./model.js";
 
 const ROW_IN = 0.5;
 
@@ -119,7 +119,7 @@ export function grossLeaderboard(M, T) {
   ];
   const finished = rows.filter(p => p.gross !== null).map(p => p.gross);
   let summary = `Field ${N}`;
-  if (finished.length) summary += `  ·  best ${Math.min(...finished)}  ·  average ${(finished.reduce((a, b) => a + b, 0) / finished.length).toFixed(1)}`;
+  if (finished.length) summary += `  ·  best ${Math.min(...finished)}  ·  average ${fix(finished.reduce((a, b) => a + b, 0) / finished.length)}`;
   return tablePoster(M, T, "Gross leaderboard", cols, rows, W, `Stroke play, no handicap\n${summary}`,
     "Lowest gross wins. Equal scores share a position and the next place skips. The round bar has one block per hole, " +
     "grouped by result against par, best results first." + notes(rows, "g"));
@@ -145,7 +145,7 @@ export function stablefordLeaderboard(M, T) {
   const tees = [...new Set(rows.map(p => p.tee))].sort();
   const allowance = M.allowance === 100 ? "" : `, ${M.allowance}% allowance`;
   return tablePoster(M, T, "Stableford leaderboard", cols, rows, W,
-    `Net, course handicap${allowance}${tees.length > 1 ? ", tees: " + tees.join(", ") : ""}\nField ${N}  ·  best ${best} pts  ·  average ${avg.toFixed(1)}`,
+    `Net, course handicap${allowance}${tees.length > 1 ? ", tees: " + tees.join(", ") : ""}\nField ${N}  ·  best ${best} pts  ·  average ${fix(avg)}`,
     `Most points wins. Equal points share a position. ${level} points is playing to handicap: 2 points per hole for a net par, ` +
     "3 for a net birdie, 1 for a net bogey, nothing for worse." + notes(rows, "s"));
 }
@@ -159,7 +159,7 @@ export function holesPoster(M, T) {
   let right = `Field ${N} players`;
   if (finished.length) {
     const avgGross = finished.reduce((a, p) => a + p.gross, 0) / finished.length;
-    right += `\nCourse average ${avgGross.toFixed(1)}, ${fmtToPar(avgGross - M.course_par)} to par`;
+    right += `\nCourse average ${fix(avgGross)}, ${fmtToPar(avgGross - M.course_par)} to par`;
   }
   header(fig, "How the holes played", M.name, M.sub, right);
   const X0 = MARGIN, X1 = 1 - MARGIN;
@@ -183,22 +183,17 @@ export function holesPoster(M, T) {
   const easiest = holes.reduce((a, h) => h.difficulty > a.difficulty ? h : a);
   const fieldAvg = holes.reduce((a, h) => a + h.vspar, 0) / n;
   ax.text(n + 0.5, top * 1.22, `dashed line: course average ${fmtSigned(fieldAvg, 2)} per hole`, { size: 8.5, color: T.INK_3, ha: "right", va: "center" });
-  const labels = [];
+  // dashed course-average line under the bars; value labels sit on a page-coloured halo so it never runs through them
+  ax.line(xlim[0], fieldAvg, xlim[1], fieldAvg, T.INK_3, 0.8, [4, 3]);
   for (const h of holes) {
     const v = h.vspar;
     ax.rbox(h.hole - bw / 2, Math.min(0, v), bw, Math.abs(v), T.BAR, 0.04);
     const ty = v + (v >= 0 ? top * 0.03 : -top * 0.03);
     const txt = fmtSigned(v, 2);
-    ax.text(h.hole, ty, txt, { size: 11, family: "display", color: T.INK, ha: "center", va: v >= 0 ? "bottom" : "top" });
     const tw = ax.textWidth(txt, 11, "display"), th = 11 / 72 / ax.hIn * (ax.ylim[1] - ax.ylim[0]);
-    labels.push([h.hole - tw / 2, v >= 0 ? ty : ty - th, h.hole + tw / 2, v >= 0 ? ty + th : ty]);
-  }
-  // dashed course-average line, broken where a value label sits on it
-  const blocked = labels.filter(([, y0, , y1]) => y0 - top * 0.02 <= fieldAvg && fieldAvg <= y1 + top * 0.02).map(([x0, , x1]) => [x0 - 0.05, x1 + 0.05]).sort((a, b) => a[0] - b[0]);
-  let x = xlim[0];
-  for (const [b0, b1] of [...blocked, [xlim[1], xlim[1]]]) {
-    if (b0 > x) ax.line(x, fieldAvg, b0, fieldAvg, T.INK_3, 0.8, [4, 3]);
-    x = Math.max(x, b1);
+    const pad = 0.06;
+    ax.rbox(h.hole - tw / 2 - pad, (v >= 0 ? ty : ty - th) - top * 0.015, tw + 2 * pad, th + top * 0.03, T.BG, 0);
+    ax.text(h.hole, ty, txt, { size: 11, family: "display", color: T.INK, ha: "center", va: v >= 0 ? "bottom" : "top" });
   }
   for (const [h, word] of [[hardest, "hardest"], [easiest, "easiest"]]) {
     ax.text(h.hole, low * 1.4 - top * 0.08, word, { size: 8.5, color: T.INK_2, ha: "center", va: "top" });
@@ -219,7 +214,7 @@ export function holesPoster(M, T) {
       if (seg > 0.06) ax.text(h.hole, y + seg / 2, String(c), { size: 9, family: "display", color: on(T, colr), ha: "center", va: "center" });
       y += seg;
     }
-    ax.text(h.hole, -0.04, `avg ${h.avg.toFixed(1)}`, { size: 8.5, color: T.INK_3, ha: "center", va: "top" });
+    ax.text(h.hole, -0.04, `avg ${fix(h.avg)}`, { size: 8.5, color: T.INK_3, ha: "center", va: "top" });
   }
   ax.line(xlim[0], 0, xlim[1], 0, T.LINE, 0.8);
 
@@ -244,19 +239,19 @@ export function standingsPoster(S, group, T) {
     col("Rounds", 4.1, 4.9, dVal(r => String(r.played), 12, (r, T) => T.INK_2), "right"),
     col("Wins", 5.0, 5.6, dVal(r => String(r.wins), 12, (r, T) => T.INK_2), "right"),
     col("Best", 5.7, 6.3, dVal(r => String(r.best), 12, (r, T) => T.INK_2), "right"),
-    col("Avg", 6.4, 7.0, dVal(r => r.avg.toFixed(1), 12, (r, T) => T.INK_2), "right"),
+    col("Avg", 6.4, 7.0, dVal(r => fix(r.avg), 12, (r, T) => T.INK_2), "right"),
     col(countedTitle, 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display"), "right"),
     col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left"),
   ];
   const dates = S.rounds.map(r => r.date).filter(Boolean).sort();
   const span = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} to ${dates[dates.length - 1]}`) : "";
-  const sub = [`${S.rounds.length} round${S.rounds.length === 1 ? "" : "s"}`, span, `${rows.length} players`].filter(Boolean).join("  ·  ");
+  const sub = [`${S.rounds.length} round${S.rounds.length === 1 ? "" : "s"}`, span].filter(Boolean).join("  ·  ");
   const rule = S.bestN > 0 ? `The best ${S.bestN} rounds count towards the total; every round counts for the average.`
     : "Every round counts towards the total.";
   const M = { name: group.name, sub };
   const tableRows = rows.map(r => ({ ...r, penalty_total: 0 }));
   return tablePoster(M, T, "Season standings", cols, tableRows, W,
-    `Stableford points across rounds\n${S.rounds.length} rounds  ·  leader ${maxPts} pts`,
+    `Stableford points across rounds\nLeader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`,
     `Most Stableford points wins. ${rule} Wins: most points among the group's players on the day, shared when equal. ` +
     "Only rounds with at least one group member count, and only members' results.", 11.5, group.name, sub);
 }

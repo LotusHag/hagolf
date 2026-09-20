@@ -38,10 +38,10 @@ export function findPlayer(name) {
 export function upsertPlayer(name, hi, gender) {
   let p = findPlayer(name);
   if (!p) {
-    p = { id: uid(), name: name.trim(), hi, gender: gender || "m", created: today() };
+    p = { id: uid(), name: name.trim(), hi, gender: gender || "m", created: today(), hiUpdated: new Date().toISOString() };
     state.players.push(p);
   } else {
-    if (hi !== undefined && hi !== null) p.hi = hi;
+    if (hi !== undefined && hi !== null && hi !== p.hi) { p.hi = hi; p.hiUpdated = new Date().toISOString(); }
     if (gender) p.gender = gender;
   }
   save();
@@ -131,8 +131,8 @@ export function importJSON(text) {
     if (!mine) { state.players.push({ ...p }); newPlayers++; }
     else {
       idMap.set(p.id, mine.id);
-      const newer = roundsOf(mine.id).every(r => r.created <= (d.exported || ""));
-      if (newer && p.hi !== undefined) mine.hi = p.hi;
+      // the more recently edited handicap index wins; an unstamped one counts as old
+      if (p.hi !== undefined && (p.hiUpdated || "") > (mine.hiUpdated || "")) { mine.hi = p.hi; mine.hiUpdated = p.hiUpdated; }
     }
   }
   const mapId = id => idMap.get(id) || id;

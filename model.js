@@ -240,13 +240,21 @@ export function compute(courseIn, round) {
 }
 
 // ---------------------------------------------------------------- formatting, as golf/theme.py
+/** Fixed decimals with Python's round-half-even on exact ties, so 0.25 prints 0.2 as on the desktop. */
+export function fix(v, d = 1) {
+  const m = 10 ** d, x = v * m, f = Math.floor(x), diff = x - f;
+  let r = diff === 0.5 ? (f % 2 === 0 ? f : f + 1) : Math.round(x);
+  if (r === 0) r = 0;
+  return (r / m).toFixed(d);
+}
+
 export function fmtToPar(v) {
   v = Math.round(v);
   return v === 0 ? "E" : v > 0 ? `+${v}` : String(v);
 }
 
 export function fmtSigned(v, d = 1) {
-  return (v > 0 ? "+" : "") + v.toFixed(d);
+  return (v > 0 ? "+" : "") + fix(v, d);
 }
 
 export function fmtHcp(v) {
@@ -254,7 +262,7 @@ export function fmtHcp(v) {
 }
 
 export function fmtIndex(hi) {
-  return hi < 0 ? `+${(-hi).toFixed(1)}` : hi.toFixed(1);
+  return hi < 0 ? `+${fix(-hi, 1)}` : fix(hi, 1);
 }
 
 // ---------------------------------------------------------------- seasons: standings for a group across rounds
