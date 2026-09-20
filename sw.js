@@ -1,5 +1,5 @@
 // Offline cache. The version is stamped by app/build.py; a new version replaces the whole cache on next load.
-const VERSION = "20260920-154826";
+const VERSION = "20260920-155449";
 const CACHE = `hagolf-${VERSION}`;
 const SHELL = ["./", "./index.html", "./app.css", "./app.js", "./model.js", "./draw.js", "./posters.js", "./cards.js",
   "./store.js", "./sync.js", "./data.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/apple-touch-icon.png",

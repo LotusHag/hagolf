@@ -260,7 +260,7 @@ function score(rid, hArg) {
       else if (v === null) e.scores[h] = par;
       else if (confirm(`${e.name} picked up on hole ${c.first_hole + h}? No return for the round, no points for this hole.`)) e.scores[h] = 0;
     }
-    S.saveRound(r);
+    S.saveRound(r, e);
     score(rid, h);
   });
 }
@@ -327,17 +327,17 @@ function review(rid) {
     if (act === "ed") {
       const i = ui.selHole, v = e.scores[i], par = c.par[i], d = Number(b.dataset.d);
       e.scores[i] = (v === null || v === 0) ? par : Math.max(1, Math.min(30, v + d));
-      S.saveRound(r); return review(rid);
+      S.saveRound(r, e); return review(rid);
     }
-    if (act === "ed-pick") { const i = ui.selHole; e.scores[i] = e.scores[i] === 0 ? c.par[i] : 0; S.saveRound(r); return review(rid); }
-    if (act === "del-pen") { e.penalties.splice(Number(b.dataset.k), 1); S.saveRound(r); return review(rid); }
+    if (act === "ed-pick") { const i = ui.selHole; e.scores[i] = e.scores[i] === 0 ? c.par[i] : 0; S.saveRound(r, e); return review(rid); }
+    if (act === "del-pen") { e.penalties.splice(Number(b.dataset.k), 1); S.saveRound(r, e); return review(rid); }
     if (act === "add-pen") {
       const box = b.closest(".pens");
       const hole = Number(box.querySelector(".pen-hole").value), strokes = Number(box.querySelector(".pen-strokes").value);
       if (!(strokes >= 1)) return toast("Penalty strokes must be 1 or more");
       e.penalties = e.penalties || [];
       e.penalties.push({ hole, strokes, reason: box.querySelector(".pen-reason").value.trim() });
-      S.saveRound(r); return review(rid);
+      S.saveRound(r, e); return review(rid);
     }
     if (act === "save-round") {
       if (unfinished.length && !confirm(`${plural(unfinished.length, "player")} ${unfinished.length === 1 ? "has" : "have"} holes missing and will be left off the graphics. Save anyway?`)) return;
@@ -703,7 +703,7 @@ document.addEventListener("click", ev => {
   if (act === "toggle-add") { const f = document.getElementById("addf"); f.classList.add("open"); b.classList.add("hidden"); document.getElementById("pname").focus(); f.scrollIntoView({ behavior: "smooth", block: "start" }); }
   if (act === "remove-entry") {
     const rid = location.hash.split("/")[1], r = S.getRound(rid), e = r.entries[Number(b.dataset.i)];
-    if (e.scores.every(s => s === null) || confirm(`Remove ${e.name} and their scores from this round?`)) { r.entries.splice(Number(b.dataset.i), 1); S.saveRound(r); players(rid); }
+    if (e.scores.every(s => s === null) || confirm(`Remove ${e.name} and their scores from this round?`)) { S.removeEntry(r, Number(b.dataset.i)); players(rid); }
   }
   if (act === "start-scoring") { const r = S.getRound(b.dataset.rid); go(`#score/${r.id}/${r.hole || 0}`); }
   if (act === "del-player") { if (confirm("Delete this player?")) { S.deletePlayer(b.dataset.id); roster(); } }
@@ -727,7 +727,7 @@ function isStandalone() { return window.matchMedia("(display-mode: standalone)")
 // other phones' changes: redraw the current screen, unless the user is typing or looking at rendered images
 Y.onChange(({ changed, status }) => {
   const typing = document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
-  const busy = document.querySelector(".thumbs, .progress");
+  const busy = document.querySelector(".thumbs, .progress") || location.hash.startsWith("#score/");  // never redraw under a scoring thumb
   if (changed && !typing && !busy) route();
   else if (status) { const d = document.querySelector(".top .dot"); if (d) d.outerHTML = syncDot(); }
 });

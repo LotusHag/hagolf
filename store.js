@@ -123,7 +123,7 @@ export function upsertPlayer(name, hi, gender) {
   if (!p) {
     p = { id: playerId(name), name: name.trim(), hi, gender: gender || "m", created: today(), hiUpdated: now, deleted: false };
     const ghost = state.players.find(x => x.id === p.id);
-    if (ghost) Object.assign(ghost, p), p = ghost;  // same name deleted earlier: bring the record back
+    if (ghost) { Object.assign(ghost, p, { created: ghost.created || p.created }); p = ghost; }  // deleted earlier: bring the record back
     else state.players.push(p);
   } else {
     if (hi !== undefined && hi !== null && hi !== p.hi) { p.hi = hi; p.hiUpdated = now; }
@@ -161,9 +161,42 @@ export function getRound(id) {
   return state.rounds.find(r => r.id === id && !r.deleted) || null;
 }
 
-export function saveRound(r) {
+/** Saves a round; pass the entry that changed so two phones scoring the same round merge per player. */
+export function saveRound(r, entry = null) {
+  if (entry) entry.updated_at = new Date().toISOString();
   touch("rounds", r);
   save();
+}
+
+/** Removes a player from a round with a tombstone, so another phone's copy of the entry does not bring them back. */
+export function removeEntry(r, i) {
+  const e = r.entries[i];
+  r.entries.splice(i, 1);
+  r.removed = (r.removed || []).filter(x => x.playerId !== e.playerId);
+  r.removed.push({ playerId: e.playerId, updated_at: new Date().toISOString() });
+  saveRound(r);
+}
+
+/** Two copies of one round: round fields from the newer copy, each player's entry from whichever copy touched it last. */
+export function mergeRound(mine, theirs) {
+  const newer = (mine.updated_at || "") >= (theirs.updated_at || "") ? mine : theirs;
+  const out = { ...newer };
+  const removed = new Map();
+  for (const t of [...(mine.removed || []), ...(theirs.removed || [])]) {
+    if (!removed.has(t.playerId) || removed.get(t.playerId) < t.updated_at) removed.set(t.playerId, t.updated_at);
+  }
+  const byId = new Map();
+  for (const e of [...(theirs.entries || []), ...(mine.entries || [])]) {
+    const k = e.playerId || e.name;
+    const cur = byId.get(k);
+    if (!cur || (e.updated_at || "") > (cur.updated_at || "")) byId.set(k, e);
+  }
+  out.entries = [...byId.values()].filter(e => !(removed.has(e.playerId) && removed.get(e.playerId) > (e.updated_at || "")));
+  // keep the order players were added in, as far as both copies agree
+  const order = [...(newer.entries || []).map(e => e.playerId || e.name)];
+  out.entries.sort((a, b) => { const ia = order.indexOf(a.playerId || a.name), ib = order.indexOf(b.playerId || b.name); return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib); });
+  out.removed = [...removed].map(([playerId, updated_at]) => ({ playerId, updated_at }));
+  return out;
 }
 
 export function deleteRound(id) {
@@ -175,8 +208,9 @@ export function deleteRound(id) {
 export function addEntry(round, n, { name, hi, tee, gender, courseHandicap }) {
   const p = upsertPlayer(name, hi, gender);
   const e = { playerId: p.id, name: p.name, hi, tee, gender: gender || "m", courseHandicap: courseHandicap ?? null,
-    scores: new Array(n).fill(null), penalties: [] };
+    scores: new Array(n).fill(null), penalties: [], updated_at: new Date().toISOString() };
   round.entries.push(e);
+  round.removed = (round.removed || []).filter(x => x.playerId !== p.id);
   saveRound(round);
   return e;
 }
