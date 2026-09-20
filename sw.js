@@ -1,5 +1,5 @@
 // Offline cache. The version is stamped by app/build.py; a new version replaces the whole cache on next load.
-const VERSION = "20260920-113812";
+const VERSION = "20260920-113845";
 const CACHE = `apeliotes-golf-${VERSION}`;
 const SHELL = ["./", "./index.html", "./app.css", "./app.js", "./model.js", "./draw.js", "./posters.js", "./cards.js",
   "./store.js", "./data.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png",
