@@ -494,7 +494,7 @@ function review(rid) {
   document.getElementById("rdet").addEventListener("submit", ev => {
     ev.preventDefault();
     r.name = ev.target.name.value.trim() || r.name;
-    r.date = ev.target.date.value || r.date;
+    r.date = ev.target.date.value || null;
     S.saveRound(r); toast("Saved"); review(rid);
   });
   bind(ev => {
@@ -882,6 +882,7 @@ async function downscale(file, max = 1600) {
   const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
   const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : Object.assign(document.createElement("canvas"), { width: w, height: h });
   cv.getContext("2d").drawImage(bmp, 0, 0, w, h);
+  if (bmp.close) bmp.close();
   const blob = cv.convertToBlob ? await cv.convertToBlob({ type: "image/jpeg", quality: 0.85 }) : await new Promise(res => cv.toBlob(res, "image/jpeg", 0.85));
   const b64 = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result.split(",")[1]); rd.readAsDataURL(blob); });
   return { b64, blob };
@@ -902,7 +903,8 @@ function scan() {
   const st = scanState;
   if (!cfg) return page("Scan a scorecard", `<div class="banner warn">Scanning needs the shared database connection (the scan service runs there). Connect in Settings first.</div>`, { back: "#new" });
   const recent = (S.state.settings.recentCourses || [])[0];
-  const courseOpts = all.map(c => `<option value="${esc(c.slug)}" ${c.slug === (st.result && st.result.courseSlug) || (!st.result && c.slug === recent) ? "selected" : ""}>${esc(courseTitle(c))} (${c.n})</option>`).join("");
+  const nWant = st.result ? st.result.holes : null;
+  const courseOpts = all.filter(c => !nWant || c.n === nWant).map(c => `<option value="${esc(c.slug)}" ${c.slug === (st.result && st.result.courseSlug) || (!st.result && c.slug === recent) ? "selected" : ""}>${esc(courseTitle(c))} (${c.n})</option>`).join("");
   const players = S.players().sort((a, b) => a.name.localeCompare(b.name));
   let review_ = "";
   if (st.result) {
@@ -910,6 +912,7 @@ function scan() {
     review_ = `<h2>Check what was read</h2>
       <p class="muted small">Yellow cells were unsure or empty. Fix any number, pick who each row is, and untick rows that are not players.</p>
       <label>Played on<input id="sdate" type="date" value="${esc(R.date || S.today())}"></label>
+      <label>Holes on the card<select id="sholes"><option value="9" ${n === 9 ? "selected" : ""}>9</option><option value="18" ${n === 18 ? "selected" : ""}>18</option></select></label>
       <label>Course<select id="scourse">${courseOpts}</select></label>
       <label>Name of the round<input id="sname" value="${esc(R.name || ((R.course ? R.course + " " : "") + (R.date || "")).trim() || "Scanned round")}"></label>
       ${R.rows.map((row, i) => {
@@ -941,10 +944,19 @@ function scan() {
       scan();
       const course = all.find(c => c.slug === recent) || all[0];
       const data = await scanImage(cfg, b64, "image/jpeg", course.n, course.par, S.players().map(p => p.name));
-      const guess = data.course ? all.find(c => (c.name + " " + c.loop).toLowerCase().includes(String(data.course).toLowerCase().split(" ")[0])) : null;
-      st.result = { ...data, courseSlug: guess ? guess.slug : course.slug };
+      const fits = all.filter(c => c.n === data.holes);
+      const guess = data.course ? fits.find(c => (c.name + " " + c.loop).toLowerCase().includes(String(data.course).toLowerCase().split(" ")[0])) : null;
+      st.result = { ...data, courseSlug: (guess || fits.find(c => c.slug === recent) || fits[0] || course).slug };
     } catch (err) { toast(`Scan failed: ${err.message}`, 6000); }
     st.busy = false;
+    scan();
+  });
+  const sh = document.getElementById("sholes");
+  if (sh) sh.addEventListener("change", () => {
+    const n2 = Number(sh.value);
+    st.result.holes = n2;
+    for (const row of st.result.rows) { row.scores = Array.from({ length: n2 }, (_, h) => row.scores[h] ?? null); row.unsure = row.unsure.filter(h => h < n2); }
+    st.result.courseSlug = (all.find(c => c.n === n2 && c.slug === recent) || all.find(c => c.n === n2) || {}).slug;
     scan();
   });
   bind(ev => {
@@ -965,6 +977,7 @@ function scan() {
       const scores = [...el.querySelectorAll(".cells input")].map(inp => inp.value.trim() === "" ? null : Number(inp.value));
       if (scores.length !== course.n) return toast(`${name}: this card has ${scores.length} holes, the course ${course.n}; pick the matching course`);
       if (scores.some(v => v !== null && !(Number.isInteger(v) && v >= 0 && v <= 30))) return toast(`${name}: scores must be whole numbers 0 to 30`);
+      if (entries.some(x => S.nameKey(x.name) === S.nameKey(name))) return toast(`${name} appears twice; untick one row or pick another player`);
       entries.push({ name, hi, gender: known ? known.gender : "m", scores });
     }
     const r = S.createRound({ course: course.slug, name: document.getElementById("sname").value.trim() || "Scanned round", date, defaultTee: Object.keys(course.tees).includes("yellow") ? "yellow" : Object.keys(course.tees)[0], allowance: 100 });
