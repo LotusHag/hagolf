@@ -42,7 +42,10 @@ function drawTable(ax, cols, rows, W) {
   });
 }
 
+const courseNote = M => (M.course && (M.course.notes || []).length) ? ` Course file: ${M.course.notes.join("; ")}.` : "";
+
 function tablePoster(M, T, title, cols, rows, W, right, foot, width = 11.5, kicker = null, sub = null) {
+  foot += courseNote(M);
   const n = rows.length;
   const axIn = (n + 1.25) * ROW_IN;
   const probe = new Fig(width, 1, T, 20);
@@ -96,7 +99,8 @@ const countbackText = n => n === 18 ? "last 9, 6 and 3 holes, then hole by hole 
 function notes(rows, key) {
   let out = "";
   if (rows.some(r => r.penalty_total)) out += " Pen badge: penalty strokes handed out after the round, counted on their hole.";
-  if (rows.some(r => r.nr)) out += " NR: no return, the player picked up on a hole; that hole scores no points.";
+  if (rows.some(r => r.picked && r.picked.some(Boolean))) out += " NR: no return, the player picked up on a hole; that hole scores no points.";
+  if (rows.some(r => r.skipped && r.skipped.some(Boolean))) out += " A player who joined late has no gross and scores points from the holes played.";
   if (rows.some(r => r.ph < 0)) out += " A plus handicap (+1) gives a stroke back, so net can be higher than gross.";
   return out;
 }
@@ -108,8 +112,8 @@ export function grossLeaderboard(M, T) {
   const cols = [
     col("Pos", 0.15, 0.95, dPos("g")),
     col("Player", 1.15, 4.6, dName, "left"),
-    col("Gross", 4.7, 5.6, dVal(r => r.gross === null ? "NR" : String(r.gross), 20, (r, T) => T.INK, "display"), "right"),
-    col("To par", 5.7, 6.5, dVal(r => r.topar === null ? "–" : fmtToPar(r.topar), 14, (r, T) => toparColor(r.topar, T), "display"), "right"),
+    col("Gross", 4.7, 5.6, dVal(r => r.gross === null ? "NR" : String(r.gross), 20, (r, T) => T.INK, "display"), "center"),
+    col("To par", 5.7, 6.5, dVal(r => r.topar === null ? "–" : fmtToPar(r.topar), 14, (r, T) => toparColor(r.topar, T), "display"), "center"),
     col(`The round: ${n} holes by result`, 6.85, 9.95, dOutcomes(n), "left", presentOutcomes(T, rows)),
   ];
   const finished = rows.filter(p => p.gross !== null).map(p => p.gross);
@@ -130,10 +134,10 @@ export function stablefordLeaderboard(M, T) {
   const cols = [
     col("Pos", 0.15, 0.95, dPos("s")),
     col("Player", 1.15, 4.3, dName, "left"),
-    col(hcpTitle, 4.3, 5.0, dVal(r => fmtHcp(r.ph), 11, (r, T) => T.INK_3), "right"),
-    col("Gross", 5.1, 5.8, dVal(r => r.gross === null ? "NR" : String(r.gross), 12), "right"),
-    col("Net", 5.9, 6.6, dVal(r => r.net === null ? "NR" : String(r.net), 14, (r, T) => T.INK, "display"), "right"),
-    col("Points", 6.75, 7.65, dVal(r => String(r.pts), 22, (r, T) => T.ACCENT, "display"), "right"),
+    col(hcpTitle, 4.3, 5.0, dVal(r => fmtHcp(r.ph), 11, (r, T) => T.INK_3), "center"),
+    col("Gross", 5.1, 5.8, dVal(r => r.gross === null ? "NR" : String(r.gross), 12), "center"),
+    col("Net", 5.9, 6.6, dVal(r => r.net === null ? "NR" : String(r.net), 14, (r, T) => T.INK, "display"), "center"),
+    col("Points", 6.75, 7.65, dVal(r => String(r.pts), 22, (r, T) => T.ACCENT, "display"), "center"),
     col(`Points, 0 to ${scaleMax}, line at ${level}`, 7.95, 9.95, pointsMeter(scaleMax, level), "left"),
   ];
   const avg = rows.reduce((a, p) => a + p.pts, 0) / rows.length;
@@ -215,7 +219,7 @@ export function holesPoster(M, T) {
 
   const tot = [0, 1, 2, 3].map(k => holes.reduce((a, h) => a + h.counts[k], 0));
   const played = holes.reduce((a, h) => a + h.n, 0);
-  const teeNote = new Set(M.players.map(p => p.tee)).size > 1 ? ` Par and lengths from the ${M.defaultTee} tees.` : "";
+  const teeNote = (new Set(M.players.map(p => p.tee)).size > 1 ? ` Par and lengths from the ${M.defaultTee} tees.` : "") + courseNote(M);
   footer(fig, `Across the round: ${tot[0]} birdies or better, ${tot[1]} pars, ${tot[2]} bogeys, ${tot[3]} doubles or worse ` +
     `from ${played} holes played. Stacks read bottom up from worst result to best.${teeNote}`);
   return fig;
@@ -231,11 +235,11 @@ export function standingsPoster(S, group, T) {
   const cols = [
     col("Pos", 0.15, 0.95, (ax, c, y, r) => posChip(ax, cx(c), y, r.place, 0.8, 12)),
     col("Player", 1.15, 4.1, dName, "left"),
-    col("Rounds", 4.1, 4.9, dVal(r => String(r.played), 12, (r, T) => T.INK_2), "right"),
-    col("Wins", 5.0, 5.6, dVal(r => String(r.wins), 12, (r, T) => T.INK_2), "right"),
-    col("Best", 5.7, 6.3, dVal(r => String(r.best), 12, (r, T) => T.INK_2), "right"),
-    col("Avg", 6.4, 7.0, dVal(r => fix(r.avg), 12, (r, T) => T.INK_2), "right"),
-    col(countedTitle, 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display"), "right"),
+    col("Rounds", 4.1, 4.9, dVal(r => String(r.played), 12, (r, T) => T.INK_2), "center"),
+    col("Wins", 5.0, 5.6, dVal(r => String(r.wins), 12, (r, T) => T.INK_2), "center"),
+    col("Best", 5.7, 6.3, dVal(r => String(r.best), 12, (r, T) => T.INK_2), "center"),
+    col("Avg", 6.4, 7.0, dVal(r => fix(r.avg), 12, (r, T) => T.INK_2), "center"),
+    col(countedTitle, 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display"), "center"),
     col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left"),
   ];
   const dates = S.rounds.map(r => r.date).filter(Boolean).sort();

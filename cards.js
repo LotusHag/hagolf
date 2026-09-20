@@ -16,7 +16,10 @@ export function story(M, p) {
   const avg = holes.map(h => h.avg);
   const played = [...Array(n).keys()].filter(h => s[h] !== null);
 
-  if (p.nr) {
+  if (p.skipped.some(Boolean)) {
+    out.push(`Joined at hole ${L[p.from_hole - 1]}: the holes before it were not played, score no points and are left out of the comparisons below, so there is no gross score for the round.`);
+  }
+  if (p.picked.some(Boolean)) {
     const picked = [...Array(n).keys()].filter(h => p.picked[h]).map(h => L[h]);
     out.push(`Picked up on hole${plural(picked.length)} ${picked.join(", ")}, so no gross score for the round; those holes score no points and are left out of the comparisons below.`);
   }
@@ -108,7 +111,7 @@ export function renderCard(M, p, T) {
   const vsTotal = sum(vsPlayed);
   let grossTile, netTile;
   if (p.nr) {
-    grossTile = ["Gross", "NR", `picked up, ${p.holes_played} of ${n} holes`];
+    grossTile = ["Gross", "NR", `${p.skipped.some(Boolean) ? `from hole ${L[p.from_hole - 1]}, ` : "picked up, "}${p.holes_played} of ${n} holes`];
     netTile = ["Net", "NR", "no return"];
   } else {
     grossTile = ["Gross", String(p.gross), `${fmtToPar(p.topar)}  ·  ${p.gplace} of ${N}`];
@@ -191,7 +194,8 @@ export function renderCard(M, p, T) {
   glyphLegend(axs, LX + 0.3, 5.0, n <= 9 ? 0.4 : 0.5, 7.5);
   let note = "strokes = handicap strokes received on that hole";
   if (p.penalty_total) note = "amber +n = penalty strokes, counted in the score  ·  " + note;
-  if (p.nr) note = "– = picked up, no return  ·  " + note;
+  if (p.picked.some(Boolean)) note = "– = picked up, no return  ·  " + note;
+  if (p.skipped.some(Boolean)) note = "– = not played (joined late)  ·  " + note;
   axs.text(xmax, 5.0, note, { size: 7.5, color: T.INK_3, ha: "right", va: "center" });
 
   // against the field

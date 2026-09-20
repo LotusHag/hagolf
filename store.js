@@ -1,11 +1,15 @@
-// Roster, rounds, leagues in localStorage, plus the change queue for sync, backup export/import and the
-// tournament.yaml export. Every record carries updated_at and deleted so phones can merge each other's changes.
-const KEY = "hagolf-v1";
-const OLD_KEY = "apeliotes-golf-v1";
+// Local store (localStorage) and the change queue for sync. Players, rounds (header + entries + per-hole scores),
+// leagues, league-round attachments, courses added on phones, course handicaps from club tables, settings.
+// Every record carries updated_at and deleted; the queue remembers which records changed and when.
+import { DATA } from "./data.js";
+
+const KEY = "hagolf-v2";
+const OLD_KEYS = ["hagolf-v1", "apeliotes-golf-v1"];
 const DIRTY_KEY = "hagolf-dirty";
 
 export const state = load();
 let onSave = null;
+const now = () => new Date().toISOString();
 
 /** The sync module registers here so every save schedules a push. */
 export function setOnSave(fn) { onSave = fn; }
@@ -14,39 +18,46 @@ function load() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch (e) { s = null; }
   if (!s) {
-    try { s = migrateV1(JSON.parse(localStorage.getItem(OLD_KEY))); } catch (e) { s = null; }
+    for (const k of OLD_KEYS) {
+      try { const old = JSON.parse(localStorage.getItem(k)); if (old) { s = migrateOld(old); break; } } catch (e) { s = null; }
+    }
   }
   s = s || {};
   const st = { players: s.players || [], rounds: s.rounds || [], leagues: s.leagues || [], leagueRounds: s.leagueRounds || [],
+    courses: s.courses || [], pch: s.pch || [], orphanScores: s.orphanScores || [], held: s.held || [], quarantine: s.quarantine || [],
     settings: s.settings || {} };
-  for (const list of [st.players, st.rounds, st.leagues, st.leagueRounds]) {
-    for (const r of list) { if (!r.updated_at) r.updated_at = r.created && r.created.length > 10 ? r.created : "2026-01-01T00:00:00.000Z"; }
+  st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
+  if (!st.settings.deviceId) st.settings.deviceId = uid();
+  for (const r of st.rounds) {
+    r.entries = r.entries || [];
+    r.removed = r.removed || [];
+    for (const e of r.entries) { e.scoreTs = e.scoreTs || e.scores.map(() => null); e.updated_at = e.updated_at || r.updated_at; }
   }
   return st;
 }
 
-/** Apeliotes Golf v1 storage: groups with members become leagues with every round a member played attached. */
-function migrateV1(s) {
-  if (!s) return null;
-  const now = new Date().toISOString();
-  const leagues = [], leagueRounds = [];
+/** Older local formats: groups become leagues, jsonb-style rounds get per-hole stamps; everything is queued. */
+function migrateOld(s) {
+  const ts = now();
+  const leagues = s.leagues || [], leagueRounds = s.leagueRounds || [];
   for (const g of s.groups || []) {
-    leagues.push({ id: g.id, name: g.name, bestN: g.bestN || 0, created: g.created, deleted: false, updated_at: now });
+    leagues.push({ id: g.id, name: g.name, bestN: g.bestN || 0, created: g.created, deleted: false, updated_at: ts });
     for (const r of s.rounds || []) {
-      if (r.entries.some(e => (g.members || []).includes(e.playerId))) leagueRounds.push({ league_id: g.id, round_id: r.id, deleted: false, updated_at: now });
+      if (r.entries.some(e => (g.members || []).includes(e.playerId))) leagueRounds.push({ league_id: g.id, round_id: r.id, deleted: false, updated_at: ts });
     }
   }
-  const st = { players: s.players || [], rounds: s.rounds || [], leagues, leagueRounds, settings: s.settings || {} };
-  for (const list of [st.players, st.rounds]) for (const r of list) { r.deleted = false; r.updated_at = now; }
+  const st = { players: s.players || [], rounds: s.rounds || [], leagues, leagueRounds, courses: [], pch: [], orphanScores: [], settings: s.settings || {} };
+  for (const list of [st.players, st.rounds, st.leagues, st.leagueRounds]) for (const r of list) { r.deleted = !!r.deleted; r.updated_at = r.updated_at || ts; }
+  for (const r of st.rounds) for (const e of r.entries || []) { e.updated_at = ts; e.scoreTs = e.scores.map(v => v === null ? null : ts); }
   localStorage.setItem(KEY, JSON.stringify(st));
-  markAll(st);
-  return st;
-}
-
-function markAll(st) {
-  const d = { players: st.players.map(p => p.id), rounds: st.rounds.map(r => r.id), leagues: st.leagues.map(g => g.id),
-    league_rounds: st.leagueRounds.map(x => `${x.league_id}|${x.round_id}`) };
+  const d = {};
+  const add = (t, k, ts_) => { d[t] = d[t] || {}; d[t][k] = ts_; };
+  st.players.forEach(p => add("players", p.id, p.updated_at));
+  st.rounds.forEach(r => { add("rounds", r.id, r.updated_at); r.entries.forEach(e => { add("round_entries", `${r.id}|${e.playerId}`, e.updated_at); e.scores.forEach((v, h) => { if (v !== null) add("scores", `${r.id}|${e.playerId}|${h}`, e.scoreTs[h]); }); }); });
+  st.leagues.forEach(g => add("leagues", g.id, g.updated_at));
+  st.leagueRounds.forEach(x => add("league_rounds", `${x.league_id}|${x.round_id}`, x.updated_at));
   localStorage.setItem(DIRTY_KEY, JSON.stringify(d));
+  return st;
 }
 
 export function save() {
@@ -54,34 +65,55 @@ export function save() {
   if (onSave) onSave();
 }
 
-// ---------------------------------------------------------------- change queue
+/** Everything that arrived from other phones is already in state; persist it without queueing anything. */
+export function afterPull() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* full */ }
+}
+
+// ---------------------------------------------------------------- change queue: { table: { key: updated_at } }
 export function dirty() {
   try { return JSON.parse(localStorage.getItem(DIRTY_KEY)) || {}; } catch (e) { return {}; }
 }
 
-function mark(table, key) {
+export function hasDirty() {
+  return Object.values(dirty()).some(m => Object.keys(m).length);
+}
+
+function mark(table, key, ts) {
   const d = dirty();
-  d[table] = d[table] || [];
-  if (!d[table].includes(key)) d[table].push(key);
+  d[table] = d[table] || {};
+  d[table][key] = ts;
   localStorage.setItem(DIRTY_KEY, JSON.stringify(d));
 }
 
-export function clearDirty(table, keys) {
+/** Drops queue entries whose stamp is still the one that was sent; a change made during the push stays queued. */
+export function clearDirty(table, sent) {
   const d = dirty();
-  d[table] = (d[table] || []).filter(k => !keys.includes(k));
+  const m = d[table] || {};
+  for (const [k, ts] of Object.entries(sent)) if (m[k] === ts) delete m[k];
+  d[table] = m;
   localStorage.setItem(DIRTY_KEY, JSON.stringify(d));
 }
 
-/** Stamps a record as changed now and queues it for sync. Call after mutating it, then save(). */
-export function touch(table, rec) {
-  rec.updated_at = new Date().toISOString();
-  mark(table, table === "league_rounds" ? `${rec.league_id}|${rec.round_id}` : rec.id);
+/** Rows the server refused for good (a 4xx): taken out of the queue so the rest keeps syncing, kept for the user to see. */
+export function quarantine(table, sent, reason) {
+  for (const k of Object.keys(sent)) state.quarantine.push({ table, key: k, reason: String(reason).slice(0, 200), at: now() });
+  state.quarantine = state.quarantine.slice(-50);
+  clearDirty(table, sent);
+  afterPull();
+}
+
+/** A round entered more than 60 days ago is frozen on the server; the phone refuses the edit up front. */
+export function roundOpen(r) {
+  const t = r.created ? new Date(r.created).getTime() : Date.now();
+  return Date.now() - t < 60 * 86400000;
+}
+
+/** Stamps a record as changed now and queues it. */
+export function touch(table, rec, key = null) {
+  rec.updated_at = now();
+  mark(table, key ?? rec.id, rec.updated_at);
   return rec;
-}
-
-/** Everything that arrived from other phones is already in state; persist it without queueing anything. */
-export function afterPull() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* full */ }
 }
 
 export function uid() {
@@ -95,12 +127,17 @@ export function today() {
 
 const live = list => list.filter(r => !r.deleted);
 
+// ---------------------------------------------------------------- settings
+export function setSetting(k, v) { state.settings[k] = v; save(); }
+export function me() { return state.settings.meId ? players().find(p => p.id === state.settings.meId) || null : null; }
+
+// ---------------------------------------------------------------- roster
 /** Case, accent and punctuation insensitive key so "Maurits van 't Hag" and "maurits van t hag" are one player. */
 export function nameKey(name) {
-  return name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return String(name).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-/** Player ids derive from the name, so two phones adding the same person get the same record instead of a duplicate. */
+/** Player ids derive from the name at creation, so two phones adding the same person get one record, not two. */
 export function playerId(name) {
   const k = nameKey(name);
   let h1 = 5381, h2 = 52711;
@@ -108,25 +145,25 @@ export function playerId(name) {
   return "p" + (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-// ---------------------------------------------------------------- roster
 export function players() { return live(state.players); }
 
+/** By current name or any earlier spelling (aliases), so a renamed player is still found. */
 export function findPlayer(name) {
   const k = nameKey(name);
-  return state.players.find(p => !p.deleted && nameKey(p.name) === k) || null;
+  return state.players.find(p => !p.deleted && (nameKey(p.name) === k || (p.aliases || []).includes(k))) || null;
 }
 
 /** Returns the roster player for a name, creating one when new; updates the index and gender they last used. */
 export function upsertPlayer(name, hi, gender) {
   let p = findPlayer(name);
-  const now = new Date().toISOString();
+  const ts = now();
   if (!p) {
-    p = { id: playerId(name), name: name.trim(), hi, gender: gender || "m", created: today(), hiUpdated: now, deleted: false };
+    p = { id: playerId(name), name: name.trim(), hi, gender: gender || "m", created: today(), hiUpdated: ts, aliases: [], deleted: false };
     const ghost = state.players.find(x => x.id === p.id);
-    if (ghost) { Object.assign(ghost, p, { created: ghost.created || p.created }); p = ghost; }  // deleted earlier: bring the record back
+    if (ghost) { Object.assign(ghost, p, { created: ghost.created || p.created, aliases: ghost.aliases || [] }); p = ghost; console.info("player restored", p.name); }
     else state.players.push(p);
   } else {
-    if (hi !== undefined && hi !== null && hi !== p.hi) { p.hi = hi; p.hiUpdated = now; }
+    if (hi !== undefined && hi !== null && hi !== p.hi) { p.hi = hi; p.hiUpdated = ts; }
     if (gender) p.gender = gender;
   }
   touch("players", p);
@@ -134,8 +171,52 @@ export function upsertPlayer(name, hi, gender) {
   return p;
 }
 
-export function roundsOf(playerId) {
-  return rounds().filter(r => r.entries.some(e => e.playerId === playerId));
+/** Renames keep the id and remember the old spelling, so another phone typing either name finds this player. */
+export function renamePlayer(p, newName) {
+  const old = nameKey(p.name), fresh = nameKey(newName);
+  p.aliases = [...new Set([...(p.aliases || []), old, fresh])].filter(k => k !== fresh || k === old);
+  if (!p.aliases.includes(old)) p.aliases.push(old);
+  p.name = newName.trim();
+  touch("players", p);
+  save();
+}
+
+/**
+ * Two roster records that are one person (a spelling that slipped through): every round entry, score and course
+ * handicap of `dropId` moves to `keepId`, the dropped name becomes an alias, and the dropped record is tombstoned.
+ */
+export function mergePlayers(keepId, dropId) {
+  const keep = state.players.find(p => p.id === keepId), drop = state.players.find(p => p.id === dropId);
+  if (!keep || !drop || keepId === dropId) return false;
+  for (const r of state.rounds) {
+    const i = r.entries.findIndex(e => e.playerId === dropId);
+    if (i < 0) continue;
+    const old = r.entries[i];
+    const j = r.entries.findIndex(e => e.playerId === keepId);
+    removeEntry(r, i);
+    if (j >= 0) continue;  // both in the round: keep the record already under the kept name
+    const e = { ...old, playerId: keepId, name: keep.name, deleted: false, updated_at: now(), scores: [...old.scores], scoreTs: old.scores.map(v => v === null ? null : now()) };
+    r.removed = r.removed.filter(x => x.playerId !== keepId);
+    r.entries.push(e);
+    mark("round_entries", `${r.id}|${keepId}`, e.updated_at);
+    e.scores.forEach((v, h) => { if (v !== null) mark("scores", `${r.id}|${keepId}|${h}`, e.scoreTs[h]); });
+  }
+  for (const x of state.pch.filter(y => y.player_id === dropId && !y.deleted)) {
+    if (getPch(keepId, x.course, x.tee) === null) setPch(keepId, x.course, x.tee, x.ch);
+    setPch(dropId, x.course, x.tee, null);
+  }
+  keep.aliases = [...new Set([...(keep.aliases || []), nameKey(drop.name), ...(drop.aliases || [])])];
+  if (keep.hi === null || keep.hi === undefined) keep.hi = drop.hi;
+  drop.deleted = true;
+  if (state.settings.meId === dropId) state.settings.meId = keepId;
+  touch("players", keep);
+  touch("players", drop);
+  save();
+  return true;
+}
+
+export function roundsOf(pid) {
+  return rounds().filter(r => r.entries.some(e => e.playerId === pid));
 }
 
 export function deletePlayer(id) {
@@ -143,60 +224,88 @@ export function deletePlayer(id) {
   if (p) { p.deleted = true; touch("players", p); save(); }
 }
 
+// ---------------------------------------------------------------- courses: the kit's files plus courses added on phones
+export function courses() {
+  const out = new Map(DATA.courses.map(c => [c.slug, { ...c, source: c.source || "kit" }]));
+  for (const c of state.courses) {
+    if (c.deleted) out.delete(c.slug);
+    else out.set(c.slug, { ...c.data, slug: c.slug, source: c.source || "phone" });
+  }
+  return [...out.values()];
+}
+
+export function courseBy(slug) { return courses().find(c => c.slug === slug) || null; }
+
+/** A course typed on a phone: validated by model.prepareCourse before it gets here. */
+export function addCourse(slug, data) {
+  let c = state.courses.find(x => x.slug === slug);
+  if (!c) { c = { slug, data, source: "phone", deleted: false }; state.courses.push(c); }
+  else { c.data = data; c.deleted = false; }
+  touch("courses", c, slug);
+  save();
+  return c;
+}
+
+export function noteRecentCourse(slug) {
+  const rc = [slug, ...(state.settings.recentCourses || []).filter(x => x !== slug)].slice(0, 5);
+  state.settings.recentCourses = rc;
+  save();
+}
+
+// ---------------------------------------------------------------- course handicaps from club tables
+export function getPch(pid, course, tee) {
+  const x = state.pch.find(y => y.player_id === pid && y.course === course && y.tee === tee && !y.deleted);
+  return x ? x.ch : null;
+}
+
+export function setPch(pid, course, tee, ch) {
+  let x = state.pch.find(y => y.player_id === pid && y.course === course && y.tee === tee);
+  if (!x) { x = { player_id: pid, course, tee, ch: ch ?? 0, deleted: ch === null }; state.pch.push(x); }
+  else { if (ch !== null) x.ch = ch; x.deleted = ch === null; }
+  touch("player_course_handicap", x, `${pid}|${course}|${tee}`);
+  save();
+}
+
 // ---------------------------------------------------------------- rounds
 export function rounds() {
-  return live(state.rounds).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.created || "").localeCompare(a.created || ""));
+  return live(state.rounds).filter(r => !r.stub).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.created || "").localeCompare(a.created || ""));
 }
 
 export function createRound({ course, name, date, defaultTee, allowance }) {
   const r = { id: uid(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup",
-    hole: 0, entries: [], created: new Date().toISOString(), deleted: false };
+    hole: 0, entries: [], removed: [], created: now(), deleted: false };
   state.rounds.unshift(r);
   touch("rounds", r);
-  save();
+  noteRecentCourse(course);
   return r;
 }
 
 export function getRound(id) {
-  return state.rounds.find(r => r.id === id && !r.deleted) || null;
+  return state.rounds.find(r => r.id === id && !r.deleted && !r.stub) || null;
 }
 
-/** Saves a round; pass the entry that changed so two phones scoring the same round merge per player. */
-export function saveRound(r, entry = null) {
-  if (entry) entry.updated_at = new Date().toISOString();
+/** Which hole this phone is on in a round: kept on the phone, so two phones on different holes do not fight. */
+export function holeOf(r) { return state.settings.holes[r.id] ?? r.hole ?? 0; }
+export function setHole(r, h) { state.settings.holes[r.id] = h; save(); }
+
+/** Header fields changed (name, status, hole, ...). */
+export function saveRound(r) {
   touch("rounds", r);
   save();
 }
 
-/** Removes a player from a round with a tombstone, so another phone's copy of the entry does not bring them back. */
-export function removeEntry(r, i) {
-  const e = r.entries[i];
-  r.entries.splice(i, 1);
-  r.removed = (r.removed || []).filter(x => x.playerId !== e.playerId);
-  r.removed.push({ playerId: e.playerId, updated_at: new Date().toISOString() });
-  saveRound(r);
+/** An entry's own fields changed (tee, index, group, penalties, ...), not its scores. */
+export function saveEntry(r, e) {
+  touch("round_entries", e, `${r.id}|${e.playerId}`);
+  save();
 }
 
-/** Two copies of one round: round fields from the newer copy, each player's entry from whichever copy touched it last. */
-export function mergeRound(mine, theirs) {
-  const newer = (mine.updated_at || "") >= (theirs.updated_at || "") ? mine : theirs;
-  const out = { ...newer };
-  const removed = new Map();
-  for (const t of [...(mine.removed || []), ...(theirs.removed || [])]) {
-    if (!removed.has(t.playerId) || removed.get(t.playerId) < t.updated_at) removed.set(t.playerId, t.updated_at);
-  }
-  const byId = new Map();
-  for (const e of [...(theirs.entries || []), ...(mine.entries || [])]) {
-    const k = e.playerId || e.name;
-    const cur = byId.get(k);
-    if (!cur || (e.updated_at || "") > (cur.updated_at || "")) byId.set(k, e);
-  }
-  out.entries = [...byId.values()].filter(e => !(removed.has(e.playerId) && removed.get(e.playerId) > (e.updated_at || "")));
-  // keep the order players were added in, as far as both copies agree
-  const order = [...(newer.entries || []).map(e => e.playerId || e.name)];
-  out.entries.sort((a, b) => { const ia = order.indexOf(a.playerId || a.name), ib = order.indexOf(b.playerId || b.name); return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib); });
-  out.removed = [...removed].map(([playerId, updated_at]) => ({ playerId, updated_at }));
-  return out;
+/** One hole of one player: the smallest thing that syncs, so two phones never collide on a round. */
+export function setScore(r, e, h, v) {
+  e.scores[h] = v;
+  e.scoreTs[h] = now();
+  mark("scores", `${r.id}|${e.playerId}|${h}`, e.scoreTs[h]);
+  save();
 }
 
 export function deleteRound(id) {
@@ -205,22 +314,34 @@ export function deleteRound(id) {
 }
 
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */
-export function addEntry(round, n, { name, hi, tee, gender, courseHandicap }) {
+export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1 }) {
   const p = upsertPlayer(name, hi, gender);
-  const e = { playerId: p.id, name: p.name, hi, tee, gender: gender || "m", courseHandicap: courseHandicap ?? null,
-    scores: new Array(n).fill(null), penalties: [], updated_at: new Date().toISOString() };
+  const ghost = round.removed.find(x => x.playerId === p.id);  // taken out earlier: their scores come back with them
+  round.removed = round.removed.filter(x => x.playerId !== p.id);
+  const e = { playerId: p.id, name: p.name, hi, tee, gender: gender || "m", courseHandicap: courseHandicap ?? null, group, fromHole,
+    scores: ghost ? ghost.scores : new Array(n).fill(null), scoreTs: ghost ? ghost.scoreTs : new Array(n).fill(null), penalties: [], updated_at: now() };
   round.entries.push(e);
-  round.removed = (round.removed || []).filter(x => x.playerId !== p.id);
-  saveRound(round);
+  mark("round_entries", `${round.id}|${e.playerId}`, e.updated_at);
+  save();
   return e;
+}
+
+/** Removes a player from a round with a tombstone, so another phone's copy does not bring them back. */
+export function removeEntry(r, i) {
+  const e = r.entries.splice(i, 1)[0];
+  r.removed = r.removed.filter(x => x.playerId !== e.playerId);
+  e.deleted = true;
+  r.removed.push(e);
+  touch("round_entries", e, `${r.id}|${e.playerId}`);
+  save();
 }
 
 /** What model.compute expects from a stored round. */
 export function toModelRound(round) {
   return {
     name: round.name, date: round.date, defaultTee: round.defaultTee, allowance: round.allowance,
-    entries: round.entries.map(e => ({ id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender,
-      courseHandicap: e.courseHandicap, scores: e.scores, penalties: e.penalties })),
+    entries: round.entries.map(e => ({ id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
+      courseHandicap: e.courseHandicap ?? getPch(e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1 })),
   };
 }
 
@@ -235,14 +356,9 @@ export function createLeague(name, bestN = 0, createdBy = null) {
   return g;
 }
 
-export function getLeague(id) {
-  return state.leagues.find(g => g.id === id && !g.deleted) || null;
-}
+export function getLeague(id) { return state.leagues.find(g => g.id === id && !g.deleted) || null; }
 
-export function saveLeague(g) {
-  touch("leagues", g);
-  save();
-}
+export function saveLeague(g) { touch("leagues", g); save(); }
 
 export function deleteLeague(id) {
   const g = state.leagues.find(x => x.id === id);
@@ -264,48 +380,87 @@ export function setLeagueRound(leagueId, roundId, attached) {
   let x = state.leagueRounds.find(y => y.league_id === leagueId && y.round_id === roundId);
   if (!x) { x = { league_id: leagueId, round_id: roundId, deleted: !attached }; state.leagueRounds.push(x); }
   else x.deleted = !attached;
-  touch("league_rounds", x);
+  touch("league_rounds", x, `${leagueId}|${roundId}`);
   save();
 }
 
 // ---------------------------------------------------------------- backup
 export function exportJSON() {
-  state.settings.lastExport = new Date().toISOString();
+  state.settings.lastExport = now();
   save();
-  return JSON.stringify({ app: "hagolf", format: 2, exported: state.settings.lastExport,
-    players: state.players, rounds: state.rounds, leagues: state.leagues, leagueRounds: state.leagueRounds }, null, 1);
+  return JSON.stringify({ app: "hagolf", format: 3, exported: state.settings.lastExport, players: state.players, rounds: state.rounds,
+    leagues: state.leagues, leagueRounds: state.leagueRounds, courses: state.courses, pch: state.pch }, null, 1);
 }
 
 /** Merges a backup in: the newer updated_at wins per record. Importing twice changes nothing. */
 export function importJSON(text) {
   const d = JSON.parse(text);
   if (!["hagolf", "apeliotes-golf"].includes(d.app) || !Array.isArray(d.players) || !Array.isArray(d.rounds)) throw new Error("This is not a Hagolf backup file.");
-  if (d.app === "apeliotes-golf") Object.assign(d, migrateShape(d));
+  const stamp = d.exported || "2026-01-01T00:00:00.000Z";
   let added = 0;
   const merge = (table, list, incoming, key) => {
     for (const rec of incoming || []) {
-      if (!rec.updated_at) rec.updated_at = d.exported || "2026-01-01T00:00:00.000Z";
+      if (!rec.updated_at) rec.updated_at = stamp;
       const i = list.findIndex(x => key(x) === key(rec));
-      if (i < 0) { list.push(rec); mark(table, key(rec)); added++; }
-      else if ((list[i].updated_at || "") < rec.updated_at) { list[i] = rec; mark(table, key(rec)); added++; }
+      if (i < 0) { list.push(rec); mark(table, key(rec), rec.updated_at); added++; }
+      else if ((list[i].updated_at || "") < rec.updated_at) { list[i] = rec; mark(table, key(rec), rec.updated_at); added++; }
     }
   };
   merge("players", state.players, d.players, x => x.id);
-  merge("rounds", state.rounds, d.rounds, x => x.id);
+  for (const r of d.rounds) {
+    r.entries = r.entries || []; r.removed = r.removed || [];
+    r.updated_at = r.updated_at || stamp;
+    for (const e of [...r.entries, ...r.removed]) { e.scores = e.scores || []; e.scoreTs = e.scoreTs || e.scores.map(v => v === null ? null : stamp); e.updated_at = e.updated_at || stamp; }
+    const mine = state.rounds.find(x => x.id === r.id);
+    if (!mine) {
+      state.rounds.push(r); added++;
+      mark("rounds", r.id, r.updated_at);
+      r.entries.forEach(e => { mark("round_entries", `${r.id}|${e.playerId}`, e.updated_at); e.scores.forEach((v, h) => { if (v !== null) mark("scores", `${r.id}|${e.playerId}|${h}`, e.scoreTs[h]); }); });
+    } else {
+      added += mergeRoundInto(mine, r) ? 1 : 0;
+    }
+  }
   merge("leagues", state.leagues, d.leagues, x => x.id);
   merge("league_rounds", state.leagueRounds, d.leagueRounds, x => `${x.league_id}|${x.round_id}`);
+  merge("courses", state.courses, d.courses, x => x.slug);
+  merge("player_course_handicap", state.pch, d.pch, x => `${x.player_id}|${x.course}|${x.tee}`);
   save();
   return { added };
 }
 
-function migrateShape(d) {
-  const now = d.exported || new Date().toISOString();
-  const leagues = [], leagueRounds = [];
-  for (const g of d.groups || []) {
-    leagues.push({ id: g.id, name: g.name, bestN: g.bestN || 0, created: g.created, deleted: false, updated_at: now });
-    for (const r of d.rounds) if (r.entries.some(e => (g.members || []).includes(e.playerId))) leagueRounds.push({ league_id: g.id, round_id: r.id, deleted: false, updated_at: now });
+/** Merge another copy of a round into mine, per header, per entry and per hole; queues what changed. */
+function mergeRoundInto(mine, theirs) {
+  let changed = false;
+  if ((theirs.updated_at || "") > (mine.updated_at || "")) {
+    for (const k of ["name", "date", "course", "defaultTee", "allowance", "status", "hole", "deleted", "updated_at"]) mine[k] = theirs[k];
+    mark("rounds", mine.id, mine.updated_at); changed = true;
   }
-  return { leagues, leagueRounds };
+  for (const te of [...theirs.entries, ...(theirs.removed || [])]) {
+    te.scoreTs = te.scoreTs || te.scores.map(v => v === null ? null : theirs.updated_at);
+    const i = mine.entries.findIndex(e => e.playerId === te.playerId);
+    const j = mine.removed.findIndex(e => e.playerId === te.playerId);
+    const me_ = i >= 0 ? mine.entries[i] : (j >= 0 ? mine.removed[j] : null);
+    if (!me_) {
+      (te.deleted ? mine.removed : mine.entries).push(te);
+      mark("round_entries", `${mine.id}|${te.playerId}`, te.updated_at);
+      te.scores.forEach((v, h) => { if (v !== null) mark("scores", `${mine.id}|${te.playerId}|${h}`, te.scoreTs[h]); });
+      changed = true;
+      continue;
+    }
+    if ((te.updated_at || "") > (me_.updated_at || "")) {
+      const keep = { scores: me_.scores, scoreTs: me_.scoreTs };
+      Object.assign(me_, te, keep);
+      if (te.deleted && i >= 0) { mine.entries.splice(i, 1); mine.removed.push(me_); }
+      if (!te.deleted && j >= 0) { mine.removed.splice(j, 1); mine.entries.push(me_); }
+      mark("round_entries", `${mine.id}|${te.playerId}`, me_.updated_at); changed = true;
+    }
+    te.scores.forEach((v, h) => {
+      if (v === null || (te.scoreTs[h] || "") <= (me_.scoreTs[h] || "")) return;
+      me_.scores[h] = v; me_.scoreTs[h] = te.scoreTs[h];
+      mark("scores", `${mine.id}|${te.playerId}|${h}`, te.scoreTs[h]); changed = true;
+    });
+  }
+  return changed;
 }
 
 export function needsBackup() {
@@ -330,11 +485,25 @@ export function toYAML(round) {
     L.push(`  tee: ${e.tee}`);
     if (e.gender === "f") L.push("  gender: f");
     if (e.courseHandicap !== null && e.courseHandicap !== undefined && e.courseHandicap !== "") L.push(`  course_handicap: ${e.courseHandicap}`);
+    if ((e.fromHole || 1) > 1) L.push(`  from_hole: ${e.fromHole}`);
     L.push(`  scores: [${e.scores.map(s => s === null ? "" : s).join(", ")}]`);
     if (e.penalties && e.penalties.length) {
       L.push("  penalties:");
       for (const p of e.penalties) L.push(`  - {hole: ${p.hole}, strokes: ${p.strokes}, reason: ${yamlStr(p.reason || "")}}`);
     }
+  }
+  return L.join("\n") + "\n";
+}
+
+/** A phone-made course as courses/<slug>.yaml for the desktop kit. */
+export function courseToYAML(c) {
+  const L = [`# ${c.name}${c.loop ? " " + c.loop : ""}. Added on a phone in Hagolf; check ratings against the club card.`,
+    `name: ${yamlStr(c.name)}`, `loop: ${yamlStr(c.loop || "")}`, `par: [${c.par.join(", ")}]`, `stroke_index: [${c.stroke_index.join(", ")}]`, "tees:"];
+  for (const [tee, t] of Object.entries(c.tees)) {
+    L.push(`  ${tee}:`);
+    if (t.ratings && t.ratings.m) { L.push(`    course_rating: ${t.ratings.m.cr}`); L.push(`    slope: ${t.ratings.m.slope}`); }
+    if (t.ratings && t.ratings.f) L.push(`    women: {course_rating: ${t.ratings.f.cr}, slope: ${t.ratings.f.slope}}`);
+    if (t.metres) L.push(`    metres: [${t.metres.join(", ")}]`);
   }
   return L.join("\n") + "\n";
 }

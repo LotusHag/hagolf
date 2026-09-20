@@ -132,13 +132,16 @@ export function compute(courseIn, round) {
     if (seen.has(name)) throw new Error(`two players are called '${name}', give one of them a distinguishing name`);
     seen.add(name);
     let scores = p.scores;
-    if (!scores || scores.length !== n || scores.some(s => s === null || s === undefined || s === "")) {
+    const fromHole = Number(p.fromHole || 1) || 1;
+    if (!(fromHole >= 1 && fromHole <= n)) throw new Error(`${name}: from hole must be between 1 and ${n}`);
+    const skipped = [...Array(n).keys()].map(h => h < fromHole - 1);  // joined late: these holes were not played at all
+    if (!scores || scores.length !== n || scores.some((s, h) => !skipped[h] && (s === null || s === undefined || s === ""))) {
       M.unfinished.push(name);
       continue;
     }
-    scores = scores.map(s => Number(s));
-    if (scores.some(s => !Number.isInteger(s))) throw new Error(`${name}: scores must be whole numbers`);
-    if (scores.some(s => s < 0 || s > 30)) throw new Error(`${name}: a hole score outside 0 to 30 looks like a typo`);
+    scores = scores.map((s, h) => skipped[h] ? null : Number(s));
+    if (scores.some(s => s !== null && !Number.isInteger(s))) throw new Error(`${name}: scores must be whole numbers`);
+    if (scores.some(s => s !== null && (s < 0 || s > 30))) throw new Error(`${name}: a hole score outside 0 to 30 looks like a typo`);
     const tee = p.tee || defaultTee;
     const t = course.tees[tee];
     if (!t) throw new Error(`${name}: tee '${tee}' is not on the course`);
@@ -164,16 +167,16 @@ export function compute(courseIn, round) {
       pens.push({ hole: h, label: course.labels[h - 1], strokes: k, reason: String(x.reason || "") });
     }
     const picked = scores.map(s => s === 0);
-    const sc = scores.map((s, h) => picked[h] ? null : s + pen[h]);
+    const sc = scores.map((s, h) => picked[h] || skipped[h] ? null : s + pen[h]);
     const strokes = strokesPerHole(ph, si);
     const nets = sc.map((s, h) => s === null ? null : s - strokes[h]);
     const hpts = sc.map((s, h) => s === null ? 0 : stableford(s, par[h], strokes[h]));
     const deltas = sc.map((s, h) => s === null ? null : s - par[h]);
-    const nr = picked.some(Boolean);
-    const played = picked.filter(x => !x).length;
+    const nr = picked.some(Boolean) || skipped.some(Boolean);
+    const played = sc.filter(x => x !== null).length;
     const counts = [0, 1, 2, 3].map(k => deltas.filter(d => d !== null && outcome(d) === k).length);
     players.push({
-      name, hi, ch, ph, ch_override: override, tee, par, gender, id: p.id ?? null,
+      name, hi, ch, ph, ch_override: override, tee, par, gender, id: p.id ?? null, from_hole: fromHole, skipped, group: p.group || 1,
       raw_scores: scores, penalty: pen, penalties: pens, penalty_total: sum(pen), picked, nr,
       holes_played: played, scores: sc, deltas,
       gross: nr ? null : sum(sc), topar: nr ? null : sum(sc) - sum(par),
