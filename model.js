@@ -579,20 +579,6 @@ function tally(hs) {
   return { ...part(hs), counts, byPar, bands: [0, 1, 2].map(b => part(hs.filter(h => h.band === b))) };
 }
 
-/** The holes of a set of rounds ranked by how far over par they were played, hardest first. */
-function holeDifficulty(hs) {
-  const m = new Map();
-  for (const h of hs) {
-    const k = `${h.where}|${h.label}`;
-    if (!m.has(k)) m.set(k, { where: h.where, label: h.label, par: h.par, si: h.si, xs: [] });
-    m.get(k).xs.push(h);
-  }
-  return [...m.values()].filter(x => x.xs.length >= 2)
-    .map(x => ({ where: x.where, label: x.label, par: x.par, si: x.si, n: x.xs.length,
-      vspar: mean(x.xs.map(h => h.delta)), pts: mean(x.xs.map(h => h.pts)) }))
-    .sort((a, b) => b.vspar - a.vspar || a.si - b.si);
-}
-
 /**
  * One player's line from one round, with what the rest of the league did that day beside it.
  * `place` is their position among the league's own players, as the league's tables take it, so a
@@ -687,7 +673,6 @@ export function leagueStats(results, memberIds) {
     };
   }).sort((a, b) => (b.avgPts ?? -1) - (a.avgPts ?? -1) || b.played - a.played || a.name.localeCompare(b.name));
 
-  const diff = holeDifficulty(holes);
   const field = {
     ...tally(holes), players: players.length, cards: rounds.length,
     rounds: new Set(rounds.map(r => r.id)).size,
@@ -695,7 +680,6 @@ export function leagueStats(results, memberIds) {
     bestRound: best(rounds, "pts"), lowRound: best(rounds, "topar", true),
     mostBirdies: rounds.map(r => ({ ...r, birdies: r.counts[0] + r.counts[1] })).sort((a, b) => b.birdies - a.birdies)[0] || null,
     bounce: sum(rounds.map(r => r.chances)) ? sum(rounds.map(r => r.backs)) / sum(rounds.map(r => r.chances)) : null,
-    hardest: diff.slice(0, 5), easiest: [...diff].reverse().slice(0, 5),
   };
   return { rounds, holes, field, players };
 }

@@ -67,6 +67,7 @@ export function save() {
 
 /** Everything that arrived from other phones is already in state; persist it without queueing anything. */
 export function afterPull() {
+  reconcileNames();  // a phone on an older build can push an entry still under a since-renamed spelling
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* full */ }
 }
 
@@ -179,7 +180,36 @@ export function renamePlayer(p, newName) {
   if (!p.aliases.includes(old)) p.aliases.push(old);
   p.name = newName.trim();
   touch("players", p);
+  reconcileNames();  // rounds, cards, boards and league credits keep their own copy of the name
   save();
+}
+
+/**
+ * Entries and league credits keep their own copy of a name; this puts any that fell behind the roster back in
+ * step and queues them, so a rename made before the app propagated them still reaches every screen.
+ */
+export function reconcileNames() {
+  const by = new Map(state.players.map(p => [p.id, p]));
+  let fixed = 0;
+  for (const r of state.rounds) {
+    for (const e of [...r.entries, ...r.removed]) {
+      const p = by.get(e.playerId);
+      if (!p || p.deleted || !p.name || e.name === p.name) continue;
+      e.name = p.name;
+      touch("round_entries", e, `${r.id}|${e.playerId}`);
+      fixed++;
+    }
+  }
+  for (const g of state.leagues) {
+    if (!g.createdBy) continue;
+    const k = nameKey(g.createdBy);
+    const p = state.players.find(x => !x.deleted && (x.aliases || []).includes(k) && nameKey(x.name) !== k);
+    if (!p) continue;
+    g.createdBy = p.name;
+    touch("leagues", g);
+    fixed++;
+  }
+  return fixed;
 }
 
 /**
@@ -207,6 +237,9 @@ export function mergePlayers(keepId, dropId) {
     setPch(dropId, x.course, x.tee, null);
   }
   keep.aliases = [...new Set([...(keep.aliases || []), nameKey(drop.name), ...(drop.aliases || [])])];
+  for (const g of state.leagues) {
+    if (g.createdBy && nameKey(g.createdBy) === nameKey(drop.name)) { g.createdBy = keep.name; touch("leagues", g); }
+  }
   if (keep.hi === null || keep.hi === undefined) keep.hi = drop.hi;
   drop.deleted = true;
   if (state.settings.meId === dropId) state.settings.meId = keepId;
@@ -521,3 +554,6 @@ export function courseToYAML(c) {
   }
   return L.join("\n") + "\n";
 }
+
+// A rename that happened before the app carried names into every record: put the stored copies back in step on start-up.
+if (reconcileNames()) save();
