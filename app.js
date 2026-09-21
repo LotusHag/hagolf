@@ -1449,7 +1449,6 @@ function league(gid) {
     const pick = formats.includes(ui.fmtTab[gid]) ? ui.fmtTab[gid] : formats[0];
     body = Ms.length ? `
       ${formats.length > 1 ? `<div class="subtabs">${formats.map(f => `<button data-act="fmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")}</div>` : ""}
-      <div class="modeline"><span class="modetag">${FORMAT_MODE[pick]}</span><span>${FORMAT_BLURB[pick]}</span></div>
       ${standingsTable(pick, standingsFor(g, Ms, members, pick), g, me)}
       ${tip(FORMAT_NOTES[pick], "How this table is scored")}
       <a class="btn" href="#leagueposter/${gid}">Make a standings poster ›</a>
