@@ -4,7 +4,7 @@
 import { DATA } from "./data.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
-import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, slotStandings, slotStrokeStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
+import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
 import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster } from "./statsposters.js";
@@ -23,10 +23,10 @@ const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st",
 /** "Sat 5 Sep 2026" from an ISO date; the raw text if it is not a date. */
 const fmtDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : (d || ""); };
 const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay (stroke)",
-  matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)", gp: "Grand Prix",
-  form: "Season form (Stableford)", formstroke: "Season form (stroke)" };
-// The two tables built on score slots rather than a running total: they share every dial and every column.
-const SLOT_FORMATS = ["form", "formstroke"];
+  matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)",
+  gp: "Grand Prix (Stableford)", gpstroke: "Grand Prix (stroke)" };
+// What a Grand Prix settles the day's finishing order on. A format not in here is not a Grand Prix.
+const GP_BASIS = { gp: "points", gpstroke: "net" };
 // What a hole-by-hole format settles a hole on. A format not in here is not a match format.
 const MATCH_BASIS = { match: "net", matchpts: "points", soccer: "net", soccerpts: "points" };
 const basisWord = b => b === "points" ? "Stableford points" : b === "gross" ? "gross score" : "net strokes";
@@ -36,12 +36,13 @@ const H2H_BASES = [["points", "Stableford", "the most Stableford points", "the h
   ["gross", "Gross score", "the lowest gross score", "the lower gross score"]];
 const basisRow = b => H2H_BASES.find(x => x[0] === b) || H2H_BASES[0];
 const basisUnit = b => b === "points" ? "points" : b === "gross" ? "gross strokes" : "net strokes";
+/** A row of pill tabs that may be wider than the phone: the wrapper carries the ‹ › cues. */
+const subtabs = (buttons, small = false) => `<div class="tabrow"><div class="subtabs${small ? " small" : ""}">${buttons}</div><span class="cue l">&#8249;</span><span class="cue r">&#8250;</span></div>`;
 /** The three currencies as a row of tabs, wherever two players are set against each other. */
 const basisPicker = (act, chosen) => `<p class="pickline">Compare them on</p>
-  <div class="subtabs small">${H2H_BASES.map(([k, label]) => `<button data-act="${act}" data-b="${k}" class="${k === chosen ? "on" : ""}">${label}</button>`).join("")}</div>`;
+  ${subtabs(H2H_BASES.map(([k, label]) => `<button data-act="${act}" data-b="${k}" class="${k === chosen ? "on" : ""}">${label}</button>`).join(""), true)}`;
 // Every table is one of the two games, and the app says which before any number is read.
-const FORMAT_MODE = { stableford: "Stroke play", stroke: "Stroke play", gp: "Stroke play",
-  form: "Stroke play", formstroke: "Stroke play",
+const FORMAT_MODE = { stableford: "Stroke play", stroke: "Stroke play", gp: "Stroke play", gpstroke: "Stroke play",
   match: "Match play", matchpts: "Match play", soccer: "Match play", soccerpts: "Match play" };
 const FORMAT_BLURB = {
   stableford: "Everyone's Stableford points added up; most points wins",
@@ -50,9 +51,8 @@ const FORMAT_BLURB = {
   matchpts: "Everyone out the same day plays a match, each hole to the higher Stableford points: 2 for a win, 1 for a draw",
   soccer: "The same matches on net scores, in a football table: 3 for a win, 1 for a draw",
   soccerpts: "The same matches on Stableford points, in a football table: 3 for a win, 1 for a draw",
-  gp: "Points for where you finish on each card, as in Formula 1: 25 for the win, then 18, 15, 12" + "…",
-  form: "Your best eight Stableford rounds averaged, empty slots counting as a modest baseline, plus a little for turning out",
-  formstroke: "The same table on net score against par: your best eight, lowest wins",
+  gp: "Points for where you finish on each card on Stableford points, as in Formula 1: 25 for the win, then 18, 15, 12" + "…",
+  gpstroke: "The same points, with the day finished on net score against par instead; no card, no points",
 };
 const FORMAT_NOTES = {
   stableford: "<b>Stroke play.</b> Everyone plays for their own score and nobody plays against anybody: each round gives you your Stableford points and this table adds them up. <b>Rds</b> is rounds played, <b>Wins</b> how often you had the most points on the day, <b>Avg</b> your points per round.",
@@ -61,23 +61,9 @@ const FORMAT_NOTES = {
   matchpts: "<b>Match play.</b> Everyone out on the same card played a match against everyone else on it, and each hole goes to the higher Stableford points. Points stop at zero, so two ruined holes are halved where net scores would still separate them. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost.",
   soccer: "<b>Match play, football table.</b> The same matches, each hole on the lower net score, scored the way a football league is: 3 points for a win, 1 for a draw, nothing for a loss.",
   soccerpts: "<b>Match play, football table.</b> The same matches, each hole on the higher Stableford points, scored 3 for a win, 1 for a draw, nothing for a loss.",
-  gp: `<b>Stroke play.</b> Each card hands out points for where you finished on the day, as Formula 1 does: ${GP_POINTS.join(", ")} down the board and nothing after that. Only this league's players count towards a position, so a guest cannot take the win off you.`,
+  gp: `<b>Stroke play.</b> Each card hands out points for where you finished on the day on Stableford points, as Formula 1 does: ${GP_POINTS.join(", ")} down the board and nothing after that. Equal points are separated by countback. Only this league's players count towards a position, so a guest cannot take the win off you.`,
+  gpstroke: `<b>Stroke play.</b> The same ${GP_POINTS.join(", ")} down the board, with the day finished on net score against par rather than on points, so the best card takes the win instead of the best points haul and a 9 and an 18 are ranked the same way. Equal net scores are separated by countback on net strokes. A card you did not finish has no position and scores nothing, marked NR.`,
 };
-// The three dials of a season form table, in the words the settings screen offers them in.
-const BASELINE_WORD = { p10: ["a poor round", "the 10th percentile"], p25: ["a modest round", "the 25th percentile"], p50: ["an average round", "the median"] };
-const ADJUST_WORD = { off: "off", light: "lightly", normal: "normally", strong: "strongly" };
-
-/** How a season form table is scored, told in this league's own dials. */
-function slotNote(kind, g) {
-  const o = S.slotOpts(g);
-  const [word, pctl] = BASELINE_WORD[o.baseline];
-  const unit = kind === "formstroke" ? "net score against par, lowest wins" : "Stableford points, most wins";
-  return `<b>Stroke play.</b> Everyone owns ${o.slots} score slots, filled to begin with by ${word} — ${pctl} of every round played in this league. Your own rounds compete for those slots and the table is the average of the best ${o.slots}, in ${unit}. `
-    + `A round below the baseline displaces nothing, so a bad day never costs you, it just does not help, and every round is another free go at upgrading one of your ${o.slots}. `
-    + `<b>Slots</b> is how many of yours have beaten the baseline, <b>Form</b> the average of the ${o.slots}, <b>+Play</b> a bonus for turning out that grows with rounds played and stops at 1.5: enough to separate two players in the same form, never enough to lift a worse one above a better. `
-    + (o.adjust === "off" ? "Rounds count exactly as they were scored."
-      : `Each round is then re-valued, ${ADJUST_WORD[o.adjust]}, for how the rest of the card played against their own usual scores, so a day the field found hard is worth more than a kind one. It keys on how they did against expectation, not on how good they are, so turning out against weak players earns nothing by itself.`);
-}
 
 /** An explanation folded away behind an "i": the screen stays numbers and the words are one tap off.
     The text is trusted HTML; every caller escapes what it puts in. */
@@ -134,7 +120,26 @@ function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, br
     <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
     ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
   window.scrollTo(0, y);
+  cueTabs();
 }
+
+/** The ‹ › on a pill bar: shown only on a side it can still be scrolled towards. */
+function cueTabs() {
+  document.querySelectorAll(".tabrow").forEach(w => {
+    const s = w.querySelector(".subtabs");
+    const mark = () => {
+      w.classList.toggle("more-l", s.scrollLeft > 2);
+      w.classList.toggle("more-r", s.scrollLeft + s.clientWidth < s.scrollWidth - 2);
+    };
+    if (!w.dataset.cued) {
+      w.dataset.cued = "1";
+      s.addEventListener("scroll", mark, { passive: true });
+      requestAnimationFrame(mark);  // again once the fonts have settled the widths
+    }
+    mark();
+  });
+}
+window.addEventListener("resize", cueTabs);
 
 /** Click handler for this screen only: main and the bar are rebuilt by page(), so nothing stacks up. */
 function bind(fn) {
@@ -1514,7 +1519,7 @@ function league(gid) {
     // One table, the way this league is scored; the rest are a tap away rather than stacked underneath.
     const pick = formats.includes(ui.fmtTab[gid]) ? ui.fmtTab[gid] : formats[0];
     body = Ms.length ? `
-      ${formats.length > 1 ? `<div class="subtabs">${formats.map(f => `<button data-act="fmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")}</div>` : ""}
+      ${formats.length > 1 ? subtabs(formats.map(f => `<button data-act="fmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")) : ""}
       ${standingsTable(pick, standingsFor(g, Ms, members, pick), g, me)}
       ${tip(SLOT_FORMATS.includes(pick) ? slotNote(pick, g) : FORMAT_NOTES[pick], "How this table is scored")}
       <a class="btn" href="#leagueposter/${gid}">Make a standings poster ›</a>
@@ -1559,7 +1564,7 @@ function league(gid) {
         const holes = H.holesA + H.holesB + H.holesHalved;
         const widest = H.winsA >= H.winsB ? H.widestA : H.widestB;
         const hero = `<div class="card vscard">
-          <div class="modeline mid"><span class="modetag">Stroke play</span><span>rounds won on ${esc(basisWord(h2hBasis))}</span></div>
+          <div class="modeline mid"><span>rounds won on ${esc(basisWord(h2hBasis))}</span></div>
           <div class="vsverdict">${verdict}</div>
           <div class="vs">
             <div class="vsside"><span class="vsdisc a">${esc(inits(A))}</span><span class="vsname">${esc(A)}</span></div>
@@ -1632,7 +1637,7 @@ function league(gid) {
     body = rows.length ? `
       ${tip(`<p>Everyone who has played a round in this league, and what those rounds say about them.</p>
         <p>The big figure on the right of a card is ${pick === "stroke" ? "their net total" : SLOT_FORMATS.includes(pick) ? "their form plus turnout" : pick in MATCH_BASIS ? "their match points" : "their league points"} in the ${esc(FORMAT_NAMES[pick])} table, which is ${FORMAT_MODE[pick].toLowerCase()}. The coloured bar is every hole they have played here, best scores on the left and worst on the right; the key just above the cards says which colour is which.</p>`, "What is on these cards")}
-      <div class="subtabs small">${SORTS.map(([k, l]) => `<button data-act="plsort" data-s="${k}" class="${k === sort ? "on" : ""}">${l}</button>`).join("")}</div>
+      ${subtabs(SORTS.map(([k, l]) => `<button data-act="plsort" data-s="${k}" class="${k === sort ? "on" : ""}">${l}</button>`).join(""), true)}
       <div class="dkeywrap">${inlineKey()}</div>
       ${rows.map(card).join("")}
       ${members.length > 1 ? `<details class="card"><summary class="small">Two spellings of one person?</summary>
@@ -1685,7 +1690,7 @@ function league(gid) {
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
       ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
   }
-  page(g.name, `<div class="subtabs">${LEAGUE_TABS.map(([k, l]) => `<button data-act="ltab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div>${body}`,
+  page(g.name, `${subtabs(LEAGUE_TABS.map(([k, l]) => `<button data-act="ltab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join(""))}${body}`,
     { back: "#leagues", sub: `${plural(attached.size, "round")} · ${formats.map(f => FORMAT_NAMES[f]).join(", ")}` });
   bind(ev => {
     const b_ = ev.target.closest("[data-act]");

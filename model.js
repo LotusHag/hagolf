@@ -427,120 +427,6 @@ export function strokeStandings(results, memberIds, bestN = 0) {
   return { rows: out, rounds: cards, bestN };
 }
 
-// ---------------------------------------------------------------- seasons: the slot table
-/**
- * The two "season form" formats (app/LEAGUE-SCORING.md). Everyone owns `slots` score slots that start
- * filled with a baseline round, and the table is the average of the best `slots` results once your own
- * rounds have competed with the baseline fillers. Playing more can only help: the pool always holds a
- * full set of baseline slots, so a round below baseline displaces nothing.
- *
- * `baseline` is a percentile of every round in the league, `adjust` how hard a round is re-valued for
- * how the rest of the card played that day. The rest is the shape of the curve and is not a setting.
- */
-export const SLOT = { slots: 8, baseline: "p25", adjust: "normal", presence: 1.5, half: 6, formPrior: 4, clamp: 4 };
-export const SLOT_BASELINES = { p10: 0.1, p25: 0.25, p50: 0.5 };
-// How much of the field's swing is believed, by how many of them there were: m / (m + shrink).
-export const SLOT_ADJUST = { off: null, light: 2, normal: 1, strong: 0 };
-
-const percentileOf = (xs, f) => {
-  if (!xs.length) return 0;
-  const s = [...xs].sort((a, b) => a - b);
-  return s[Math.max(0, Math.min(s.length - 1, Math.floor(s.length * f)))];
-};
-const clampTo = (x, c) => Math.max(-c, Math.min(c, x));
-
-/**
- * The engine behind both slot formats. Values are held so that higher is always better -- Stableford
- * points as they stand, net against par negated -- and turned back on the way out, so `stroke` shows
- * only in the sign of what comes back and in which direction the table reads.
- */
-function slotTable(results, memberIds, opts = {}, stroke = false, withDelta = true) {
-  const cfg = { ...SLOT, ...opts };
-  const N = Math.max(1, Math.round(Number(cfg.slots) || SLOT.slots));
-  const shrink = cfg.adjust in SLOT_ADJUST ? SLOT_ADJUST[cfg.adjust] : SLOT_ADJUST.normal;
-  const sign = stroke ? -1 : 1;
-  const members = new Set(memberIds);
-  const rows = new Map();
-  const cards = [];
-  for (const M of leagueCards(results)) {
-    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
-    if (!mine.length) continue;
-    const played = [];
-    for (const p of mine) {
-      if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, hi: p.hi, rounds: [], nr: 0, wins: 0 });
-      const r = rows.get(p.id);
-      r.name = p.name;
-      r.hi = p.hi;
-      if (stroke && p.net === null) { r.nr += 1; continue; }  // no card, nothing to value
-      played.push({ id: p.id, p, raw: stroke ? p.net - M.course_par : p.pts, M });
-    }
-    if (!played.length) continue;
-    for (const x of played) x.v = sign * x.raw;
-    const best = Math.max(...played.map(x => x.v));
-    for (const x of played) if (x.v === best) rows.get(x.id).wins += 1;
-    cards.push({ M, played });
-  }
-  const every = cards.flatMap(c => c.played);
-  const leagueMean = every.length ? sum(every.map(x => x.v)) / every.length : 0;
-  // each player's expected score, shrunk toward the league mean so a newcomer is not a precise yardstick
-  const form = new Map([...rows.keys()].map(id => {
-    const mine = every.filter(x => x.id === id).map(x => x.v);
-    return [id, (sum(mine) + cfg.formPrior * leagueMean) / (mine.length + cfg.formPrior)];
-  }));
-  for (const c of cards) {
-    for (const x of c.played) {
-      const others = c.played.filter(o => o.id !== x.id);
-      const m = others.length;
-      // how the rest of the card did against what they normally shoot: beating weak players earns
-      // nothing, beating them by more than they usually lose by does
-      const swing = shrink === null || !m ? 0
-        : clampTo(mean(others.map(o => o.v - form.get(o.id))) * m / (m + shrink), cfg.clamp);
-      x.adj = x.v - swing;
-      rows.get(x.id).rounds.push({ round: x.p.roundId ?? c.M.id, name: c.M.name, date: c.M.date,
-        pts: stroke ? null : x.raw, topar: stroke ? x.raw : null, value: x.raw, adj: sign * x.adj, swing: -sign * swing });
-    }
-  }
-  const baseline = percentileOf(every.map(x => x.adj), SLOT_BASELINES[cfg.baseline] ?? SLOT_BASELINES.p25);
-  const out = [...rows.values()].map(r => {
-    const mine = every.filter(x => x.id === r.id);
-    const n = mine.length;
-    const pool = [...mine.map(x => x.adj), ...Array(N).fill(baseline)].sort((a, b) => b - a).slice(0, N);
-    const score = sum(pool) / N;
-    const presence = cfg.presence * n / (n + cfg.half);
-    const bestIn = n ? Math.max(...mine.map(x => x.v)) : null;
-    return { ...r, played: n, slots: N, used: pool.filter(v => v > baseline).length,
-      form: sign * score, presence, total: sign * (score + presence), rank: score + presence,
-      avg: n ? sign * (sum(mine.map(x => x.v)) / n) : 0, best: bestIn === null ? null : sign * bestIn, bestIn,
-      last: r.rounds.map(x => x.date || "").sort().pop() || "" };
-  });
-  out.sort((a, b) => b.rank - a.rank || b.used - a.used || b.played - a.played
-    || (b.bestIn ?? -99) - (a.bestIn ?? -99) || b.last.localeCompare(a.last) || a.name.localeCompare(b.name));
-  out.forEach((r, i) => { r.place = i + 1; });
-  // where everyone stood before the newest card: the movement is most of what a season table is for
-  if (withDelta && cards.length > 1) {
-    const newest = cards.reduce((a, c) => (c.M.date || "") > (a.M.date || "") ? c : a, cards[0]).M;
-    const before = slotTable(cards.filter(c => c.M !== newest).map(c => c.M), memberIds, opts, stroke, false);
-    for (const r of out) {
-      const was = before.rows.find(x => x.id === r.id);
-      r.wasPlace = was ? was.place : null;
-      r.moved = was ? was.place - r.place : null;
-      r.gained = was ? r.total - was.total : null;
-    }
-  }
-  return { rows: out, rounds: cards.map(c => c.M), bestN: 0, slots: N, baseline: sign * baseline,
-    baselineAt: cfg.baseline, adjust: cfg.adjust, shrink, stroke };
-}
-
-/** Season form on Stableford points: most wins. */
-export function slotStandings(results, memberIds, opts = {}) {
-  return slotTable(results, memberIds, opts, false);
-}
-
-/** Season form on net score against par, so nines and eighteens compare: lowest wins. */
-export function slotStrokeStandings(results, memberIds, opts = {}) {
-  return slotTable(results, memberIds, opts, true);
-}
-
 /**
  * What one hole is worth to a player in a given currency, lowest wins:
  *   "net"    net strokes -- ordinary golf matchplay.
@@ -602,21 +488,39 @@ export function matchStandings(results, memberIds, win = 2, draw = 1, basis = "n
 export const GP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 
 /**
- * Grand Prix scoring: each round hands out points by finishing position, as Formula 1 does, so one
- * good day counts for more than being steadily mid-table. Position is taken among the league's own
- * players on the day (from the Stableford board, countback and all), so a guest cannot take the win
- * and a small turnout still gives the winner full points.
+ * The day's finishing order among a league's own players, so a guest never takes a position off them.
+ * On Stableford that is the round's own board, countback and all; on net strokes it is net against par
+ * with the same countback run on net scores, and a player without a card is not in the order at all.
  */
-export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS) {
+function gpBoard(M, members, basis) {
+  const mine = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
+  if (basis !== "net") return { order: mine, nr: [] };
+  const n = M.n, segments = M.segments || [], back = [...Array(n).keys()].reverse();
+  const key = p => [p.net, ...segments.map(k => sum(p.nets.slice(n - k))), ...back.map(h => p.nets[h])];
+  const returned = mine.filter(p => p.net !== null && !p.nr);
+  return { order: [...returned].sort((a, b) => cmpTuple(key(a), key(b))), nr: mine.filter(p => !returned.includes(p)) };
+}
+
+/**
+ * Grand Prix scoring: each round hands out points by finishing position, as Formula 1 does, so one
+ * good day counts for more than being steadily mid-table. `basis` is what settles the day: "points"
+ * the Stableford board, "net" net score against par. A small turnout still gives the winner full points.
+ */
+export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS, basis = "points") {
   const members = new Set(memberIds);
   const rows = new Map();
   const cards = leagueCards(results);
+  const row = p => {
+    if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, scores: [], wins: 0, best: 0, nr: 0 });
+    const r = rows.get(p.id);
+    r.name = p.name;
+    return r;
+  };
   for (const M of cards) {
-    const mine = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
-    mine.forEach((p, i) => {
-      if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, scores: [], wins: 0, best: 0 });
-      const r = rows.get(p.id);
-      r.name = p.name;
+    const { order, nr } = gpBoard(M, members, basis);
+    for (const p of nr) row(p).nr += 1;   // no card, no position, no points
+    order.forEach((p, i) => {
+      const r = row(p);
       const pts = table[i] ?? 0;
       r.scores.push(pts);
       if (i === 0) r.wins += 1;
@@ -631,7 +535,7 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS) {
   });
   out.sort((a, b) => b.counted - a.counted || b.wins - a.wins || b.best - a.best || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
-  return { rows: out, rounds: cards, bestN, table };
+  return { rows: out, rounds: cards, bestN, table, basis };
 }
 
 /**

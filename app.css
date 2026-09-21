@@ -293,7 +293,13 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .merge span { text-align: center; color: var(--ink3); }
 
 /* ---- sub tabs inside a screen */
-.subtabs { display: flex; gap: 4px; margin: 4px 0 12px; background: var(--card2); padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none; }
+.tabrow { position: relative; margin: 4px 0 12px; }
+.subtabs { display: flex; gap: 4px; margin: 0; background: var(--card2); padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none; }
+.cue { position: absolute; top: 4px; bottom: 4px; width: 34px; display: none; align-items: center; pointer-events: none;
+  color: var(--ink3); font-size: 19px; line-height: 1; border-radius: 999px; }
+.cue.l { left: 4px; justify-content: flex-start; padding-left: 6px; background: linear-gradient(90deg, var(--card2) 45%, transparent); }
+.cue.r { right: 4px; justify-content: flex-end; padding-right: 6px; background: linear-gradient(270deg, var(--card2) 45%, transparent); }
+.tabrow.more-l .cue.l, .tabrow.more-r .cue.r { display: flex; }
 .subtabs::-webkit-scrollbar { display: none; }
 .subtabs button { flex: 1 0 auto; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 0; background: transparent; color: var(--ink2); font-weight: 600; font-size: 14px; white-space: nowrap; }
 .subtabs button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
