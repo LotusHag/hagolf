@@ -26,7 +26,12 @@ const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "
   matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)", gp: "Grand Prix" };
 // What a hole-by-hole format settles a hole on. A format not in here is not a match format.
 const MATCH_BASIS = { match: "net", matchpts: "points", soccer: "net", soccerpts: "points" };
-const basisWord = b => b === "points" ? "Stableford points" : "net strokes";
+const basisWord = b => b === "points" ? "Stableford points" : b === "gross" ? "gross score" : "net strokes";
+// What a head-to-head compares the two on: the tab label, the round, and the hole.
+const H2H_BASES = [["points", "Stableford", "the most Stableford points", "the higher Stableford points"],
+  ["net", "Net score", "the lowest net score", "the lower net score"],
+  ["gross", "Gross score", "the lowest gross score", "the lower gross score"]];
+const basisRow = b => H2H_BASES.find(x => x[0] === b) || H2H_BASES[0];
 // Every table is one of the two games, and the app says which before any number is read.
 const FORMAT_MODE = { stableford: "Stroke play", stroke: "Stroke play", gp: "Stroke play",
   match: "Match play", matchpts: "Match play", soccer: "Match play", soccerpts: "Match play" };
@@ -58,7 +63,7 @@ const h2tip = (title, text) => `<details class="tip"><summary><h2>${esc(title)}<
 /** The same, where there is no heading to hang it on. */
 const tip = (text, label = "What this means") => `<details class="tip solo"><summary>${ibtn}<span>${esc(label)}</span></summary>${tipBody(text)}</details>`;
 let toastTimer = null;
-const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false, plSort: {},
+const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, h2hBasis: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false, plSort: {},
   loops: {}, nineTab: {}, fmtTab: {}, statsWho: {} };
 
 function toast(msg, ms = 2600, action = null) {
@@ -1455,9 +1460,9 @@ function league(gid) {
   } else if (tab === "stats") {
     body = leagueStatsBody(g, Ms, members);
   } else if (tab === "h2h") {
-    // the matches follow however this league settles a hole; net strokes when it has no match table
+    // the two of them are compared in whichever currency is picked; a league with a match table opens on its own
     const h2hKind = formats.find(f => f in MATCH_BASIS);
-    const h2hBasis = h2hKind ? MATCH_BASIS[h2hKind] : "net";
+    const h2hBasis = H2H_BASES.some(([k]) => k === ui.h2hBasis[gid]) ? ui.h2hBasis[gid] : (h2hKind ? MATCH_BASIS[h2hKind] : "points");
     const h = ui.h2h[gid] || {};
     hA = members.includes(h.a) ? h.a : (me && members.includes(me.id) ? me.id : members[0]);
     hB = members.includes(h.b) && h.b !== hA ? h.b : members.find(m => m !== hA);
@@ -1468,14 +1473,16 @@ function league(gid) {
       const fA = firstName(A), fB = firstName(B);
       const sel = (name, val) => `<select data-h2h="${name}">${members.map(m => `<option value="${m}" ${m === val ? "selected" : ""}>${esc(nameOf(m))}</option>`).join("")}</select>`;
       const picker = `<div class="vspick">${sel("a", a)}<button class="swapb" data-act="h2hswap" title="Swap">&#8646;</button>${sel("b", b)}</div>`;
-      const holeWord = h2hBasis === "points" ? "the higher Stableford points" : "the lower net score";
-      const basis = `<div class="basis"><span><b>Rounds · stroke play</b>the day goes to the most Stableford points</span>
+      const [, basisName, roundWord, holeWord] = basisRow(h2hBasis);
+      const picker2 = `<p class="pickline">Compare them on</p>
+        <div class="subtabs small">${H2H_BASES.map(([k, label]) => `<button data-act="h2hbasis" data-b="${k}" class="${k === h2hBasis ? "on" : ""}">${label}</button>`).join("")}</div>`;
+      const basis = `${picker2}<div class="basis"><span><b>Rounds · stroke play</b>the day goes to ${esc(roundWord)}</span>
         <span><b>Holes · match play</b>each hole goes to ${esc(holeWord)}</span></div>
-        ${tip(`<p>This page keeps two scores, and they are two different games.</p>
-          <p><b>Stroke play</b> settles the big score at the top: each round the two of them played together goes to whoever had more Stableford points that day, whole round against whole round.</p>
+        ${tip(`<p>This page keeps two scores, and they are two different games. Both are settled on whatever the tabs above are set to — at the moment ${esc(basisName.toLowerCase())}.</p>
+          <p><b>Stroke play</b> settles the big score at the top: each round they played together goes to ${esc(roundWord)} that day, whole round against whole round.</p>
           <p><b>Match play</b> settles the hole-by-hole part further down: every hole is its own little contest, won by ${esc(holeWord)}, and all their holes are added up as if every round together had been one long match.</p>
-          <p>${h2hKind ? `Holes go on ${esc(basisWord(h2hBasis))} because this league keeps a ${esc(FORMAT_NAMES[h2hKind])} table and this follows it.` : "This league has no match play table, so holes go on net score, the ordinary golf way. Add a Matchplay (Stableford) table in Settings to settle them on points instead."}
-          ${h2hBasis === "points" ? "Stableford points stop at zero, so two ruined holes are halved." : "Net scores separate every hole: a 7 beats a 9 even where neither hole scored a point."}</p>`, "Match play or stroke play?")}`;
+          <p><b>Stableford</b> counts the points, which stop at zero, so two ruined holes are halved. <b>Net score</b> is the strokes taken less the handicap strokes given, and it separates every hole: a 7 beats a 9 even where neither scored a point. <b>Gross score</b> ignores handicaps altogether and compares the cards as they were played, which favours the better player.</p>
+          <p>${h2hKind ? `This league keeps a ${esc(FORMAT_NAMES[h2hKind])} table, so that is what it opens on.` : "A round only one of them finished a card for goes to the one who did, the way a hole does."}</p>`, "Match play or stroke play?")}`;
       if (!H.rounds.length) {
         body = `${picker}<p class="muted center" style="margin:30px 0">${esc(fA)} and ${esc(fB)} have not played a round together in this league yet.</p>`;
       } else {
@@ -1489,7 +1496,7 @@ function league(gid) {
         const holes = H.holesA + H.holesB + H.holesHalved;
         const widest = H.winsA >= H.winsB ? H.widestA : H.widestB;
         const hero = `<div class="card vscard">
-          <div class="modeline mid"><span class="modetag">Stroke play</span><span>rounds won on the day's points</span></div>
+          <div class="modeline mid"><span class="modetag">Stroke play</span><span>rounds won on ${esc(basisWord(h2hBasis))}</span></div>
           <div class="vsverdict">${verdict}</div>
           <div class="vs">
             <div class="vsside"><span class="vsdisc a">${esc(inits(A))}</span><span class="vsname">${esc(A)}</span></div>
@@ -1500,17 +1507,19 @@ function league(gid) {
           <div class="vsline">${plural(H.rounds.length, "round")} together &middot; ${streak}</div>
         </div>`;
         // Every result in order, newest on the right: the shape of the rivalry at a glance.
-        const formStrip = `${h2tip("Round by round", `Every round they played together, oldest first. Each square is one round and carries the initials of whoever took it on Stableford points; = means they tied. Tap one to see that card.`)}<div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${r.ptsA}&#8211;${r.ptsB}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A : B))}</a>`).join("")}</div>
+        const num = v => v === null ? "NR" : v;
+        const formStrip = `${h2tip("Round by round", `Every round they played together, oldest first. Each square is one round and carries the initials of whoever took it on ${esc(basisWord(h2hBasis))}; = means they tied. Tap one to see that card.`)}<div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${num(r.scoreA)}&#8211;${num(r.scoreB)}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A : B))}</a>`).join("")}</div>
           <p class="muted small center" style="margin:6px 0 0">oldest to newest &middot; tap one for the card</p>`;
         // One bar per stat, filled from the left in proportion, so who is ahead is a shape and not a reading.
         const stats = `${h2tip("The numbers side by side", `${esc(fA)} on the left, ${esc(fB)} on the right, over the rounds they played together. The bar under each line fills in proportion, and the green end is whoever is ahead — on gross scores that is the lower number.`)}<div class="card tapes">
           ${tapeRow("average points", H.avgPtsA, H.avgPtsB, false, fix)}
           ${tapeRow("best round", H.bestPtsA, H.bestPtsB)}
           ${tapeRow("total points", H.ptsA, H.ptsB)}
+          ${h2hBasis === "net" ? tapeRow("average net", H.avgNetA, H.avgNetB, true, fix) + tapeRow("best net", H.bestNetA, H.bestNetB, true) : ""}
           ${tapeRow("average gross", H.avgGrossA, H.avgGrossB, true, fix)}
           ${tapeRow("best gross", H.bestGrossA, H.bestGrossB, true)}
           ${H.birdiesA + H.birdiesB ? tapeRow("birdies or better", H.birdiesA, H.birdiesB) : ""}
-          ${h2hKind ? tapeRow("match play wins", H.matchA, H.matchB) : ""}
+          ${tapeRow("match play wins", H.matchA, H.matchB)}
         </div>`;
         const holesBlock = `${h2tip("Match play, hole by hole", `Every hole the two of them have played together, each one won by ${esc(holeWord)} — the way a match is played. Add them all up as one long match and that is the bar: ${esc(fA)}'s holes on the left, halved holes in the middle, ${esc(fB)}'s on the right.`)}<div class="card">
           <div class="modeline"><span class="modetag">Match play</span><span>holes won on ${esc(basisWord(h2hBasis))}</span></div>
@@ -1518,10 +1527,10 @@ function league(gid) {
           <div class="holeskey"><span><b>${H.holesA}</b> ${esc(fA)}</span><span class="muted">${H.holesHalved} halved</span><span><b>${H.holesB}</b> ${esc(fB)}</span></div>
           <p class="muted small" style="margin:10px 0 0">All ${holes} holes together as one long match: ${H.up === 0 ? "dead level" : `${esc(H.up > 0 ? fA : fB)} would be ${Math.abs(H.up)} up`}.</p>
         </div>`;
-        const widestLine = widest ? `<p class="muted small" style="margin:-4px 4px 8px">Widest margin: ${esc(widest.winner === "a" ? fA : fB)} by ${Math.abs(widest.ptsA - widest.ptsB)} on ${esc(fmtDate(widest.date))}.</p>` : "";
-        const list = `${h2tip("Every round together", `One line a round, newest first: the two point totals for that day, the winner's in colour. These are the rounds the big score at the top counts — stroke play, whole round against whole round.${h2hKind ? " The line underneath each date says how the match went hole by hole." : ""}`)}${widestLine}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
-          <div class="when"><b>${esc(fmtDate(r.date))}</b><small class="muted">${esc(r.where)}${h2hKind ? ` &middot; ${r.up === 0 ? "halved" : `${Math.abs(r.up)} up ${esc(firstName(r.up > 0 ? A : B))}`}` : ""}</small></div>
-          <div class="sc"><b class="${r.winner === "a" ? "wa" : ""}">${r.ptsA}</b><s>&#8211;</s><b class="${r.winner === "b" ? "wb" : ""}">${r.ptsB}</b></div></a>`).join("")}</div>`;
+        const widestLine = widest ? `<p class="muted small" style="margin:-4px 4px 8px">Widest margin: ${esc(widest.winner === "a" ? fA : fB)} by ${widest.margin} ${h2hBasis === "points" ? "points" : "shots"} on ${esc(fmtDate(widest.date))}.</p>` : "";
+        const list = `${h2tip("Every round together", `One line a round, newest first: the two ${esc(basisWord(h2hBasis))} totals for that day, the winner's in colour. These are the rounds the big score at the top counts — stroke play, whole round against whole round. The line underneath each date says how the same round went as a match, hole by hole.`)}${widestLine}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
+          <div class="when"><b>${esc(fmtDate(r.date))}</b><small class="muted">${esc(r.where)} &middot; ${r.up === 0 ? "match halved" : `${Math.abs(r.up)} up ${esc(firstName(r.up > 0 ? A : B))}`}</small></div>
+          <div class="sc"><b class="${r.winner === "a" ? "wa" : ""}">${num(r.scoreA)}</b><s>&#8211;</s><b class="${r.winner === "b" ? "wb" : ""}">${num(r.scoreB)}</b></div></a>`).join("")}</div>`;
         body = picker + basis + hero + formStrip + stats + holesBlock + list;
       }
     } else body = `<p class="muted center" style="margin:30px 0">Head-to-heads appear once two players share a round in this league.</p>`;
@@ -1617,6 +1626,7 @@ function league(gid) {
     if (!b_) return;
     if (b_.dataset.act === "ltab") { ui.leagueTab[gid] = b_.dataset.tab; return league(gid); }
     if (b_.dataset.act === "h2hswap") { ui.h2h[gid] = { a: hB, b: hA }; return league(gid); }
+    if (b_.dataset.act === "h2hbasis") { ui.h2hBasis[gid] = b_.dataset.b; return league(gid); }
     if (b_.dataset.act === "ninetab") { ui.nineTab[gid] = b_.dataset.slug; return league(gid); }
     if (b_.dataset.act === "statswho") { ui.statsWho[gid] = b_.dataset.id; return league(gid); }
     if (b_.dataset.act === "plsort") { ui.plSort[gid] = b_.dataset.s; return league(gid); }

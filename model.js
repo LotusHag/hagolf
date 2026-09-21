@@ -378,10 +378,19 @@ export function strokeStandings(results, memberIds, bestN = 0) {
 }
 
 /**
- * One match, hole by hole. `basis` decides what wins a hole and it changes results:
- *   "net"    net strokes, lower wins -- ordinary golf matchplay.
- *   "points" Stableford points, higher wins. Points floor at zero, so two blow-ups halve the hole
+ * What one hole is worth to a player in a given currency, lowest wins:
+ *   "net"    net strokes -- ordinary golf matchplay.
+ *   "points" Stableford points, negated. Points floor at zero, so two blow-ups halve the hole
  *            where net strokes would still separate them.
+ *   "gross"  strokes as they were taken, handicaps ignored.
+ */
+const holeValue = (p, h, basis) => basis === "points" ? -p.hpts[h] : basis === "gross" ? p.scores[h] : p.nets[h];
+/** A whole round in the same currency as it is read, and again as a value where lowest wins. */
+const roundScore = (p, basis) => basis === "points" ? p.pts : basis === "gross" ? p.gross : p.net;
+const roundValue = (p, basis) => basis === "points" ? -p.pts : roundScore(p, basis);
+
+/**
+ * One match, hole by hole, in the currency `basis` names (see `holeValue`).
  * A hole only one of them returned goes to the other. Returns holes up for a (negative = b up).
  */
 export function matchResult(pa, pb, basis = "net") {
@@ -392,9 +401,8 @@ export function matchResult(pa, pb, basis = "net") {
     holes++;
     if (na) { up--; continue; }
     if (nb) { up++; continue; }
-    if (basis === "points") {
-      if (pa.hpts[h] > pb.hpts[h]) up++; else if (pb.hpts[h] > pa.hpts[h]) up--;
-    } else if (pa.nets[h] < pb.nets[h]) up++; else if (pb.nets[h] < pa.nets[h]) up--;
+    const x = holeValue(pa, h, basis), y = holeValue(pb, h, basis);
+    if (x < y) up++; else if (y < x) up--;
   }
   return { up, holes };
 }
@@ -461,7 +469,10 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS) {
 
 /**
  * Two players in a league: every attached round they both played, and every way of comparing them --
- * points, gross, holes won on net, birdies, the match, the run of results at the end.
+ * points, net, gross, birdies, the holes, the match, the run of results at the end.
+ * `basis` is the currency a round and a hole are settled in ("points", "net" or "gross"); the rest of
+ * the numbers are there whichever is chosen. A round only one of them returned a card for goes to the
+ * one who did, the way a hole does.
  */
 export function headToHead(results, a, b, basis = "net") {
   const rounds = [];
@@ -476,13 +487,20 @@ export function headToHead(results, a, b, basis = "net") {
       if (na) { holesB++; continue; }
       if (nb) { holesA++; continue; }
       // settled the way matchResult settles a hole, so the tally and the running match never disagree
-      const x = basis === "points" ? -pa.hpts[h] : pa.nets[h], y = basis === "points" ? -pb.hpts[h] : pb.nets[h];
+      const x = holeValue(pa, h, basis), y = holeValue(pb, h, basis);
       if (x < y) holesA++; else if (y < x) holesB++; else halved++;
     }
+    // the round in the chosen currency: what the board shows, who took the day, and by how much
+    const va = roundValue(pa, basis), vb = roundValue(pb, basis);
+    const sa = roundScore(pa, basis), sb = roundScore(pb, basis);
+    const winner = va === null && vb === null ? "tie" : va === null ? "b" : vb === null ? "a"
+      : va < vb ? "a" : vb < va ? "b" : "tie";
     rounds.push({ id: M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name,
       ptsA: pa.pts, ptsB: pb.pts, grossA: pa.gross, grossB: pb.gross, netA: pa.net, netB: pb.net,
+      scoreA: sa, scoreB: sb,
+      margin: va === null || vb === null ? null : Math.abs(va - vb),
       birdiesA: pa.counts[0], birdiesB: pb.counts[0], holesA, holesB, halved,
-      winner: pa.pts > pb.pts ? "a" : pb.pts > pa.pts ? "b" : "tie", up: m.up, matchWinner: m.up > 0 ? "a" : m.up < 0 ? "b" : "tie" });
+      winner, up: m.up, matchWinner: m.up > 0 ? "a" : m.up < 0 ? "b" : "tie" });
   }
   rounds.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
   const sumBy = k => rounds.reduce((s, r) => s + r[k], 0);
@@ -491,11 +509,11 @@ export function headToHead(results, a, b, basis = "net") {
     const xs = rounds.map(r => r[k]).filter(v => v !== null);
     return xs.length ? (lowest ? Math.min(...xs) : Math.max(...xs)) : null;
   };
-  // Gross only compares over the rounds where both of them returned a card.
+  // Strokes only compare over the rounds where both of them returned a card.
   const both = rounds.filter(r => r.grossA !== null && r.grossB !== null);
-  const avgGross = k => both.length ? both.reduce((s, r) => s + r[k], 0) / both.length : null;
-  const widest = who => rounds.filter(r => r.winner === who)
-    .reduce((best, r) => !best || Math.abs(r.ptsA - r.ptsB) > Math.abs(best.ptsA - best.ptsB) ? r : best, null);
+  const avgBoth = k => both.length ? both.reduce((s, r) => s + r[k], 0) / both.length : null;
+  const widest = who => rounds.filter(r => r.winner === who && r.margin !== null)
+    .reduce((best, r) => !best || r.margin > best.margin ? r : best, null);
   // The run at the end of the list. A halved round breaks it, so a streak is always one name repeated.
   let streak = { who: null, n: 0 };
   for (let i = rounds.length - 1; i >= 0; i--) {
@@ -507,7 +525,8 @@ export function headToHead(results, a, b, basis = "net") {
     winsA: rounds.filter(r => r.winner === "a").length, winsB: rounds.filter(r => r.winner === "b").length,
     ties: rounds.filter(r => r.winner === "tie").length, ptsA: sumBy("ptsA"), ptsB: sumBy("ptsB"),
     avgPtsA: avg("ptsA"), avgPtsB: avg("ptsB"), bestPtsA: bestOf("ptsA", false), bestPtsB: bestOf("ptsB", false),
-    avgGrossA: avgGross("grossA"), avgGrossB: avgGross("grossB"), bestGrossA: bestOf("grossA", true), bestGrossB: bestOf("grossB", true),
+    avgGrossA: avgBoth("grossA"), avgGrossB: avgBoth("grossB"), bestGrossA: bestOf("grossA", true), bestGrossB: bestOf("grossB", true),
+    avgNetA: avgBoth("netA"), avgNetB: avgBoth("netB"), bestNetA: bestOf("netA", true), bestNetB: bestOf("netB", true),
     birdiesA: sumBy("birdiesA"), birdiesB: sumBy("birdiesB"),
     holesA: sumBy("holesA"), holesB: sumBy("holesB"), holesHalved: sumBy("halved"), up: sumBy("up"),
     widestA: widest("a"), widestB: widest("b"),

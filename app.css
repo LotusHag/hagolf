@@ -363,6 +363,8 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .lround .res { margin-top: 7px; align-items: center; gap: 10px; }
 .lround .btn.small { margin-top: 10px; width: 100%; }
 
+/* ---- head to head: what the two are compared on, then what settles a round and a hole */
+.pickline { margin: 2px 4px 4px; color: var(--ink3); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
 /* ---- head to head: what settles a round and what settles a hole, said before any number is read */
 .basis { display: flex; gap: 8px; }
 .basis span { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-s); padding: 8px 12px;
