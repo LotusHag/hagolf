@@ -294,17 +294,84 @@ export function standings(results, memberIds, bestN = 0) {
   return { rows: out, rounds: roundsIn, bestN };
 }
 
-/** Two players in a league: every attached round they both finished, who took more points, and the tally. */
+/**
+ * Stroke play league: net score against par per round (so 9- and 18-hole rounds compare), lowest total wins.
+ * A round without a return (pick-up or late start) does not count for that player.
+ */
+export function strokeStandings(results, memberIds, bestN = 0) {
+  const members = new Set(memberIds);
+  const rows = new Map();
+  for (const M of results) {
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+    if (!mine.length) continue;
+    const returned = mine.filter(p => p.net !== null);
+    const best = returned.length ? Math.min(...returned.map(p => p.net - M.course_par)) : null;
+    for (const p of mine) {
+      if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, rounds: [], wins: 0, nr: 0 });
+      const r = rows.get(p.id);
+      r.name = p.name;
+      if (p.net === null) { r.nr += 1; continue; }
+      const topar = p.net - M.course_par;
+      r.rounds.push({ round: M.id, name: M.name, date: M.date, net: p.net, topar });
+      if (topar === best) r.wins += 1;
+    }
+  }
+  const out = [...rows.values()].map(r => {
+    const tp = r.rounds.map(x => x.topar).sort((a, b) => a - b);
+    const counted = bestN > 0 ? tp.slice(0, bestN) : tp;
+    return { ...r, played: tp.length, counted: sum(counted), counted_n: counted.length, avg: tp.length ? sum(tp) / tp.length : 0, best: tp.length ? tp[0] : null };
+  });
+  out.sort((a, b) => (b.played > 0) - (a.played > 0) || a.counted - b.counted || a.avg - b.avg || (a.best ?? 99) - (b.best ?? 99) || a.name.localeCompare(b.name));
+  out.forEach((r, i) => { r.place = i + 1; });
+  return { rows: out, bestN };
+}
+
+/** One match: holes won on net score; a hole one player picked up on goes to the other. Returns holes up for a (negative = b up). */
+export function matchResult(pa, pb) {
+  let up = 0, holes = 0;
+  for (let h = 0; h < pa.nets.length; h++) {
+    const a = pa.nets[h], b = pb.nets[h];
+    if (a === null && b === null) continue;
+    holes++;
+    if (a === null) up--; else if (b === null) up++; else if (a < b) up++; else if (b < a) up--;
+  }
+  return { up, holes };
+}
+
+/** Matchplay league: every pair who shared a round played a match; 2 points a win, 1 a draw. */
+export function matchStandings(results, memberIds) {
+  const members = new Set(memberIds);
+  const rows = new Map();
+  const row = p => { if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, up: 0 }); const r = rows.get(p.id); r.name = p.name; return r; };
+  for (const M of results) {
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+    for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) {
+      const { up, holes } = matchResult(mine[i], mine[j]);
+      if (!holes) continue;
+      const a = row(mine[i]), b = row(mine[j]);
+      a.played++; b.played++; a.up += up; b.up -= up;
+      if (up > 0) { a.won++; b.lost++; } else if (up < 0) { b.won++; a.lost++; } else { a.drawn++; b.drawn++; }
+    }
+  }
+  const out = [...rows.values()].map(r => ({ ...r, points: 2 * r.won + r.drawn }));
+  out.sort((a, b) => b.points - a.points || b.up - a.up || b.won - a.won || a.name.localeCompare(b.name));
+  out.forEach((r, i) => { r.place = i + 1; });
+  return { rows: out };
+}
+
+/** Two players in a league: every attached round they both played, points, and the match between them. */
 export function headToHead(results, a, b) {
   const rounds = [];
   for (const M of results) {
     const pa = M.players.find(p => p.id === a), pb = M.players.find(p => p.id === b);
     if (!pa || !pb) continue;
-    rounds.push({ id: M.id, name: M.name, date: M.date, ptsA: pa.pts, ptsB: pb.pts, grossA: pa.gross, grossB: pb.gross,
-      winner: pa.pts > pb.pts ? "a" : pb.pts > pa.pts ? "b" : "tie" });
+    const m = matchResult(pa, pb);
+    rounds.push({ id: M.id, name: M.name, date: M.date, ptsA: pa.pts, ptsB: pb.pts, grossA: pa.gross, grossB: pb.gross, netA: pa.net, netB: pb.net,
+      winner: pa.pts > pb.pts ? "a" : pb.pts > pa.pts ? "b" : "tie", up: m.up, matchWinner: m.up > 0 ? "a" : m.up < 0 ? "b" : "tie" });
   }
   rounds.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
   const sumBy = k => rounds.reduce((s, r) => s + r[k], 0);
   return { rounds, winsA: rounds.filter(r => r.winner === "a").length, winsB: rounds.filter(r => r.winner === "b").length,
-    ties: rounds.filter(r => r.winner === "tie").length, ptsA: sumBy("ptsA"), ptsB: sumBy("ptsB") };
+    ties: rounds.filter(r => r.winner === "tie").length, ptsA: sumBy("ptsA"), ptsB: sumBy("ptsB"),
+    matchA: rounds.filter(r => r.matchWinner === "a").length, matchB: rounds.filter(r => r.matchWinner === "b").length, matchTies: rounds.filter(r => r.matchWinner === "tie").length };
 }

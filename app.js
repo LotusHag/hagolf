@@ -3,7 +3,7 @@
 import { DATA } from "./data.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
-import { compute, standings, headToHead, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtHcp, fmtIndex, fix } from "./model.js";
+import { compute, standings, strokeStandings, matchStandings, headToHead, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtHcp, fmtIndex, fix } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
 import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster } from "./posters.js";
 import { renderCards } from "./cards.js";
@@ -15,8 +15,12 @@ const courseTitle = c => c.loop ? `${c.name} · ${c.loop}` : c.name;
 const sum = xs => xs.reduce((a, b) => a + b, 0);
 const go = hash => { location.hash = hash; };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
+/** "Sat 5 Sep 2026" from an ISO date; the raw text if it is not a date. */
+const fmtDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : (d || ""); };
+const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay" };
 let toastTimer = null;
-const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, groupFilter: 0 };
+const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, groupFilter: 0, leagueTab: {} };
 
 function toast(msg, ms = 2600, action = null) {
   let t = document.getElementById("toast");
@@ -60,14 +64,6 @@ function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, br
     <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
     ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
   window.scrollTo(0, 0);
-}
-
-function applyAppearance() {
-  const a = S.state.settings.appearance || "auto";
-  if (a === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = a;
-  const dark = a === "dark" || (a === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  const meta = document.querySelector("meta[name=theme-color]");
-  if (meta) meta.content = dark ? "#0E1411" : "#F3F5F1";
 }
 
 /** Click handler for this screen only: main and the bar are rebuilt by page(), so nothing stacks up. */
@@ -171,21 +167,19 @@ function meCard(me) {
   const mine = S.rounds().filter(r => r.status === "done" && r.entries.some(e => e.playerId === me.id));
   const last = mine[0] ? safeCompute(mine[0]) : null;
   const p = last ? last.players.find(x => x.id === me.id) : null;
+  const c = mine[0] ? courseBy(mine[0].course) : null;
   const lines = [];
   if (p) {
-    const played = p.deltas.map((d, h) => [d, h]).filter(([d]) => d !== null);
-    const best = played.length ? played.reduce((a, x) => x[0] < a[0] ? x : a) : null, worst = played.length ? played.reduce((a, x) => x[0] > a[0] ? x : a) : null;
-    lines.push(`<div class="muted small" style="margin-top:6px">${esc(mine[0].name)} · ${esc(mine[0].date || "")}</div>
-      <div class="row"><div class="stats"><div><b class="num">${p.pts}</b><small>points</small></div><div><b class="num">${p.splace}<span class="muted" style="font-size:14px">/${last.field}</span></b><small>place</small></div>${p.gross !== null ? `<div><b class="num">${p.gross}</b><small>gross</small></div>` : ""}</div>
-      <button class="btn small" data-act="my-card" data-rid="${mine[0].id}">Save my card</button></div>
-      ${best ? `<div class="muted small" style="margin-top:6px">best hole ${last.labels[best[1]]} (${fmtToPar(best[0])}) · worst hole ${last.labels[worst[1]]} (${fmtToPar(worst[0])})</div>` : ""}`);
+    lines.push(`<div class="last muted small">${esc(c ? c.loop || c.name : mine[0].name)} · ${esc(fmtDate(mine[0].date))}</div>
+      <div class="row"><div class="res"><span class="big num">${p.pts}<small>pts</small></span><span class="muted">${ordinal(p.splace)} of ${last.field}${p.gross !== null ? ` · gross ${p.gross}` : " · no return"}</span></div>
+      <button class="btn small" data-act="my-card" data-rid="${mine[0].id}">My card</button></div>`);
   } else lines.push(`<div class="muted small">No finished round yet.</div>`);
   for (const g of S.leagues()) {
     const { S: Sx } = leagueResults(g);
     const row = Sx.rows.find(r => r.id === me.id);
-    if (row) lines.push(`<a class="row small" href="#league/${g.id}"><span>${esc(g.name)}</span><span><b>${row.place}.</b> · ${row.counted} pts · ${plural(row.played, "round")}</span></a>`);
+    if (row) lines.push(`<a class="lg" href="#league/${g.id}"><span>${esc(g.name)}</span><span><b>${ordinal(row.place)}</b> · ${row.counted} pts</span></a>`);
   }
-  return `<div class="mecard"><div class="row"><div class="name">My results</div><div class="muted small">index ${fmtIndex(Number(me.hi))} · <a href="#welcome">not you?</a></div></div>${lines.join("")}</div>`;
+  return `<div class="mecard"><div class="row"><div class="name">My last round</div><span class="muted small">index ${fmtIndex(Number(me.hi))}</span></div>${lines.join("")}</div>`;
 }
 
 function home() {
@@ -208,9 +202,9 @@ function home() {
   const now = open.map(r => `<a class="now" href="${resumeHash(r)}"><div class="k">${r.status === "scoring" ? "Playing now" : "Being set up"}</div><div class="name">${esc(r.name)}</div>
     <div class="small" style="opacity:.85">${esc(courseTitle(courseBy(r.course) || { name: r.course }))} · ${roundStatus(r)}</div>${liveLine(r)}<span class="cta">${r.status === "scoring" ? "Continue scoring ›" : "Add players ›"}</span></a>`).join("");
   const list = finished.length ? `<div class="list">${finished.map(r => {
-    const lg = S.leaguesOfRound(r.id);
-    return `<a href="${resumeHash(r)}"><div style="min-width:0"><div class="name">${esc(r.name)}</div><div class="muted small">${esc(r.date || "")} · ${esc(courseTitle(courseBy(r.course) || { name: r.course }))}${lg.length ? ` · ${lg.map(g => esc(g.name)).join(", ")}` : ""}</div></div>
-      <span class="pill done">${plural(r.entries.length, "player")}</span></a>`;
+    const c = courseBy(r.course);
+    return `<a class="rround" href="${resumeHash(r)}"><div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(c ? (c.loop || c.name) : r.course)}</div>
+      <div class="who">${r.entries.map(e => `<span class="${me && e.playerId === me.id ? "me" : ""}">${esc(e.name)}</span>`).join("")}</div></a>`;
   }).join("")}</div>` : (open.length ? "" : `<p class="muted center">No rounds yet. Start your first one.</p>`);
   const hour = new Date().getHours(), greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   page("Hagolf", `
@@ -579,8 +573,8 @@ function attach(rid) {
 
 // ---------------------------------------------------------------- graphics
 function themeChips(selected) {
-  return DATA.themes.map(t => `<label class="tchip ${selected.includes(t.name) ? "on" : ""}" style="--tbg:${t.BG};--tacc:${t.ACCENT}">
-    <input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}><span class="sw"></span>${t.name}</label>`).join("");
+  return DATA.themes.map(t => `<label class="tchip ${selected.includes(t.name) ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK}">
+    <input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}><span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(t.name)}</label>`).join("");
 }
 
 function graphics(rid) {
@@ -759,17 +753,25 @@ function leagues() {
   const rows = S.leagues().map(g => {
     const { S: Sx } = leagueResults(g);
     const mine = me ? Sx.rows.find(r => r.id === me.id) : null;
-    return `<a href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${plural(S.leagueRoundIds(g.id).length, "round")}${g.bestN ? ` · best ${g.bestN} count` : ""}${Sx.rows[0] ? ` · leader ${esc(Sx.rows[0].name)}` : ""}</div></div>
-      ${mine ? `<span class="pill done">${mine.place}. · ${mine.counted} pts</span>` : `<span class="chev">›</span>`}</a>`;
+    const fmts = S.cleanFormats(g.formats).map(f => FORMAT_NAMES[f]).join(" · ");
+    return `<a href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${plural(S.leagueRoundIds(g.id).length, "round")} · ${fmts}${Sx.rows[0] ? ` · leader ${esc(Sx.rows[0].name)}` : ""}</div></div>
+      ${mine ? `<span class="pill done">${ordinal(mine.place)} · ${mine.counted} pts</span>` : `<span class="chev">›</span>`}</a>`;
   }).join("");
-  page("Leagues", `<p class="muted small" style="margin:6px 4px 0">A running Stableford table over the rounds you add to it, with head-to-heads. Anyone can make one; every phone sees it.</p>
-    ${rows ? `<div class="list">${rows}</div>` : `<p class="muted center">No leagues yet.</p>`}
-    <form id="newg" class="card form open"><h2>New league</h2><label>Name<input name="name" placeholder="e.g. Apeliotes 2026" required></label>
+  page("Leagues", `
+    ${rows ? `<div class="list">${rows}</div>` : `<p class="muted center" style="margin:24px 0">No leagues yet. A league is a running table over the rounds you add to it.</p>`}
+    <button class="btn addbtn" data-act="toggle-newg"><span class="plus">+</span> New league</button>
+    <form id="newg" class="card form"><h2>New league</h2><label style="margin-top:0">Name<input name="name" placeholder="e.g. Apeliotes 2026" required></label>
+      <label>Ranked by</label><div class="fmt">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${f === "stableford" ? "checked" : ""}> ${FORMAT_NAMES[f]}</label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="0"></label>
       <button class="btn primary" type="submit">Create</button></form>`, { back: "", tabs: "leagues" });
+  bind(ev => {
+    const b = ev.target.closest("[data-act=toggle-newg]");
+    if (b) { document.getElementById("newg").classList.add("open"); b.classList.add("hidden"); document.querySelector("#newg input[name=name]").focus(); }
+  });
   document.getElementById("newg").addEventListener("submit", ev => {
     ev.preventDefault();
-    const g = S.createLeague(ev.target.name.value.trim() || "League", ev.target.bestN.value, S.me() ? S.me().name : null);
+    const fmts = [...ev.target.querySelectorAll("input[name=fmt]:checked")].map(i => i.value);
+    const g = S.createLeague(ev.target.name.value.trim() || "League", ev.target.bestN.value, S.me() ? S.me().name : null, fmts);
     go(`#league/${g.id}`);
   });
 }
@@ -786,47 +788,69 @@ function leagueResults(g) {
   return { Ms, members, S: standings(Ms, members, g.bestN) };
 }
 
+const LEAGUE_TABS = [["standings", "Standings"], ["h2h", "Head to head"], ["players", "Players"], ["rounds", "Rounds"], ["settings", "Settings"]];
+
+function standingsTable(kind, rows, g, me) {
+  const mark = r => me && r.id === me.id ? "acc" : "";
+  if (!rows.length) return `<p class="muted center">Nothing to rank yet.</p>`;
+  if (kind === "stableford") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
+  if (kind === "stroke") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Net ±"}</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best === null ? "–" : fmtToPar(r.best)}</td><td>${r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"}</td><td class="acc">${r.played ? fmtToPar(r.counted) : "–"}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>Up</th><th>Pts</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${r.up > 0 ? "+" : ""}${r.up}</td><td class="acc">${r.points}</td></tr>`).join("")}</tbody></table>`;
+}
+
 function league(gid) {
   const g = S.getLeague(gid);
   if (!g) return go("#leagues");
   const { Ms, members, S: Sx } = leagueResults(g);
+  const formats = S.cleanFormats(g.formats);
   const attached = new Set(S.leagueRoundIds(gid));
   const nameOf = id => { for (const M of Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
   const me = S.me();
-  const table = Sx.rows.length ? `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Total"}</th></tr></thead>
-    <tbody>${Sx.rows.map(r => `<tr class="${me && r.id === me.id ? "acc" : ""}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`
-    : `<p class="muted center">No finished rounds in this league yet. Add some below.</p>`;
-  const h = ui.h2h[gid] || {};
-  const a = members.includes(h.a) ? h.a : (me && members.includes(me.id) ? me.id : members[0]);
-  const b = members.includes(h.b) && h.b !== a ? h.b : members.find(m => m !== a);
-  let h2h = "";
-  if (a && b) {
-    const H = headToHead(Ms, a, b);
-    const sel = (name, val) => `<select data-h2h="${name}">${members.map(m => `<option value="${m}" ${m === val ? "selected" : ""}>${esc(nameOf(m))}</option>`).join("")}</select>`;
-    h2h = `<div class="two">${sel("a", a)}${sel("b", b)}</div>
-      <div class="h2h"><div><b>${H.winsA}</b><small>${esc(nameOf(a))}</small></div><div class="mid"><b>${H.ties}</b><small>tied</small></div><div><b>${H.winsB}</b><small>${esc(nameOf(b))}</small></div></div>
-      <div class="muted small center">${plural(H.rounds.length, "round")} together · points ${H.ptsA} to ${H.ptsB}</div>
-      ${H.rounds.map(r => `<div class="row small h2hrow"><span class="muted">${esc(r.date || "")} ${esc(r.name)}</span><span><b class="${r.winner === "a" ? "acc" : ""}">${r.ptsA}</b> – <b class="${r.winner === "b" ? "acc" : ""}">${r.ptsB}</b></span></div>`).join("")}`;
-  } else h2h = `<p class="muted small">Head-to-heads appear once two players share a round in this league.</p>`;
-  const roundList = S.rounds().filter(r => r.status === "done").map(r => `<label><input type="checkbox" data-act="toggle-round" data-rid="${r.id}" ${attached.has(r.id) ? "checked" : ""}> ${esc(r.name)}<span class="muted"> · ${esc(r.date || "")} · ${plural(r.entries.length, "player")}</span></label>`).join("");
-  page(g.name, `
-    <h2>Standings</h2>${table}
-    <a class="btn ${Sx.rows.length ? "" : "disabled"}" href="#leagueposter/${gid}" style="margin-top:10px">Make a standings poster ›</a>
-    <h2>Head to head</h2><div class="card">${h2h}</div>
-    <h2>Players in this league</h2>
-    <div class="card"><div class="muted small">${members.length ? members.map(m => esc(nameOf(m))).sort().join(" · ") : "nobody yet"}</div>
-      ${members.length > 1 ? `<p class="muted small" style="margin-top:8px">Two spellings of one person? Merge them: every round, score and course handicap moves to the kept name.</p>
+  const tab = LEAGUE_TABS.some(([k]) => k === ui.leagueTab[gid]) ? ui.leagueTab[gid] : "standings";
+  let body = "";
+  if (tab === "standings") {
+    const tables = { stableford: () => Sx.rows, stroke: () => strokeStandings(Ms, members, g.bestN).rows, match: () => matchStandings(Ms, members).rows };
+    const notes = { stableford: "Stableford points per round; wins = most points in a round.", stroke: "Net strokes against par per round, lowest total wins; a round without a return does not count.", match: "Every pair who shared a round played a match on net score, hole by hole. 2 points a win, 1 a draw." };
+    body = Ms.length ? formats.map(f => `${formats.length > 1 ? `<h2>${FORMAT_NAMES[f]}</h2>` : ""}${standingsTable(f, tables[f](), g, me)}<p class="muted small" style="margin:6px 4px 14px">${notes[f]}</p>`).join("")
+      + (formats.includes("stableford") ? `<a class="btn" href="#leagueposter/${gid}">Make a standings poster ›</a>` : "")
+      : `<p class="muted center" style="margin:30px 0">No finished rounds in this league yet.<br>Add them under Rounds.</p>`;
+  } else if (tab === "h2h") {
+    const h = ui.h2h[gid] || {};
+    const a = members.includes(h.a) ? h.a : (me && members.includes(me.id) ? me.id : members[0]);
+    const b = members.includes(h.b) && h.b !== a ? h.b : members.find(m => m !== a);
+    if (a && b) {
+      const H = headToHead(Ms, a, b);
+      const sel = (name, val) => `<select data-h2h="${name}">${members.map(m => `<option value="${m}" ${m === val ? "selected" : ""}>${esc(nameOf(m))}</option>`).join("")}</select>`;
+      body = `<div class="card"><div class="two">${sel("a", a)}${sel("b", b)}</div>
+        <div class="h2h"><div><b class="num">${H.winsA}</b><small>${esc(nameOf(a))}</small></div><div class="mid"><b>${H.ties}</b><small>tied</small></div><div><b class="num">${H.winsB}</b><small>${esc(nameOf(b))}</small></div></div>
+        <div class="muted small center">${plural(H.rounds.length, "round")} together · Stableford ${H.ptsA} to ${H.ptsB}${formats.includes("match") ? ` · matches ${H.matchA}–${H.matchB}${H.matchTies ? ` (${H.matchTies} halved)` : ""}` : ""}</div>
+        ${H.rounds.map(r => `<div class="row small h2hrow"><span class="muted">${esc(fmtDate(r.date))} · ${esc(r.name)}</span><span><b class="${r.winner === "a" ? "acc" : ""}">${r.ptsA}</b> – <b class="${r.winner === "b" ? "acc" : ""}">${r.ptsB}</b>${formats.includes("match") ? ` <span class="muted">· ${r.up === 0 ? "halved" : `${Math.abs(r.up)} up ${esc(nameOf(r.up > 0 ? a : b).split(" ")[0])}`}</span>` : ""}</span></div>`).join("")}</div>`;
+    } else body = `<p class="muted center" style="margin:30px 0">Head-to-heads appear once two players share a round in this league.</p>`;
+  } else if (tab === "players") {
+    body = `<div class="list">${members.map(m => `<div><span>${esc(nameOf(m))}</span><span class="muted small">${plural(Ms.filter(M => M.players.some(p => p.id === m)).length, "round")}</span></div>`).sort().join("") || `<div class="muted small">Nobody yet.</div>`}</div>
+      ${members.length > 1 ? `<div class="card"><div class="name" style="font-size:15px">Two spellings of one person?</div><p class="muted small">Merge them: every round, score and course handicap moves to the kept name.</p>
       <div class="merge"><select id="mkeep">${members.map(m => `<option value="${m}">${esc(nameOf(m))}</option>`).join("")}</select><span>←</span><select id="mdrop">${members.map((m, i) => `<option value="${m}" ${i === 1 ? "selected" : ""}>${esc(nameOf(m))}</option>`).join("")}</select></div>
-      <button class="btn small" data-act="merge" style="margin-top:8px">Merge into the first name</button>` : ""}</div>
-    <h2>Rounds in this league</h2>
-    <div class="card checks">${roundList || `<p class="muted">No finished rounds yet.</p>`}</div>
-    <h2>League settings</h2>
-    <form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
+      <button class="btn small" data-act="merge" style="margin-top:8px">Merge into the first name</button></div>` : ""}`;
+  } else if (tab === "rounds") {
+    const done = S.rounds().filter(r => r.status === "done");
+    body = `<p class="muted small" style="margin:0 4px 8px">Tick the rounds that count for this league.</p>
+      <div class="card checks">${done.map(r => { const c = courseBy(r.course); return `<label><input type="checkbox" data-act="toggle-round" data-rid="${r.id}" ${attached.has(r.id) ? "checked" : ""}> <span><b>${esc(fmtDate(r.date))}</b> · ${esc(c ? c.loop || c.name : r.name)}<span class="muted small"> · ${r.entries.map(e => esc(e.name.split(" ")[0])).join(", ")}</span></span></label>`; }).join("") || `<p class="muted">No finished rounds yet.</p>`}</div>`;
+  } else {
+    body = `<form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
+      <label>Ranked by <span class="muted">(one table each)</span></label><div class="fmt">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> ${FORMAT_NAMES[f]}</label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
-      <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>`, { back: "#leagues" });
+      <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
+      ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
+  }
+  page(g.name, `<div class="subtabs">${LEAGUE_TABS.map(([k, l]) => `<button data-act="ltab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div>${body}`,
+    { back: "#leagues", sub: `${plural(attached.size, "round")} · ${formats.map(f => FORMAT_NAMES[f]).join(", ")}` });
   bind(ev => {
     const b_ = ev.target.closest("[data-act]");
     if (!b_) return;
+    if (b_.dataset.act === "ltab") { ui.leagueTab[gid] = b_.dataset.tab; return league(gid); }
     if (b_.dataset.act === "toggle-round") { S.setLeagueRound(gid, b_.dataset.rid, b_.checked); league(gid); }
     if (b_.dataset.act === "merge") {
       const keep = document.getElementById("mkeep").value, drop = document.getElementById("mdrop").value;
@@ -836,14 +860,16 @@ function league(gid) {
     }
     if (b_.dataset.act === "del-league" && confirm(`Delete the league ${g.name} on every phone? Rounds and players stay.`)) { S.deleteLeague(gid); go("#leagues"); }
   });
-  app.querySelectorAll("[data-h2h]").forEach(s => s.addEventListener("change", () => {
+  app.querySelectorAll("[data-h2h]").forEach(el => el.addEventListener("change", () => {
     ui.h2h[gid] = { a: document.querySelector("[data-h2h=a]").value, b: document.querySelector("[data-h2h=b]").value };
     league(gid);
   }));
-  document.getElementById("gform").addEventListener("submit", ev => {
+  const gf = document.getElementById("gform");
+  if (gf) gf.addEventListener("submit", ev => {
     ev.preventDefault();
     g.name = ev.target.name.value.trim() || g.name; g.bestN = Number(ev.target.bestN.value) || 0;
-    S.saveLeague(g); league(gid);
+    g.formats = S.cleanFormats([...ev.target.querySelectorAll("input[name=fmt]:checked")].map(i => i.value));
+    S.saveLeague(g); toast("Saved"); ui.leagueTab[gid] = "standings"; league(gid);
   });
 }
 
@@ -1036,12 +1062,10 @@ function settings() {
   const invite = Y.enabled() ? Y.joinLink(base, false) : null;
   const inviteOrg = Y.enabled() ? Y.joinLink(base, true) : null;
   const phoneCourses = S.state.courses.filter(c => !c.deleted && (c.source || "phone") === "phone");
-  const appearance = S.state.settings.appearance || "auto";
   page("Settings", `
     <h2>This phone</h2>
     <div class="card"><div class="row"><div><div class="name">${me ? esc(me.name) : "Nobody yet"}</div><div class="muted small">${me ? "your results show on the home screen" : "say who you are for a personal home screen"}</div></div><a class="btn small" href="#welcome">Change</a></div>
-      <label class="checks" style="margin-top:10px"><input type="checkbox" id="orgtoggle" ${organiser() ? "checked" : ""}> Organiser on this phone <span class="muted">&nbsp;(can delete rounds and leagues)</span></label>
-      <label>Appearance<select id="appearance"><option value="auto" ${appearance === "auto" ? "selected" : ""}>Follow the phone</option><option value="light" ${appearance === "light" ? "selected" : ""}>Light</option><option value="dark" ${appearance === "dark" ? "selected" : ""}>Dark</option></select></label></div>
+      <label class="checks" style="margin-top:10px"><input type="checkbox" id="orgtoggle" ${organiser() ? "checked" : ""}> Organiser on this phone <span class="muted">&nbsp;(can delete rounds and leagues)</span></label></div>
     <h2>Shared database</h2>
     <div class="card"><div class="name">${esc(status)}</div>
       ${invite ? `<p class="muted small">Invite another phone: let them scan this code or send them the link. It connects them to ${esc(cfg.label || "this database")} and asks who they are.</p>
@@ -1066,10 +1090,9 @@ function settings() {
       <div class="two"><button class="btn primary" data-act="export">Export backup</button><label class="btn">Import backup<input type="file" id="imp" accept="application/json,.json" hidden></label></div></div>
     <h2>For the desktop kit</h2>
     <p class="muted small">A round as tournament.yaml: put it in tournaments/&lt;slug&gt;/ on the computer and run python golf.py render.</p>
-    <div class="list">${done.map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(r.date || "")}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
+    <div class="list">${done.map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(fmtDate(r.date))}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
     ${organiser() ? `<h2>Delete a round</h2><div class="list">${S.rounds().map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${roundStatus(r)}</div></div><button class="btn small danger" data-act="del-round" data-rid="${r.id}">Delete</button></div>`).join("") || `<div class="muted small">No rounds.</div>`}</div>` : ""}
     <p class="foot">Hagolf ${DATA.version} · ${S.courses().length} courses · ${DATA.themes.length} themes</p>`, { back: "", tabs: "settings" });
-  document.getElementById("appearance").addEventListener("change", ev => { S.setSetting("appearance", ev.target.value); applyAppearance(); });
   if (invite && window.qrcode) {
     try {
       const q = window.qrcode(0, "M"); q.addData(invite); q.make();
@@ -1197,7 +1220,5 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   }).catch(e => console.warn("sw", e));
   navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());
 }
-applyAppearance();
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyAppearance);
 Y.start();
 route();
