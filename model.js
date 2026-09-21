@@ -106,6 +106,25 @@ export function handicapFor(courseIn, entry, defaultTee, allowance = 100) {
 }
 
 /**
+ * The gross and Stableford boards over a set of players on one course, countback and all, with the
+ * places written onto the players. Shared by a round and by a league card of several rounds.
+ */
+function boards(players, n, segments) {
+  const back = [...Array(n).keys()].reverse();
+  const keyGross = p => [p.gross, ...segments.map(k => sum(p.scores.slice(n - k))), ...back.map(h => p.scores[h])];
+  const keyPts = p => [-p.pts, ...segments.map(k => -sum(p.hpts.slice(n - k))), ...back.map(h => -p.hpts[h])];
+  const finished = players.filter(p => !p.nr).sort((a, b) => cmpTuple(keyGross(a), keyGross(b)));
+  const noReturn = players.filter(p => p.nr).sort((a, b) => cmpTuple([-a.holes_played, -a.pts], [-b.holes_played, -b.pts]));
+  const stbl = [...players].sort((a, b) => cmpTuple(keyPts(a), keyPts(b)));
+  // positions run 1, 2, 3 in board order: equal scores are separated by the countback, which the footer explains
+  finished.forEach((p, i) => { p.gplace = i + 1; });
+  noReturn.forEach(p => { p.gplace = null; });
+  stbl.forEach((p, i) => { p.splace = i + 1; });
+  players.forEach(p => { p.gtied = p.stied = false; p.gcb = p.scb = null; });
+  return { gross_board: [...finished, ...noReturn], stbl_board: stbl };
+}
+
+/**
  * Computes a round. `course` is a DATA.courses entry, `round` is
  * { name, date, defaultTee, allowance, final, entries: [{ name, hi, tee, gender, courseHandicap, scores, penalties }] }.
  * On a final round (the default, and what Python always does) a hole with no score counts NO_SCORE strokes.
@@ -208,19 +227,7 @@ export function compute(courseIn, round) {
     });
   }
 
-  const segs = M.segments;
-  const back = [...Array(n).keys()].reverse();
-  const keyGross = p => [p.gross, ...segs.map(k => sum(p.scores.slice(n - k))), ...back.map(h => p.scores[h])];
-  const keyPts = p => [-p.pts, ...segs.map(k => -sum(p.hpts.slice(n - k))), ...back.map(h => -p.hpts[h])];
-  const finished = players.filter(p => !p.nr).sort((a, b) => cmpTuple(keyGross(a), keyGross(b)));
-  const noReturn = players.filter(p => p.nr).sort((a, b) => cmpTuple([-a.holes_played, -a.pts], [-b.holes_played, -b.pts]));
-  M.gross_board = [...finished, ...noReturn];
-  M.stbl_board = [...players].sort((a, b) => cmpTuple(keyPts(a), keyPts(b)));
-  // positions run 1, 2, 3 in board order: equal scores are separated by the countback, which the footer explains
-  finished.forEach((p, i) => { p.gplace = i + 1; });
-  noReturn.forEach(p => { p.gplace = null; });
-  M.stbl_board.forEach((p, i) => { p.splace = i + 1; });
-  players.forEach(p => { p.gtied = p.stied = false; p.gcb = p.scb = null; });
+  Object.assign(M, boards(players, n, M.segments));
 
   const dt = course.tees[defaultTee];
   const metres = dt.metres;
@@ -308,6 +315,48 @@ export function computeNine(nineCourse, round, from) {
   return compute(nineCourse, { ...round, final: true, entries });
 }
 
+// ---------------------------------------------------------------- seasons: what a league counts as one card
+/**
+ * A league's unit is the day, not the sheet a group handed in. Every round attached to a league with the
+ * same date on the same loop is one card, so two fourballs round the Noord on a Sunday are one field of
+ * eight and not two fields of four weighed against each other. Nothing caps how many players that comes
+ * to. A round with no date stays on its own: an undated sheet says nothing about which day it belongs to.
+ *
+ * The same player twice on one card is two goes at it and counts twice -- unless the scores are identical
+ * as well, which is one sheet handed in by both groups. Every league table below groups its rounds this
+ * way before it counts anything, so callers pass the computed rounds; grouping again changes nothing.
+ */
+export function leagueCards(results) {
+  const by = new Map();
+  for (const M of results) {
+    const key = M.date ? `${M.date}|${(M.course && (M.course.slug || M.course.name)) || ""}` : `round|${M.id}`;
+    if (!by.has(key)) by.set(key, []);
+    by.get(key).push(M);
+  }
+  return [...by.entries()].map(([key, Ms]) => oneCard(key, Ms));
+}
+
+/** One day's rounds as a single card, shaped like a computed round so every table reads it the same way. */
+function oneCard(key, Ms) {
+  const players = [];
+  const sheets = new Set();
+  for (const M of Ms) for (const p of M.players) {
+    // the same name against the same holes is one sheet handed in twice; anything else is a second go
+    const sheet = p.raw_scores ? `${p.id ?? p.name}|${p.raw_scores.join(",")}` : null;
+    if (sheet !== null && sheets.has(sheet)) continue;
+    if (sheet !== null) sheets.add(sheet);
+    players.push({ ...p, roundId: p.roundId ?? M.id, roundName: p.roundName ?? M.name });
+  }
+  const card = { ...Ms[0], id: key, key, rounds: Ms, players, field: players.length,
+    name: [...new Set(Ms.map(M => M.name))].join(" · ") };
+  // a card of one round is that round's board again; several need the countback run over the lot. The
+  // per-hole field figures (`holes`, and each player's `vsrest`) stay as the round computed them: nothing
+  // a league reads goes through them, and every table below works off the players and the boards.
+  if (card.n && card.segments && players.every(p => p.hpts && p.scores)) Object.assign(card, boards(players, card.n, card.segments));
+  else card.stbl_board = [...players].sort((a, b) => (b.pts || 0) - (a.pts || 0));
+  return card;
+}
+
 // ---------------------------------------------------------------- seasons: standings for a group across rounds
 /**
  * `results` is a list of computed rounds (M) with `.id`; `memberIds` the roster ids in the group; `bestN` 0 for all.
@@ -317,7 +366,7 @@ export function standings(results, memberIds, bestN = 0) {
   const members = new Set(memberIds);
   const rows = new Map();
   const roundsIn = [];
-  for (const M of results) {
+  for (const M of leagueCards(results)) {
     const mine = M.players.filter(p => p.id !== null && members.has(p.id));
     if (!mine.length) continue;
     roundsIn.push(M);
@@ -327,7 +376,7 @@ export function standings(results, memberIds, bestN = 0) {
       const r = rows.get(p.id);
       r.name = p.name;
       r.hi = p.hi;
-      r.rounds.push({ round: M.id, name: M.name, date: M.date, pts: p.pts, gross: p.gross, topar: p.topar, net: p.net });
+      r.rounds.push({ round: p.roundId ?? M.id, name: M.name, date: M.date, pts: p.pts, gross: p.gross, topar: p.topar, net: p.net });
       if (p.pts === best) r.wins += 1;
     }
   }
@@ -352,7 +401,8 @@ export function standings(results, memberIds, bestN = 0) {
 export function strokeStandings(results, memberIds, bestN = 0) {
   const members = new Set(memberIds);
   const rows = new Map();
-  for (const M of results) {
+  const cards = leagueCards(results);
+  for (const M of cards) {
     const mine = M.players.filter(p => p.id !== null && members.has(p.id));
     if (!mine.length) continue;
     const returned = mine.filter(p => p.net !== null);
@@ -363,7 +413,7 @@ export function strokeStandings(results, memberIds, bestN = 0) {
       r.name = p.name;
       if (p.net === null) { r.nr += 1; continue; }
       const topar = p.net - M.course_par;
-      r.rounds.push({ round: M.id, name: M.name, date: M.date, net: p.net, topar });
+      r.rounds.push({ round: p.roundId ?? M.id, name: M.name, date: M.date, net: p.net, topar });
       if (topar === best) r.wins += 1;
     }
   }
@@ -374,7 +424,121 @@ export function strokeStandings(results, memberIds, bestN = 0) {
   });
   out.sort((a, b) => (b.played > 0) - (a.played > 0) || a.counted - b.counted || a.avg - b.avg || (a.best ?? 99) - (b.best ?? 99) || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
-  return { rows: out, rounds: results, bestN };
+  return { rows: out, rounds: cards, bestN };
+}
+
+// ---------------------------------------------------------------- seasons: the slot table
+/**
+ * The two "season form" formats (app/LEAGUE-SCORING.md). Everyone owns `slots` score slots that start
+ * filled with a baseline round, and the table is the average of the best `slots` results once your own
+ * rounds have competed with the baseline fillers. Playing more can only help: the pool always holds a
+ * full set of baseline slots, so a round below baseline displaces nothing.
+ *
+ * `baseline` is a percentile of every round in the league, `adjust` how hard a round is re-valued for
+ * how the rest of the card played that day. The rest is the shape of the curve and is not a setting.
+ */
+export const SLOT = { slots: 8, baseline: "p25", adjust: "normal", presence: 1.5, half: 6, formPrior: 4, clamp: 4 };
+export const SLOT_BASELINES = { p10: 0.1, p25: 0.25, p50: 0.5 };
+// How much of the field's swing is believed, by how many of them there were: m / (m + shrink).
+export const SLOT_ADJUST = { off: null, light: 2, normal: 1, strong: 0 };
+
+const percentileOf = (xs, f) => {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.max(0, Math.min(s.length - 1, Math.floor(s.length * f)))];
+};
+const clampTo = (x, c) => Math.max(-c, Math.min(c, x));
+
+/**
+ * The engine behind both slot formats. Values are held so that higher is always better -- Stableford
+ * points as they stand, net against par negated -- and turned back on the way out, so `stroke` shows
+ * only in the sign of what comes back and in which direction the table reads.
+ */
+function slotTable(results, memberIds, opts = {}, stroke = false, withDelta = true) {
+  const cfg = { ...SLOT, ...opts };
+  const N = Math.max(1, Math.round(Number(cfg.slots) || SLOT.slots));
+  const shrink = cfg.adjust in SLOT_ADJUST ? SLOT_ADJUST[cfg.adjust] : SLOT_ADJUST.normal;
+  const sign = stroke ? -1 : 1;
+  const members = new Set(memberIds);
+  const rows = new Map();
+  const cards = [];
+  for (const M of leagueCards(results)) {
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+    if (!mine.length) continue;
+    const played = [];
+    for (const p of mine) {
+      if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, hi: p.hi, rounds: [], nr: 0, wins: 0 });
+      const r = rows.get(p.id);
+      r.name = p.name;
+      r.hi = p.hi;
+      if (stroke && p.net === null) { r.nr += 1; continue; }  // no card, nothing to value
+      played.push({ id: p.id, p, raw: stroke ? p.net - M.course_par : p.pts, M });
+    }
+    if (!played.length) continue;
+    for (const x of played) x.v = sign * x.raw;
+    const best = Math.max(...played.map(x => x.v));
+    for (const x of played) if (x.v === best) rows.get(x.id).wins += 1;
+    cards.push({ M, played });
+  }
+  const every = cards.flatMap(c => c.played);
+  const leagueMean = every.length ? sum(every.map(x => x.v)) / every.length : 0;
+  // each player's expected score, shrunk toward the league mean so a newcomer is not a precise yardstick
+  const form = new Map([...rows.keys()].map(id => {
+    const mine = every.filter(x => x.id === id).map(x => x.v);
+    return [id, (sum(mine) + cfg.formPrior * leagueMean) / (mine.length + cfg.formPrior)];
+  }));
+  for (const c of cards) {
+    for (const x of c.played) {
+      const others = c.played.filter(o => o.id !== x.id);
+      const m = others.length;
+      // how the rest of the card did against what they normally shoot: beating weak players earns
+      // nothing, beating them by more than they usually lose by does
+      const swing = shrink === null || !m ? 0
+        : clampTo(mean(others.map(o => o.v - form.get(o.id))) * m / (m + shrink), cfg.clamp);
+      x.adj = x.v - swing;
+      rows.get(x.id).rounds.push({ round: x.p.roundId ?? c.M.id, name: c.M.name, date: c.M.date,
+        pts: stroke ? null : x.raw, topar: stroke ? x.raw : null, value: x.raw, adj: sign * x.adj, swing: -sign * swing });
+    }
+  }
+  const baseline = percentileOf(every.map(x => x.adj), SLOT_BASELINES[cfg.baseline] ?? SLOT_BASELINES.p25);
+  const out = [...rows.values()].map(r => {
+    const mine = every.filter(x => x.id === r.id);
+    const n = mine.length;
+    const pool = [...mine.map(x => x.adj), ...Array(N).fill(baseline)].sort((a, b) => b - a).slice(0, N);
+    const score = sum(pool) / N;
+    const presence = cfg.presence * n / (n + cfg.half);
+    const bestIn = n ? Math.max(...mine.map(x => x.v)) : null;
+    return { ...r, played: n, slots: N, used: pool.filter(v => v > baseline).length,
+      form: sign * score, presence, total: sign * (score + presence), rank: score + presence,
+      avg: n ? sign * (sum(mine.map(x => x.v)) / n) : 0, best: bestIn === null ? null : sign * bestIn, bestIn,
+      last: r.rounds.map(x => x.date || "").sort().pop() || "" };
+  });
+  out.sort((a, b) => b.rank - a.rank || b.used - a.used || b.played - a.played
+    || (b.bestIn ?? -99) - (a.bestIn ?? -99) || b.last.localeCompare(a.last) || a.name.localeCompare(b.name));
+  out.forEach((r, i) => { r.place = i + 1; });
+  // where everyone stood before the newest card: the movement is most of what a season table is for
+  if (withDelta && cards.length > 1) {
+    const newest = cards.reduce((a, c) => (c.M.date || "") > (a.M.date || "") ? c : a, cards[0]).M;
+    const before = slotTable(cards.filter(c => c.M !== newest).map(c => c.M), memberIds, opts, stroke, false);
+    for (const r of out) {
+      const was = before.rows.find(x => x.id === r.id);
+      r.wasPlace = was ? was.place : null;
+      r.moved = was ? was.place - r.place : null;
+      r.gained = was ? r.total - was.total : null;
+    }
+  }
+  return { rows: out, rounds: cards.map(c => c.M), bestN: 0, slots: N, baseline: sign * baseline,
+    baselineAt: cfg.baseline, adjust: cfg.adjust, shrink, stroke };
+}
+
+/** Season form on Stableford points: most wins. */
+export function slotStandings(results, memberIds, opts = {}) {
+  return slotTable(results, memberIds, opts, false);
+}
+
+/** Season form on net score against par, so nines and eighteens compare: lowest wins. */
+export function slotStrokeStandings(results, memberIds, opts = {}) {
+  return slotTable(results, memberIds, opts, true);
 }
 
 /**
@@ -416,9 +580,11 @@ export function matchStandings(results, memberIds, win = 2, draw = 1, basis = "n
   const members = new Set(memberIds);
   const rows = new Map();
   const row = p => { if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, up: 0 }); const r = rows.get(p.id); r.name = p.name; return r; };
-  for (const M of results) {
+  const cards = leagueCards(results);
+  for (const M of cards) {
     const mine = M.players.filter(p => p.id !== null && members.has(p.id));
     for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) {
+      if (mine[i].id === mine[j].id) continue;  // two goes on the same day is not a match against yourself
       const { up, holes } = matchResult(mine[i], mine[j], basis);
       if (!holes) continue;
       const a = row(mine[i]), b = row(mine[j]);
@@ -429,7 +595,7 @@ export function matchStandings(results, memberIds, win = 2, draw = 1, basis = "n
   const out = [...rows.values()].map(r => ({ ...r, points: win * r.won + draw * r.drawn }));
   out.sort((a, b) => b.points - a.points || b.up - a.up || b.won - a.won || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
-  return { rows: out, rounds: results, win, draw, basis };
+  return { rows: out, rounds: cards, win, draw, basis };
 }
 
 // The classic Formula 1 points table: winning a round is worth far more than turning up.
@@ -444,7 +610,8 @@ export const GP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS) {
   const members = new Set(memberIds);
   const rows = new Map();
-  for (const M of results) {
+  const cards = leagueCards(results);
+  for (const M of cards) {
     const mine = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
     mine.forEach((p, i) => {
       if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, scores: [], wins: 0, best: 0 });
@@ -464,7 +631,7 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS) {
   });
   out.sort((a, b) => b.counted - a.counted || b.wins - a.wins || b.best - a.best || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
-  return { rows: out, rounds: results, bestN, table };
+  return { rows: out, rounds: cards, bestN, table };
 }
 
 /**
@@ -476,31 +643,32 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS) {
  */
 export function headToHead(results, a, b, basis = "net") {
   const rounds = [];
-  for (const M of results) {
-    const pa = M.players.find(p => p.id === a), pb = M.players.find(p => p.id === b);
-    if (!pa || !pb) continue;
-    const m = matchResult(pa, pb, basis);
-    let holesA = 0, holesB = 0, halved = 0;
-    for (let h = 0; h < pa.nets.length; h++) {
-      const na = pa.nets[h] === null, nb = pb.nets[h] === null;
-      if (na && nb) continue;
-      if (na) { holesB++; continue; }
-      if (nb) { holesA++; continue; }
-      // settled the way matchResult settles a hole, so the tally and the running match never disagree
-      const x = holeValue(pa, h, basis), y = holeValue(pb, h, basis);
-      if (x < y) holesA++; else if (y < x) holesB++; else halved++;
+  for (const M of leagueCards(results)) {
+    // a card is the whole day, so a group each and never a word between them is still a meeting
+    for (const pa of M.players.filter(p => p.id === a)) for (const pb of M.players.filter(p => p.id === b)) {
+      const m = matchResult(pa, pb, basis);
+      let holesA = 0, holesB = 0, halved = 0;
+      for (let h = 0; h < pa.nets.length; h++) {
+        const na = pa.nets[h] === null, nb = pb.nets[h] === null;
+        if (na && nb) continue;
+        if (na) { holesB++; continue; }
+        if (nb) { holesA++; continue; }
+        // settled the way matchResult settles a hole, so the tally and the running match never disagree
+        const x = holeValue(pa, h, basis), y = holeValue(pb, h, basis);
+        if (x < y) holesA++; else if (y < x) holesB++; else halved++;
+      }
+      // the round in the chosen currency: what the board shows, who took the day, and by how much
+      const va = roundValue(pa, basis), vb = roundValue(pb, basis);
+      const sa = roundScore(pa, basis), sb = roundScore(pb, basis);
+      const winner = va === null && vb === null ? "tie" : va === null ? "b" : vb === null ? "a"
+        : va < vb ? "a" : vb < va ? "b" : "tie";
+      rounds.push({ id: pa.roundId ?? M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name,
+        ptsA: pa.pts, ptsB: pb.pts, grossA: pa.gross, grossB: pb.gross, netA: pa.net, netB: pb.net,
+        scoreA: sa, scoreB: sb,
+        margin: va === null || vb === null ? null : Math.abs(va - vb),
+        birdiesA: pa.counts[0], birdiesB: pb.counts[0], holesA, holesB, halved,
+        winner, up: m.up, matchWinner: m.up > 0 ? "a" : m.up < 0 ? "b" : "tie" });
     }
-    // the round in the chosen currency: what the board shows, who took the day, and by how much
-    const va = roundValue(pa, basis), vb = roundValue(pb, basis);
-    const sa = roundScore(pa, basis), sb = roundScore(pb, basis);
-    const winner = va === null && vb === null ? "tie" : va === null ? "b" : vb === null ? "a"
-      : va < vb ? "a" : vb < va ? "b" : "tie";
-    rounds.push({ id: M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name,
-      ptsA: pa.pts, ptsB: pb.pts, grossA: pa.gross, grossB: pb.gross, netA: pa.net, netB: pb.net,
-      scoreA: sa, scoreB: sb,
-      margin: va === null || vb === null ? null : Math.abs(va - vb),
-      birdiesA: pa.counts[0], birdiesB: pb.counts[0], holesA, holesB, halved,
-      winner, up: m.up, matchWinner: m.up > 0 ? "a" : m.up < 0 ? "b" : "tie" });
   }
   rounds.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
   const sumBy = k => rounds.reduce((s, r) => s + r[k], 0);
@@ -567,7 +735,7 @@ export function stdev(xs) {
 export function statHoles(results, memberIds) {
   const members = new Set(memberIds);
   const out = [];
-  for (const M of results) {
+  for (const M of leagueCards(results)) {
     const rank = siRanks(M.si);
     const where = M.course.loop || M.course.name;
     for (const p of M.players) {
@@ -575,7 +743,7 @@ export function statHoles(results, memberIds) {
       for (let h = 0; h < M.n; h++) {
         if (p.scores[h] === null) continue;
         out.push({
-          pid: p.id, round: M.id, where, hole: h, label: M.labels[h], si: M.si[h],
+          pid: p.id, card: M.key ?? M.id, round: p.roundId ?? M.id, where, hole: h, label: M.labels[h], si: M.si[h],
           band: rank[h] <= M.n / 3 ? 0 : rank[h] > (2 * M.n) / 3 ? 2 : 1,  // hardest third, middle, easiest third
           par: p.par[h], score: p.scores[h], delta: p.deltas[h], pts: p.hpts[h], bucket: scoreBucket(p.deltas[h]),
         });
@@ -617,7 +785,7 @@ function roundLine(M, p, others, place, of) {
   const half = Math.floor(n / 2);  // points a hole in each half: a nine and an eighteen only average together per hole
   const otherTopar = others.map(q => q.topar).filter(v => v !== null);
   return {
-    id: M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name, n,
+    id: p.roundId ?? M.id, card: M.key ?? M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name, n,
     pid: p.id, player: p.name, pts: p.pts, gross: p.gross, topar: p.topar, net: p.net, ph: p.ph,
     place, of, splace: p.splace, field: M.field, counts, holes: p.holes_played,
     penalties: p.penalty_total, counted10: p.filled.filter(Boolean).length,
@@ -636,15 +804,16 @@ function roundLine(M, p, others, place, of) {
  */
 export function leagueStats(results, memberIds) {
   const members = new Set(memberIds);
-  const holes = statHoles(results, memberIds);
+  const cards = leagueCards(results);
+  const holes = statHoles(cards, memberIds);
   const rounds = [];
   const names = new Map();
-  for (const M of results) {
+  for (const M of cards) {
     const mine = M.players.filter(p => p.id !== null && members.has(p.id));
     const board = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
     for (const p of mine) {
       names.set(p.id, p.name);
-      rounds.push(roundLine(M, p, mine.filter(q => q !== p), board.indexOf(p) + 1, board.length));
+      rounds.push(roundLine(M, p, mine.filter(q => q.id !== p.id), board.indexOf(p) + 1, board.length));
     }
   }
   rounds.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
@@ -654,10 +823,10 @@ export function leagueStats(results, memberIds) {
 
   const players = [...names.keys()].map(id => {
     const rs = rounds.filter(r => r.pid === id);
-    const mineRounds = new Set(rs.map(r => r.id));
+    const myCards = new Set(rs.map(r => r.card));
     const mine = tally(holes.filter(h => h.pid === id));
     // the rest of the league, on the same days only, so the comparison is like for like
-    const rest = tally(holes.filter(h => h.pid !== id && mineRounds.has(h.round)));
+    const rest = tally(holes.filter(h => h.pid !== id && myCards.has(h.card)));
     const pts = rs.map(r => r.pts);
     const topars = rs.map(r => r.topar).filter(v => v !== null);
     const vs = rs.filter(r => r.fieldPts !== null);
@@ -693,8 +862,8 @@ export function leagueStats(results, memberIds) {
   }).sort((a, b) => (b.avgPts ?? -1) - (a.avgPts ?? -1) || b.played - a.played || a.name.localeCompare(b.name));
 
   const field = {
-    ...tally(holes), players: players.length, cards: rounds.length,
-    rounds: new Set(rounds.map(r => r.id)).size,
+    ...tally(holes), players: players.length, rounds: rounds.length,
+    cards: new Set(rounds.map(r => r.card)).size,
     avgPts: mean(rounds.map(r => r.pts)), avgTopar: mean(rounds.map(r => r.topar)),
     bestRound: best(rounds, "pts"), lowRound: best(rounds, "topar", true),
     mostBirdies: rounds.map(r => ({ ...r, birdies: r.counts[0] + r.counts[1] })).sort((a, b) => b.birdies - a.birdies)[0] || null,
@@ -735,12 +904,20 @@ export function correlation(xs, ys) {
  * `onBad` are the numbers as they are read, and `lower` says which way round that is.
  */
 export function rivals(rounds, pid, basis = "points") {
-  const byRound = new Map(rounds.filter(r => r.pid === pid && r.n).map(r => [r.id, r]));
+  const ours = new Map();  // card -> the player's own line from that day, or lines, if they went round twice
+  for (const r of rounds) {
+    if (r.pid !== pid || !r.n) continue;
+    const k = r.card ?? r.id;
+    if (!ours.has(k)) ours.set(k, []);
+    ours.get(k).push(r);
+  }
   const others = new Map();
   for (const r of rounds) {
-    if (r.pid === pid || !r.n || !byRound.has(r.id)) continue;
+    if (r.pid === pid || !r.n) continue;
+    const mine = ours.get(r.card ?? r.id);
+    if (!mine) continue;
     if (!others.has(r.pid)) others.set(r.pid, { id: r.pid, name: r.player, pairs: [] });
-    others.get(r.pid).pairs.push({ me: byRound.get(r.id), them: r });
+    for (const me of mine) others.get(r.pid).pairs.push({ me, them: r });
   }
   const lower = basis !== "points";
   const score = r => basis === "points" ? r.pts : basis === "gross" ? r.gross : r.net;

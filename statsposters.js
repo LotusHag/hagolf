@@ -189,16 +189,16 @@ export function statsFieldPoster(St, group, T) {
     ...Object.keys(F.byPar).sort().map(k => [`Par ${k}`, F.byPar[k].vspar, `${fix(F.byPar[k].pts, 2)} pts  ·  ${F.byPar[k].holes} holes`]),
     ...F.bands.map((b, i) => b.holes ? [BANDS[i], b.vspar, `${fix(b.pts, 2)} pts  ·  ${b.holes} holes`] : null).filter(Boolean),
   ];
-  const foot = `Every hole the league's own players have walked: ${F.holes} holes over ${F.cards} cards in ${F.rounds} rounds. ` +
-    `Points are Stableford, so 2 a hole is playing to handicap. The thirds split each card by stroke index, so the hardest third of a ` +
+  const foot = `Every hole the league's own players have walked: ${F.holes} holes over ${F.rounds} rounds on ${F.cards} cards. ` +
+    `Points are Stableford, so 2 a hole is playing to handicap. The thirds split the holes by stroke index, so the hardest third of a ` +
     `nine is its three lowest-index holes; those are also where the strokes are given, which is why they usually pay the most points. ` +
     `Only the league's own players count, so a guest never moves a figure.`;
   const width = 11.5;
   const H = HEADER_IN + 0.18 + 0.95 + 0.15 + DIST_IN + barRowsHeight(rows.length)
     + playerBarsHeight(St.players.length) + footHeight(T, width, foot);
   const fig = new Fig(width, H, T);
-  header(fig, "How this league scores", group.name, `${F.rounds} rounds  ·  ${F.cards} cards  ·  ${dateSpan(St.rounds)}`,
-    `${F.players} players  ·  ${F.holes} holes walked\nA card is worth ${fix(F.avgPts)} points`);
+  header(fig, "How this league scores", group.name, `${F.cards} cards  ·  ${F.rounds} rounds  ·  ${dateSpan(St.rounds)}`,
+    `${F.players} players  ·  ${F.holes} holes walked\nA round is worth ${fix(F.avgPts)} points`);
   let y = HEADER_IN + 0.18;
   y = tiles(fig, y, 0.95, [
     [`${share(parOrBetter(F.counts), F.holes)}%`, "par or better", T.ACCENT],

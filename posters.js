@@ -94,6 +94,15 @@ function pointsMeter(scaleMax, level, key = "pts") {
   };
 }
 
+/** One block a slot, filled ones in the bar colour: how much of a season a player has actually banked. */
+function slotsMeter() {
+  return (ax, c, y, r) => {
+    const T = ax.fig.T;
+    const n = r.slots, gap = 0.04, w = (c.x1 - c.x0 - gap * (n - 1)) / n;
+    for (let i = 0; i < n; i++) ax.rbox(c.x0 + i * (w + gap), y - 0.13, w, 0.26, i < r.used ? T.BAR : T.PANEL_2, 0.03);
+  };
+}
+
 const countbackText = n => n === 18 ? "last 9, 6 and 3 holes, then hole by hole from the last" : "last 6 and 3 holes, then hole by hole from the last";
 
 function notes(rows, key) {
@@ -226,9 +235,14 @@ export function holesPoster(M, T) {
 }
 
 /** Season standings for a group: `S` from model.standings, `group` the group record. */
+// Where the baseline round comes from, for the footer of a season form poster.
+const BASELINE_SOURCE = { p10: "the 10th percentile of every round played in this league",
+  p25: "the 25th percentile of every round played in this league", p50: "the median round in this league" };
+
 export const STANDINGS_TITLES = {
   stableford: "Season standings", stroke: "Stroke play standings", match: "Matchplay standings",
   soccer: "League table", gp: "Grand Prix standings",
+  form: "Season form", formstroke: "Season form, stroke play",
 };
 
 /**
@@ -250,7 +264,28 @@ export function standingsPoster(S, group, T, kind = "stableford") {
   const num = (title, x0, x1, fn) => col(title, x0, x1, dVal(fn, 12, (r, T) => T.INK_2), "center");
   let cols, right, foot;
 
-  if (kind === "stroke") {
+  if (kind === "form" || kind === "formstroke") {
+    const stroke = kind === "formstroke";
+    const val = (v, d = 2) => v === null ? "–" : stroke ? fmtSigned(v, d) : fix(v, d);
+    const lead = rows.length ? val(rows[0].total) : "–";
+    const base = val(S.baseline, 1), N = S.slots;
+    cols = [pos, col("Player", 1.15, 4.0, dName, "left"),
+      num("Rounds", 4.0, 4.75, r => String(r.played)),
+      num("Slots", 4.85, 5.55, r => `${r.used}/${r.slots}`),
+      num("Form", 5.65, 6.45, r => val(r.form)),
+      num("Turnout", 6.5, 7.3, r => `${stroke ? "−" : "+"}${fix(r.presence, 2)}`),
+      col("Total", 7.4, 8.3, dVal(r => val(r.total), 22, (r, T) => T.ACCENT, "display"), "center"),
+      col(`Slots filled, of ${N}`, 8.55, 9.95, slotsMeter(), "left")];
+    right = `${stroke ? "Best rounds, net against par" : "Best rounds, Stableford"}
+Leader ${lead}  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
+    foot = `Every player owns ${N} score slots, filled to begin with by a baseline round of ${base}, ${BASELINE_SOURCE[S.baselineAt] || BASELINE_SOURCE.p25}. `
+      + `Their own rounds compete for those slots and the table is the average of the best ${N}, ${stroke ? "lowest wins" : "most wins"}. `
+      + `A round below the baseline displaces nothing, so a bad day never costs a player, it only fails to help. `
+      + `Turnout ${stroke ? "takes off" : "adds"} up to 1.5 as rounds played grow, which separates equal form and never lifts worse form above better. `
+      + (S.shrink === null ? "Rounds count exactly as they were scored."
+        : "Each round is re-valued for how the rest of the card played against their own usual scores, so a day the field found hard is worth more than a kind one.")
+      + onlyMembers;
+  } else if (kind === "stroke") {
     const lead = rows.length ? rows[0].counted : 0;
     cols = [pos, col("Player", 1.15, 4.6, dName, "left"),
       num("Rounds", 4.6, 5.4, r => String(r.played)), num("Wins", 5.5, 6.2, r => String(r.wins)),
