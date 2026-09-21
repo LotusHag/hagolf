@@ -43,13 +43,31 @@ export function parseHI(s) {
   return plus ? -v : v;
 }
 
-function page(title, body, { back = "#home", bar = "", sub = "" } = {}) {
+const ICONS = {
+  home: `<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>`,
+  leagues: `<svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4"/><path d="M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4"/><path d="M8 21h8"/><path d="M9 17h6v4"/></svg>`,
+  players: `<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 15.5a5 5 0 0 1 5.5 4.5"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>`,
+};
+const TABS = [["home", "#home", "Home"], ["leagues", "#leagues", "Leagues"], ["players", "#roster", "Players"], ["settings", "#settings", "Settings"]];
+
+/** One screen: header (back or brand), body, and either an action bar (a flow) or the tab bar (a top-level screen). */
+function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false } = {}) {
+  const nav = tabs ? `<nav class="tabs">${TABS.map(([k, h, l]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[k]}${l}</a>`).join("")}</nav>` : "";
   app.innerHTML = `
-    <header class="top">${back ? `<a class="back" href="${back}" aria-label="Back">‹</a>` : "<span class='back'></span>"}
-      <div class="ttl"><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>${syncDot()}</header>
-    <main class="${bar ? "with-bar" : ""}">${body}</main>
-    ${bar ? `<footer class="bar">${bar}</footer>` : ""}`;
+    <header class="top">${back ? `<a class="back" href="${back}" aria-label="Back">‹</a>` : "<span class='back none'></span>"}
+      <div class="ttl">${brand ? `<div class="brand">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>${syncDot()}</header>
+    <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
+    ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
   window.scrollTo(0, 0);
+}
+
+function applyAppearance() {
+  const a = S.state.settings.appearance || "auto";
+  if (a === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = a;
+  const dark = a === "dark" || (a === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const meta = document.querySelector("meta[name=theme-color]");
+  if (meta) meta.content = dark ? "#0E1411" : "#F3F5F1";
 }
 
 /** Click handler for this screen only: main and the bar are rebuilt by page(), so nothing stacks up. */
@@ -120,7 +138,7 @@ function welcome() {
       <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" placeholder="18,4 or +2.1" required></label>
       <label>Rating<select name="gender"><option value="m">Men's</option><option value="f">Women's</option></select></label></div>
       <button class="btn primary" type="submit">That's me</button></form>
-    <p class="center"><a class="muted small" href="#skipme">Skip for now</a></p></div>`, { back: "" });
+    <p class="center"><a class="muted small" href="#skipme">Skip for now</a></p></div>`, { back: "", brand: true });
   bind(ev => {
     const b = ev.target.closest("[data-act=me]");
     if (b) { S.state.settings.meId = b.dataset.id; S.state.settings.welcomed = true; S.save(); go("#home"); }
@@ -157,16 +175,17 @@ function meCard(me) {
   if (p) {
     const played = p.deltas.map((d, h) => [d, h]).filter(([d]) => d !== null);
     const best = played.length ? played.reduce((a, x) => x[0] < a[0] ? x : a) : null, worst = played.length ? played.reduce((a, x) => x[0] > a[0] ? x : a) : null;
-    lines.push(`<div class="row"><div><div class="muted small">${esc(mine[0].name)} · ${esc(mine[0].date || "")}</div><div class="big">${p.pts} <span class="muted" style="font-size:16px">pts · ${p.splace} of ${last.field}${p.gross !== null ? ` · gross ${p.gross}` : ""}</span></div>
-      ${best ? `<div class="muted small">best hole ${last.labels[best[1]]} (${fmtToPar(best[0])}) · worst hole ${last.labels[worst[1]]} (${fmtToPar(worst[0])})</div>` : ""}</div>
-      <button class="btn small" data-act="my-card" data-rid="${mine[0].id}">Save my card</button></div>`);
+    lines.push(`<div class="muted small" style="margin-top:6px">${esc(mine[0].name)} · ${esc(mine[0].date || "")}</div>
+      <div class="row"><div class="stats"><div><b class="num">${p.pts}</b><small>points</small></div><div><b class="num">${p.splace}<span class="muted" style="font-size:14px">/${last.field}</span></b><small>place</small></div>${p.gross !== null ? `<div><b class="num">${p.gross}</b><small>gross</small></div>` : ""}</div>
+      <button class="btn small" data-act="my-card" data-rid="${mine[0].id}">Save my card</button></div>
+      ${best ? `<div class="muted small" style="margin-top:6px">best hole ${last.labels[best[1]]} (${fmtToPar(best[0])}) · worst hole ${last.labels[worst[1]]} (${fmtToPar(worst[0])})</div>` : ""}`);
   } else lines.push(`<div class="muted small">No finished round yet.</div>`);
   for (const g of S.leagues()) {
     const { S: Sx } = leagueResults(g);
     const row = Sx.rows.find(r => r.id === me.id);
     if (row) lines.push(`<a class="row small" href="#league/${g.id}"><span>${esc(g.name)}</span><span><b>${row.place}.</b> · ${row.counted} pts · ${plural(row.played, "round")}</span></a>`);
   }
-  return `<div class="mecard"><div class="row"><div class="name">${esc(me.name)}</div><div class="muted small">index ${fmtIndex(Number(me.hi))} · <a href="#welcome">not you?</a></div></div>${lines.join("")}</div>`;
+  return `<div class="mecard"><div class="row"><div class="name">My results</div><div class="muted small">index ${fmtIndex(Number(me.hi))} · <a href="#welcome">not you?</a></div></div>${lines.join("")}</div>`;
 }
 
 function home() {
@@ -179,26 +198,28 @@ function home() {
   if (window.__installPrompt) banners.push(`<div class="banner" data-act="install">Install Hagolf on this phone</div>`);
   else if (isIOS() && !isStandalone()) banners.push(`<div class="banner muted">To install: tap Share <span class="ios-share">⎋</span> in Safari, then “Add to Home Screen”.</div>`);
   if (!Y.enabled() && S.needsBackup()) banners.push(`<a class="banner muted" href="#settings">Solo phone: rounds since the last backup. Export a backup when you have a moment.</a>`);
-  const list = rounds.length ? rounds.map(r => {
-    let live = "";
-    if (r.status === "scoring") {
-      const L = liveBoard(r);
-      if (L && L.rows.length && L.through) live = `<div class="live">through ${L.through} · ${L.rows.slice(0, 3).map((x, i) => `${i + 1}. ${esc(x.name.split(" ")[0])} <b>${x.pts}</b>`).join(" · ")}</div>`;
-    }
+  const open = rounds.filter(r => r.status !== "done");
+  const finished = rounds.filter(r => r.status === "done");
+  const liveLine = r => {
+    if (r.status !== "scoring") return "";
+    const L = liveBoard(r);
+    return L && L.rows.length && L.through ? `<div class="live">through ${L.through} · ${L.rows.slice(0, 3).map((x, i) => `${i + 1}. ${esc(x.name.split(" ")[0])} <b>${x.pts}</b>`).join(" · ")}</div>` : "";
+  };
+  const now = open.map(r => `<a class="now" href="${resumeHash(r)}"><div class="k">${r.status === "scoring" ? "Playing now" : "Being set up"}</div><div class="name">${esc(r.name)}</div>
+    <div class="small" style="opacity:.85">${esc(courseTitle(courseBy(r.course) || { name: r.course }))} · ${roundStatus(r)}</div>${liveLine(r)}<span class="cta">${r.status === "scoring" ? "Continue scoring ›" : "Add players ›"}</span></a>`).join("");
+  const list = finished.length ? `<div class="list">${finished.map(r => {
     const lg = S.leaguesOfRound(r.id);
-    return `<a class="card" href="${resumeHash(r)}"><div class="row"><div><div class="name">${esc(r.name)}</div><div class="muted">${esc(r.date || "")} · ${esc(courseTitle(courseBy(r.course) || { name: r.course }))}${lg.length ? ` · ${lg.map(g => esc(g.name)).join(", ")}` : ""}</div></div>
-      <div class="status ${r.status}">${roundStatus(r)}</div></div>${live}</a>`;
-  }).join("") : `<p class="muted center">No rounds yet. Start with a new round.</p>`;
+    return `<a href="${resumeHash(r)}"><div style="min-width:0"><div class="name">${esc(r.name)}</div><div class="muted small">${esc(r.date || "")} · ${esc(courseTitle(courseBy(r.course) || { name: r.course }))}${lg.length ? ` · ${lg.map(g => esc(g.name)).join(", ")}` : ""}</div></div>
+      <span class="pill done">${plural(r.entries.length, "player")}</span></a>`;
+  }).join("")}</div>` : (open.length ? "" : `<p class="muted center">No rounds yet. Start your first one.</p>`);
+  const hour = new Date().getHours(), greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   page("Hagolf", `
+    <div class="hero"><p class="hi">${greet}${me ? `, ${esc(me.name.split(" ")[0])}` : ""}</p><div class="muted small">${Y.enabled() ? `Synced with ${esc(Y.config().label || "your society")}` : "Solo phone"} · ${S.courses().length} courses</div></div>
     ${banners.join("")}
-    ${me ? meCard(me) : `<a class="banner muted" href="#welcome">Say who you are to see your own results here.</a>`}
-    <a class="btn primary big" href="#new">+ New round</a>
-    <h2>Rounds</h2>${list}
-    <nav class="grid3">
-      <a class="tile" href="#leagues">Leagues<small>${S.leagues().length}</small></a>
-      <a class="tile" href="#roster">Players<small>${S.players().length}</small></a>
-      <a class="tile" href="#settings">Settings<small>${Y.enabled() ? (Y.config().label || "synced") : "solo"}</small></a></nav>
-    <p class="muted center small">${S.courses().length} courses · ${DATA.themes.length} themes · version ${DATA.version}</p>`, { back: "" });
+    ${now}
+    <a class="btn primary big" href="#new">+ Start a round</a>
+    ${me ? meCard(me) : `<a class="banner" href="#welcome">Say who you are to see your own results here ›</a>`}
+    ${finished.length ? `<h2>Finished rounds</h2>` : ""}${list}`, { back: "", tabs: "home", brand: true });
   bind(async ev => {
     const b = ev.target.closest("[data-act=my-card]");
     if (b) await myCard(b.dataset.rid);
@@ -224,22 +245,22 @@ function newRound(slug = null) {
   const recent = (S.state.settings.recentCourses || []).map(s => all.find(c => c.slug === s)).filter(Boolean);
   const groups = new Map();
   for (const c of all) { if (!groups.has(c.name)) groups.set(c.name, []); groups.get(c.name).push(c); }
-  const row = c => `<button class="card row course" data-act="pick-course" data-slug="${esc(c.slug)}" data-q="${esc((c.name + " " + c.loop).toLowerCase())}">
-    <div><div class="name">${esc(c.loop || c.name)}</div><div class="muted">${c.n} holes · par ${c.course_par} · tees: ${Object.keys(c.tees).join(", ")}${c.source === "phone" ? " · added on a phone" : ""}</div></div><span class="chev">›</span></button>`;
+  const row = c => `<button class="course" data-act="pick-course" data-slug="${esc(c.slug)}" data-q="${esc((c.name + " " + c.loop).toLowerCase())}">
+    <div><div class="name">${esc(c.loop || c.name)}</div><div class="muted small">${c.n} holes · par ${c.course_par} · ${Object.keys(c.tees).join(", ")} tees${c.source === "phone" ? " · added on a phone" : ""}</div></div><span class="chev">›</span></button>`;
+  const group = (name, cs) => `<h2>${esc(name)}</h2><div class="list">${cs.map(row).join("")}</div>`;
   const body = `
     <input id="q" class="search" placeholder="Search course or loop" autocomplete="off">
-    <div id="courses">${recent.length ? `<h2>Recent</h2>${recent.map(row).join("")}` : ""}
-    ${[...groups].map(([name, cs]) => `<h2>${esc(name)}</h2>${cs.map(row).join("")}`).join("")}</div>
+    <div id="courses">${recent.length ? group("Recent", recent) : ""}
+    ${[...groups].map(([name, cs]) => group(name, cs)).join("")}</div>
     <p class="center"><a class="muted small" href="#newcourse">Course not here? Add one</a></p>`;
-  page("Pick a course", `<a class="card row" href="#scan"><div><div class="name">Scan an old scorecard</div><div class="muted small">Photograph a paper card; the scores are read for you to check</div></div><span class="chev">›</span></a>` + body);
+  page("Where are you playing?", body + `<div class="list" style="margin-top:20px"><a href="#scan"><div><div class="name">Scan an old scorecard</div><div class="muted small">Photograph a paper card; the scores are read for you to check</div></div><span class="chev">›</span></a></div>`);
   const q = document.getElementById("q");
   q.addEventListener("input", () => {
     const s = q.value.toLowerCase().trim();
     document.querySelectorAll("#courses .course").forEach(b => { b.style.display = !s || b.dataset.q.includes(s) ? "" : "none"; });
     document.querySelectorAll("#courses h2").forEach(h => {
-      let el = h.nextElementSibling, any = false;
-      while (el && el.tagName !== "H2") { if (el.style.display !== "none") any = true; el = el.nextElementSibling; }
-      h.style.display = any ? "" : "none";
+      const list = h.nextElementSibling, any = list && [...list.children].some(el => el.style.display !== "none");
+      h.style.display = any ? "" : "none"; if (list) list.style.display = any ? "" : "none";
     });
   });
 }
@@ -251,16 +272,16 @@ function roundForm(slug) {
   const date = S.today();
   const last = S.state.settings.lastLeague;
   page("New round", `
-    <div class="card"><div class="name">${esc(courseTitle(c))}</div><div class="muted">${c.n} holes · par ${c.course_par} · ${dflt} tees · 100% allowance</div>
+    <div class="card"><div class="row"><div><div class="name">${esc(courseTitle(c))}</div><div class="muted small">${c.n} holes · par ${c.course_par}</div></div><a class="btn small" href="#new">Change</a></div>
       ${(c.notes || []).length ? `<div class="warn small" style="margin-top:6px">${esc(c.notes.join("; "))}</div>` : ""}</div>
-    <details class="card"><summary>Options: name, date, tee, allowance</summary>
-      <label>Name of the round<input id="rname" value="${esc((c.loop || c.name) + " " + date)}"></label>
-      <label>Date<input id="rdate" type="date" value="${date}"></label>
-      <label>Default tee (each player can pick their own)<select id="rtee">${tees.map(t => `<option ${t === dflt ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+    <div class="card">
+      <label style="margin-top:0">Name of the round<input id="rname" value="${esc((c.loop || c.name) + " " + date)}"></label>
+      <div class="two"><label>Date<input id="rdate" type="date" value="${date}"></label>
+      <label>Tee <span class="muted">(per player later)</span><select id="rtee">${tees.map(t => `<option ${t === dflt ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
       <label>Handicap allowance<select id="rallow"><option value="100">100% (society default)</option><option value="95">95% (WHS individual Stableford)</option><option value="90">90%</option></select></label>
-    </details>
+    </div>
     ${S.leagues().length ? `<div class="card checks"><h2>Counts for</h2>${S.leagues().map(g => `<label><input type="checkbox" name="lg" value="${g.id}" ${g.id === last ? "checked" : ""}> ${esc(g.name)}</label>`).join("")}</div>` : ""}`,
-  { back: "#new", bar: `<button class="btn primary" data-act="create-round" data-slug="${esc(slug)}">Start ›</button>` });
+  { back: "#new", bar: `<button class="btn primary" data-act="create-round" data-slug="${esc(slug)}">Next: who is playing ›</button>` });
 }
 
 // ---------------------------------------------------------------- players in a round
@@ -278,19 +299,19 @@ function players(rid) {
     let hc = "", missing = false;
     try { const h = handicapFor(c, { ...e, courseHandicap: e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee) }, r.defaultTee, r.allowance); hc = `course hcp ${fmtHcp(h.ch)}`; }
     catch (err) { hc = `<span class="warn">${esc(err.message)}</span>`; missing = true; }
-    return `<div class="card"><div class="row"><div><div class="name">${esc(e.name)}</div><div class="muted small">index ${fmtIndex(Number(e.hi))} · ${e.gender === "f" ? "women's" : "men's"} rating · ${hc}</div></div>
+    return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}</div><div class="muted small">index ${fmtIndex(Number(e.hi))} · ${e.gender === "f" ? "women's" : "men's"} rating · ${hc}</div></div>
         <button class="x" data-act="remove-entry" data-i="${i}" aria-label="Remove">×</button></div>
       <div class="entry-tools">
-        <select data-act="tee" data-i="${i}">${tees.map(t => `<option ${t === e.tee ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
-        ${showGroups ? `<span class="seg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</span>` : ""}
+        <select data-act="tee" data-i="${i}" aria-label="Tee">${tees.map(t => `<option ${t === e.tee ? "selected" : ""}>${esc(t)} tee</option>`).join("")}</select>
+        ${showGroups ? `<span class="seg-label">group</span><span class="seg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</span>` : ""}
         <select data-act="from" data-i="${i}" title="Joins at hole"><option value="1" ${(e.fromHole || 1) === 1 ? "selected" : ""}>from hole 1</option>${c.par.slice(1).map((_, k) => `<option value="${k + 2}" ${(e.fromHole || 1) === k + 2 ? "selected" : ""}>joins at hole ${c.first_hole + k + 1}</option>`).join("")}</select>
-        ${missing ? `<input data-act="pch" data-i="${i}" inputmode="numeric" placeholder="course hcp from club table" style="width:auto;margin:0;padding:6px 10px;font-size:14px">` : ""}
+        ${missing ? `<input data-act="pch" data-i="${i}" inputmode="numeric" placeholder="course hcp (club table)">` : ""}
       </div></div>`;
   }).join("");
   const body = `
-    <div class="muted small">${esc(r.name)} · ${esc(courseTitle(c))} · tap names to add them${showGroups ? " · 1 2 3 4 = playing group" : ""}</div>
-    ${rows}
-    ${roster.length ? `<h2>Tap to add</h2><div class="chips-wrap">${roster.map(p => `<button class="pchip ${me && p.id === me.id ? "on" : ""}" data-act="add-roster" data-id="${p.id}">${esc(p.name)}<small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
+    <h2>${plural(r.entries.length, "player")} in this round</h2>
+    ${rows || `<p class="muted small">Nobody yet. Tap names below to add them.</p>`}
+    ${roster.length ? `<h2>Tap to add</h2><div class="chips-wrap">${roster.map(p => `<button class="pchip ${me && p.id === me.id ? "on" : ""}" data-act="add-roster" data-id="${p.id}"><span><span class="plus">+</span>${esc(p.name)}</span><small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
     <form id="addf" class="card form ${roster.length || r.entries.length ? "" : "open"}">
       <h2>Someone new</h2>
       <label>Name<input id="pname" autocomplete="off" autocapitalize="words" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
@@ -306,7 +327,7 @@ function players(rid) {
   const bar = r.entries.length
     ? `<button class="btn primary" data-act="start-scoring" data-rid="${rid}">${r.status === "setup" ? "Start scoring ›" : "Back to scoring ›"}</button>`
     : `<button class="btn" disabled>Add players to start</button>`;
-  page("Who is playing", body, { back: "#home", bar });
+  page("Who is playing?", body, { back: "#home", bar, sub: `${r.name} · ${courseTitle(c)}` });
   bind(ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
@@ -358,13 +379,14 @@ function scoreRow(r, c, e, i, h) {
   if ((e.fromHole || 1) - 1 > h) return `<div class="prow" data-i="${i}"><div class="pinfo"><div class="name">${esc(e.name)}</div><div class="muted small">joins at hole ${c.first_hole + e.fromHole - 1}</div></div><div></div><div class="muted center">—</div><div></div></div>`;
   const v = e.scores[h];
   const st = info ? info.strokes[h] : 0;
-  let detail = st ? plural(st, "stroke") : "no strokes";
-  if (v !== null && v !== 0 && info) detail += ` · net ${v - st} · ${plural(stableford(v, par, st), "pt")}`;
   const entered = e.scores.filter(x => x !== null).length;
-  const total = entered ? ` · ${sum(e.scores.filter(x => x))} after ${entered}` : "";
+  let ptsSoFar = 0;
+  if (info) e.scores.forEach((x, k) => { if (x) ptsSoFar += stableford(x, info.par[k], info.strokes[k]); });
+  const detail = `${st ? plural(st, "stroke") : "no strokes"}${entered ? ` · ${sum(e.scores.filter(x => x))} after ${entered}` : ""}`;
   const cls = v === null ? "empty" : v === 0 ? "pick" : ["under", "par", "bogey", "double"][outcome(v - par)];
+  const badge = v !== null && v !== 0 && info ? `<span class="pts">${plural(stableford(v, par, st), "pt")}${entered > 1 ? ` · ${ptsSoFar} total` : ""}</span>` : (entered ? `<span class="pts">${plural(ptsSoFar, "pt")}</span>` : "");
   return `<div class="prow" data-i="${i}">
-    <div class="pinfo"><div class="name">${esc(e.name)}</div><div class="muted small">${detail}${total}</div></div>
+    <div class="pinfo"><div class="name">${esc(e.name)}</div><div class="muted small">${detail}</div>${badge}</div>
     <button class="sbtn" data-act="dec" data-i="${i}" aria-label="minus">−</button>
     <button class="sval ${cls}" data-act="pickup" data-i="${i}" title="Tap to mark picked up">${v === null ? "–" : v === 0 ? "NR" : v}</button>
     <button class="sbtn" data-act="inc" data-i="${i}" aria-label="plus">+</button></div>`;
@@ -396,15 +418,16 @@ function score(rid, hArg) {
   const body = `
     <div class="strip">${stripHtml(r, c, rid, h)}</div>
     ${groups.length > 1 ? `<div class="filter"><button data-act="gf" data-g="0" class="${gf === 0 ? "on" : ""}">All</button>${groups.map(g => `<button data-act="gf" data-g="${g}" class="${gf === g ? "on" : ""}">Group ${g}</button>`).join("")}</div>` : ""}
-    <div class="holehead"><div class="hnum">${c.first_hole + h}</div>
-      <div><div class="name">Par ${c.par[h]} · SI ${c.stroke_index[h]}${metres ? ` · ${metres[h]} m` : ""}</div>
-      <div class="muted small">${esc(r.name)} · first tap on − or + enters par · tap the score to mark a pick-up</div></div></div>
-    <div id="rows">${shown.map(([e, i]) => scoreRow(r, c, e, i, h)).join("")}</div>
+    <div class="holehead"><div class="hnum num">${c.first_hole + h}</div>
+      <div><div class="name">Par ${c.par[h]}${metres ? ` · ${metres[h]} m` : ""}</div>
+      <div class="muted small">Stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${n}</div></div></div>
+    <div class="card" style="padding:4px 14px" id="rows">${shown.map(([e, i]) => scoreRow(r, c, e, i, h)).join("")}</div>
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}
-    <p class="center"><a class="muted small" href="#players/${rid}">Add or remove players</a></p>`;
+    <p class="hint">First tap on − or + enters par. Tap the score itself for a pick-up.</p>
+    <p class="center"><a class="btn small" href="#players/${rid}">Add or remove players</a></p>`;
   const bar = (h === 0 ? `<a class="btn" href="#players/${rid}">‹ Players</a>` : `<a class="btn" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`) +
     (h < n - 1 ? `<a class="btn primary" href="#score/${rid}/${h + 1}">Hole ${c.first_hole + h + 1} ›</a>` : `<a class="btn primary" href="#review/${rid}">Review ›</a>`);
-  page(`Hole ${c.first_hole + h} of ${n}`, body, { back: "#home", bar });
+  page(esc(r.name), body, { back: "#home", bar, sub: courseTitle(c) });
   const stripEl = document.querySelector(".strip"), cur = document.querySelector(".hchip.cur");
   if (stripEl && cur) stripEl.scrollLeft = cur.offsetLeft - stripEl.clientWidth / 2 + cur.clientWidth / 2;
   const refresh = i => {  // one row and the strip, not the whole screen: the thumb stays where it was
@@ -470,10 +493,10 @@ function review(rid) {
   const rows = done.map(([p, e]) => `
     <div class="card pl ${ui.expanded === e.playerId ? "open" : ""}">
       <button class="row plain" data-act="expand" data-pid="${e.playerId}">
-        <div><div class="name">${p.splace}. ${esc(p.name)}${p.penalty_total ? ` <span class="pen">pen +${p.penalty_total}</span>` : ""}</div>
-          <div class="muted small">hcp ${fmtHcp(p.ph)} · ${esc(p.tee)}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.picked.some(Boolean) ? " · no return" : ""}</div></div>
-        <div class="nums"><span><b>${p.gross === null ? "NR" : p.gross}</b><small>gross${p.topar !== null ? " " + fmtToPar(p.topar) : ""}</small></span>
-          <span><b>${p.net === null ? "NR" : p.net}</b><small>net</small></span><span class="acc"><b>${p.pts}</b><small>pts</small></span></div></button>
+        <div class="who"><span class="pos ${p.splace === 1 ? "p1" : ""}">${p.splace}</span><div><div class="name">${esc(p.name)}${p.penalty_total ? ` <span class="pen">pen +${p.penalty_total}</span>` : ""}</div>
+          <div class="muted small">hcp ${fmtHcp(p.ph)} · ${esc(p.tee)}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.picked.some(Boolean) ? " · no return" : ""}</div></div></div>
+        <div class="nums"><span><b class="num">${p.gross === null ? "NR" : p.gross}</b><small>gross${p.topar !== null ? " " + fmtToPar(p.topar) : ""}</small></span>
+          <span><b class="num">${p.net === null ? "NR" : p.net}</b><small>net</small></span><span class="acc"><b class="num">${p.pts}</b><small>pts</small></span></div></button>
       ${ui.expanded === e.playerId ? `<div class="chips">${chips(e)}</div>${editor(e)}${penalties(e)}` : ""}</div>`).join("");
   const missing = unfinished.map(e => {
     const holes = e.scores.map((v, i) => v === null && (e.fromHole || 1) - 1 <= i ? c.first_hole + i : null).filter(x => x !== null);
@@ -481,16 +504,17 @@ function review(rid) {
       <a class="btn small" href="#score/${rid}/${holes[0] - c.first_hole}">Enter</a></div>`;
   }).join("");
   const lg = S.leaguesOfRound(rid);
-  const body = `<div class="muted small">${esc(r.name)} · ${esc(courseTitle(c))} · tap a player, then a hole, to change a score</div>
-    <div class="card row"><div class="small">Counts for: <b>${lg.length ? lg.map(g => esc(g.name)).join(", ") : "no league"}</b></div><a class="btn small" href="#attach/${rid}">Change</a></div>
-    <details class="card"><summary class="small">Round details: ${esc(r.name)} · ${esc(r.date || "no date")}</summary>
-      <form id="rdet"><label>Name<input name="name" value="${esc(r.name)}"></label><label>Played on<input name="date" type="date" value="${esc(r.date || "")}"></label>
-      <button class="btn small" type="submit">Save details</button></form></details>
+  const body = `
     ${missing ? `<h2>Not finished</h2>${missing}` : ""}
-    ${rows ? `<h2>Stableford order</h2>${rows}` : `<p class="muted center">No complete scorecards yet.</p>`}`;
+    ${rows ? `<h2>Stableford order</h2><p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score.</p>${rows}` : `<p class="muted center">No complete scorecards yet.</p>`}
+    <h2>Round</h2>
+    <div class="card row"><div class="small">Counts for <b>${lg.length ? lg.map(g => esc(g.name)).join(", ") : "no league"}</b></div><a class="btn small" href="#attach/${rid}">Change</a></div>
+    <details class="card"><summary class="small">Name and date: ${esc(r.name)} · ${esc(r.date || "no date")}</summary>
+      <form id="rdet"><label>Name<input name="name" value="${esc(r.name)}"></label><label>Played on<input name="date" type="date" value="${esc(r.date || "")}"></label>
+      <button class="btn small" type="submit">Save details</button></form></details>`;
   const bar = `<a class="btn" href="#score/${rid}/${n - 1}">‹ Scoring</a>
     <button class="btn primary" data-act="save-round" ${M.field ? "" : "disabled"}>All correct, save ›</button>`;
-  page("Check the scores", body, { back: `#score/${rid}/${S.holeOf(r)}`, bar });
+  page("Check the scores", body, { back: `#score/${rid}/${S.holeOf(r)}`, bar, sub: `${r.name} · ${courseTitle(c)}` });
   document.getElementById("rdet").addEventListener("submit", ev => {
     ev.preventDefault();
     r.name = ev.target.name.value.trim() || r.name;
@@ -569,7 +593,8 @@ function graphics(rid) {
   const themes = (S.state.settings.themes || ["navy"]).slice(0, 1);
   const leagues = S.leaguesOfRound(rid);
   const body = `
-    <div class="muted small">${esc(r.name)} · ${plural(M.field, "player")} on the boards${M.unfinished.length ? ` · ${M.unfinished.length} unfinished left out` : ""} · <a href="#review/${rid}">edit scores</a> · <a href="#attach/${rid}">${leagues.length ? "counts for " + leagues.map(g => esc(g.name)).join(", ") : "add to a league"}</a></div>
+    <div class="list"><a href="#review/${rid}"><div><div class="name">Scores</div><div class="muted small">${plural(M.field, "player")} on the boards${M.unfinished.length ? ` · ${M.unfinished.length} unfinished left out` : ""}</div></div><span class="chev">›</span></a>
+      <a href="#attach/${rid}"><div><div class="name">Leagues</div><div class="muted small">${leagues.length ? "counts for " + leagues.map(g => esc(g.name)).join(", ") : "not in a league yet"}</div></div><span class="chev">›</span></a></div>
     <h2>Which graphics</h2>
     <div class="card checks">
       <label><input type="checkbox" name="g" value="stbl" checked> Stableford leaderboard</label>
@@ -583,7 +608,7 @@ function graphics(rid) {
     <div class="themes">${themeChips(themes)}</div>
     <div id="out"></div>`;
   const bar = `<button class="btn primary" data-act="generate">Generate images</button>`;
-  page("Graphics", body, { back: "#home", bar });
+  page("Graphics", body, { back: "#home", bar, sub: r.name });
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
@@ -694,19 +719,19 @@ function roster() {
   const ps = S.players().sort((a, b) => a.name.localeCompare(b.name));
   const rows = ps.map(p => {
     const k = S.roundsOf(p.id).length;
-    return `<details class="card pl"><summary class="row plain"><div><div class="name">${esc(p.name)}</div><div class="muted small">index ${fmtIndex(Number(p.hi))} · ${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(k, "round")}</div></div><span class="chev">›</span></summary>
+    return `<details class="card pl"><summary class="row plain"><div><div class="name">${esc(p.name)}</div><div class="muted small">index ${fmtIndex(Number(p.hi))} · ${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(k, "round")}</div></div></summary>
       <form class="form open" data-id="${p.id}">
         <label>Name<input name="name" value="${esc(p.name)}" autocapitalize="words" required></label>
         <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" value="${fmtIndex(Number(p.hi))}"></label>
         <label>Rating<select name="gender"><option value="m" ${p.gender !== "f" ? "selected" : ""}>Men's</option><option value="f" ${p.gender === "f" ? "selected" : ""}>Women's</option></select></label></div>
         <div class="two"><button class="btn primary" type="submit">Save</button>${k || !organiser() ? "" : `<button class="btn danger" type="button" data-act="del-player" data-id="${p.id}">Delete</button>`}</div></form></details>`;
   }).join("");
-  page("Players", `<p class="muted small">Everyone who has played, on every phone. The handicap index is the one they last played with; it is prefilled when you add them to a round. A renamed player keeps their history.</p>
+  page("Players", `<p class="muted small" style="margin:6px 4px 0">Everyone who has played, on every phone. Tap a name to edit. The index shown is the one they last played with.</p>
     ${rows || `<p class="muted center">No players yet.</p>`}
     <form id="newp" class="card form open"><h2>Add a player</h2><label>Name<input name="name" autocapitalize="words" required></label>
       <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" placeholder="18,4" required></label>
       <label>Rating<select name="gender"><option value="m">Men's</option><option value="f">Women's</option></select></label></div>
-      <button class="btn primary" type="submit">Add</button></form>`);
+      <button class="btn primary" type="submit">Add</button></form>`, { back: "", tabs: "players" });
   app.querySelectorAll("form.form[data-id]").forEach(f => f.addEventListener("submit", ev => {
     ev.preventDefault();
     const p = S.state.players.find(x => x.id === f.dataset.id);
@@ -730,12 +755,18 @@ function roster() {
 
 // ---------------------------------------------------------------- leagues
 function leagues() {
-  const rows = S.leagues().map(g => `<a class="card row" href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${plural(S.leagueRoundIds(g.id).length, "round")}${g.bestN ? ` · best ${g.bestN} count` : ""}${g.createdBy ? ` · by ${esc(g.createdBy)}` : ""}</div></div><span class="chev">›</span></a>`).join("");
-  page("Leagues", `<p class="muted small">A league is a running Stableford table over the rounds added to it, with head-to-heads between any two players. Anyone can make one; every phone sees it.</p>
-    ${rows || `<p class="muted center">No leagues yet.</p>`}
+  const me = S.me();
+  const rows = S.leagues().map(g => {
+    const { S: Sx } = leagueResults(g);
+    const mine = me ? Sx.rows.find(r => r.id === me.id) : null;
+    return `<a href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${plural(S.leagueRoundIds(g.id).length, "round")}${g.bestN ? ` · best ${g.bestN} count` : ""}${Sx.rows[0] ? ` · leader ${esc(Sx.rows[0].name)}` : ""}</div></div>
+      ${mine ? `<span class="pill done">${mine.place}. · ${mine.counted} pts</span>` : `<span class="chev">›</span>`}</a>`;
+  }).join("");
+  page("Leagues", `<p class="muted small" style="margin:6px 4px 0">A running Stableford table over the rounds you add to it, with head-to-heads. Anyone can make one; every phone sees it.</p>
+    ${rows ? `<div class="list">${rows}</div>` : `<p class="muted center">No leagues yet.</p>`}
     <form id="newg" class="card form open"><h2>New league</h2><label>Name<input name="name" placeholder="e.g. Apeliotes 2026" required></label>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="0"></label>
-      <button class="btn primary" type="submit">Create</button></form>`);
+      <button class="btn primary" type="submit">Create</button></form>`, { back: "", tabs: "leagues" });
   document.getElementById("newg").addEventListener("submit", ev => {
     ev.preventDefault();
     const g = S.createLeague(ev.target.name.value.trim() || "League", ev.target.bestN.value, S.me() ? S.me().name : null);
@@ -762,8 +793,8 @@ function league(gid) {
   const attached = new Set(S.leagueRoundIds(gid));
   const nameOf = id => { for (const M of Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
   const me = S.me();
-  const table = Sx.rows.length ? `<table class="stand"><thead><tr><th>Pos</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Total"}</th></tr></thead>
-    <tbody>${Sx.rows.map(r => `<tr class="${me && r.id === me.id ? "acc" : ""}"><td>${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`
+  const table = Sx.rows.length ? `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Total"}</th></tr></thead>
+    <tbody>${Sx.rows.map(r => `<tr class="${me && r.id === me.id ? "acc" : ""}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`
     : `<p class="muted center">No finished rounds in this league yet. Add some below.</p>`;
   const h = ui.h2h[gid] || {};
   const a = members.includes(h.a) ? h.a : (me && members.includes(me.id) ? me.id : members[0]);
@@ -780,7 +811,7 @@ function league(gid) {
   const roundList = S.rounds().filter(r => r.status === "done").map(r => `<label><input type="checkbox" data-act="toggle-round" data-rid="${r.id}" ${attached.has(r.id) ? "checked" : ""}> ${esc(r.name)}<span class="muted"> · ${esc(r.date || "")} · ${plural(r.entries.length, "player")}</span></label>`).join("");
   page(g.name, `
     <h2>Standings</h2>${table}
-    <a class="btn primary ${Sx.rows.length ? "" : "disabled"}" href="#leagueposter/${gid}">Standings poster ›</a>
+    <a class="btn ${Sx.rows.length ? "" : "disabled"}" href="#leagueposter/${gid}" style="margin-top:10px">Make a standings poster ›</a>
     <h2>Head to head</h2><div class="card">${h2h}</div>
     <h2>Players in this league</h2>
     <div class="card"><div class="muted small">${members.length ? members.map(m => esc(nameOf(m))).sort().join(" · ") : "nobody yet"}</div>
@@ -789,7 +820,8 @@ function league(gid) {
       <button class="btn small" data-act="merge" style="margin-top:8px">Merge into the first name</button>` : ""}</div>
     <h2>Rounds in this league</h2>
     <div class="card checks">${roundList || `<p class="muted">No finished rounds yet.</p>`}</div>
-    <form id="gform" class="card form open"><label>League name<input name="name" value="${esc(g.name)}"></label>
+    <h2>League settings</h2>
+    <form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>`, { back: "#leagues" });
   bind(ev => {
@@ -1004,10 +1036,12 @@ function settings() {
   const invite = Y.enabled() ? Y.joinLink(base, false) : null;
   const inviteOrg = Y.enabled() ? Y.joinLink(base, true) : null;
   const phoneCourses = S.state.courses.filter(c => !c.deleted && (c.source || "phone") === "phone");
+  const appearance = S.state.settings.appearance || "auto";
   page("Settings", `
     <h2>This phone</h2>
     <div class="card"><div class="row"><div><div class="name">${me ? esc(me.name) : "Nobody yet"}</div><div class="muted small">${me ? "your results show on the home screen" : "say who you are for a personal home screen"}</div></div><a class="btn small" href="#welcome">Change</a></div>
-      <label class="checks" style="margin-top:10px"><input type="checkbox" id="orgtoggle" ${organiser() ? "checked" : ""}> Organiser on this phone <span class="muted">&nbsp;(can delete rounds and leagues)</span></label></div>
+      <label class="checks" style="margin-top:10px"><input type="checkbox" id="orgtoggle" ${organiser() ? "checked" : ""}> Organiser on this phone <span class="muted">&nbsp;(can delete rounds and leagues)</span></label>
+      <label>Appearance<select id="appearance"><option value="auto" ${appearance === "auto" ? "selected" : ""}>Follow the phone</option><option value="light" ${appearance === "light" ? "selected" : ""}>Light</option><option value="dark" ${appearance === "dark" ? "selected" : ""}>Dark</option></select></label></div>
     <h2>Shared database</h2>
     <div class="card"><div class="name">${esc(status)}</div>
       ${invite ? `<p class="muted small">Invite another phone: let them scan this code or send them the link. It connects them to ${esc(cfg.label || "this database")} and asks who they are.</p>
@@ -1015,14 +1049,15 @@ function settings() {
         <div class="two"><button class="btn" data-act="share-link" data-link="${esc(invite)}">Share join link</button><button class="btn" data-act="share-link" data-link="${esc(inviteOrg)}">Organiser link</button></div>` : ""}
       <details style="margin-top:10px"><summary class="muted small">${DATA.sync ? "Connection details (only change to use another database)" : "Connect to a database"}</summary>
       <form id="syncf">
-        <label>Supabase project URL<input name="url" value="${esc(cfg.url)}" placeholder="https://xxxx.supabase.co" autocapitalize="off" autocorrect="off"></label>
-        <label>Anon key<input name="anonKey" value="${esc(cfg.anonKey)}" placeholder="eyJ…" autocapitalize="off" autocorrect="off"></label>
+        <label>Database address<input name="url" value="${esc(cfg.url)}" placeholder="https://hagolf.….workers.dev" autocapitalize="off" autocorrect="off"></label>
+        <label>Society key<input name="anonKey" value="${esc(cfg.anonKey)}" placeholder="…" autocapitalize="off" autocorrect="off"></label>
         <label>Name of the society<input name="label" value="${esc(cfg.label || "")}" placeholder="e.g. Apeliotes"></label>
         <div class="two"><button class="btn primary" type="submit">Test and save</button><button class="btn" type="button" data-act="sync-now">Sync now</button></div>
         ${DATA.sync && !Y.isDefault() ? `<button class="btn small" type="button" data-act="sync-default">Back to the built-in connection</button>` : ""}
       </form></details></div>
     <h2>Courses</h2>
-    <div class="card"><div class="muted small">${S.courses().length} courses; ${plural(phoneCourses.length, "course")} added on phones${phoneCourses.length ? ": " + phoneCourses.map(c => esc(c.data.name)).join(", ") : ""}.</div>
+    <div class="card"><div class="muted small">${S.courses().length} courses, ${plural(phoneCourses.length, "course")} added on phones.</div>
+      ${phoneCourses.map(c => `<div class="kv"><span>${esc(courseTitle(c.data))}</span>${organiser() ? `<button class="btn small danger" data-act="del-course" data-slug="${esc(c.slug)}">Remove</button>` : `<span class="muted small">added on a phone</span>`}</div>`).join("")}
       <a class="btn small" href="#newcourse" style="margin-top:8px">Add a course</a></div>
     ${S.state.quarantine.length ? `<h2>Refused by the server</h2><div class="card"><div class="muted small">${S.state.quarantine.slice(-5).map(q => `${esc(q.table)} · ${esc(q.reason)}`).join("<br>")}</div>
       <button class="btn small danger" data-act="clear-q" style="margin-top:8px">Clear this list</button></div>` : ""}
@@ -1031,8 +1066,10 @@ function settings() {
       <div class="two"><button class="btn primary" data-act="export">Export backup</button><label class="btn">Import backup<input type="file" id="imp" accept="application/json,.json" hidden></label></div></div>
     <h2>For the desktop kit</h2>
     <p class="muted small">A round as tournament.yaml: put it in tournaments/&lt;slug&gt;/ on the computer and run python golf.py render.</p>
-    ${done.map(r => `<div class="card row"><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(r.date || "")}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<p class="muted center">No finished rounds yet.</p>`}
-    ${organiser() ? `<h2>Danger zone</h2>${S.rounds().map(r => `<div class="card row"><div><div class="name">${esc(r.name)}</div><div class="muted small">${roundStatus(r)}</div></div><button class="btn small danger" data-act="del-round" data-rid="${r.id}">Delete</button></div>`).join("")}` : ""}`);
+    <div class="list">${done.map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(r.date || "")}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
+    ${organiser() ? `<h2>Delete a round</h2><div class="list">${S.rounds().map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${roundStatus(r)}</div></div><button class="btn small danger" data-act="del-round" data-rid="${r.id}">Delete</button></div>`).join("") || `<div class="muted small">No rounds.</div>`}</div>` : ""}
+    <p class="foot">Hagolf ${DATA.version} · ${S.courses().length} courses · ${DATA.themes.length} themes</p>`, { back: "", tabs: "settings" });
+  document.getElementById("appearance").addEventListener("change", ev => { S.setSetting("appearance", ev.target.value); applyAppearance(); });
   if (invite && window.qrcode) {
     try {
       const q = window.qrcode(0, "M"); q.addData(invite); q.make();
@@ -1071,6 +1108,12 @@ function settings() {
     if (b.dataset.act === "yaml") {
       const r = S.getRound(b.dataset.rid);
       await saveFiles([new File([S.toYAML(r)], `${slugFile(r.name).toLowerCase()}-tournament.yaml`, { type: "text/plain" })], r.name);
+    }
+    if (b.dataset.act === "del-course") {
+      const c = S.state.courses.find(x => x.slug === b.dataset.slug);
+      const used = S.rounds().filter(r => r.course === b.dataset.slug).length;
+      if (used) return toast(`${plural(used, "round")} use this course; delete those first`);
+      if (confirm(`Remove the course ${courseTitle(c.data)} on every phone?`)) { S.removeCourse(b.dataset.slug); settings(); }
     }
     if (b.dataset.act === "del-round") {
       const r = S.getRound(b.dataset.rid);
@@ -1154,5 +1197,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   }).catch(e => console.warn("sw", e));
   navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());
 }
+applyAppearance();
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyAppearance);
 Y.start();
 route();

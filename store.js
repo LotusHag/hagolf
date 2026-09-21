@@ -247,6 +247,15 @@ export function addCourse(slug, data) {
   return c;
 }
 
+/** Soft-deletes a course added on a phone; kit courses stay (they come from the course files). */
+export function removeCourse(slug) {
+  const c = state.courses.find(x => x.slug === slug);
+  if (!c) return;
+  c.deleted = true;
+  touch("courses", c, slug);
+  save();
+}
+
 export function noteRecentCourse(slug) {
   const rc = [slug, ...(state.settings.recentCourses || []).filter(x => x !== slug)].slice(0, 5);
   state.settings.recentCourses = rc;
