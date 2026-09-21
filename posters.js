@@ -263,16 +263,19 @@ export function standingsPoster(S, group, T, kind = "stableford") {
   } else if (kind === "match" || kind === "soccer") {
     const maxPts = Math.max(1, ...rows.map(r => r.points));
     const scaleMax = 5 * Math.ceil((maxPts + 1) / 5);
-    const w = S.win ?? (kind === "soccer" ? 3 : 2), d = S.draw ?? 1;
+    const w = S.win ?? (kind.startsWith("soccer") ? 3 : 2), d = S.draw ?? 1;
+    const basis = S.basis === "points" ? "the higher Stableford points" : "the lower net score";
     cols = [pos, col("Player", 1.15, 4.2, dName, "left"),
       num("P", 4.2, 4.8, r => String(r.played)), num("W", 4.9, 5.5, r => String(r.won)),
       num("D", 5.6, 6.2, r => String(r.drawn)), num("L", 6.3, 6.9, r => String(r.lost)),
       num("Holes up", 7.0, 7.85, r => (r.up > 0 ? "+" : "") + r.up),
       col("Pts", 7.95, 8.7, dVal(r => String(r.points), 22, (r, T) => T.ACCENT, "display"), "center"),
       col(`Points, 0 to ${scaleMax}`, 8.9, 9.95, pointsMeter(scaleMax, null, "points"), "left")];
-    right = `${w} points a win, ${d} a draw\nLeader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
-    foot = `Every pair of league players who shared a round played a match on net score, hole by hole; a hole only one of them ` +
-      `returned goes to the other. ${w} points for winning a match, ${d} for halving it. Holes up is the running margin across every match.` + onlyMembers;
+    right = `${w} points a win, ${d} a draw  ·  ${S.basis === "points" ? "Stableford" : "net strokes"}
+Leader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
+    foot = `Every pair of league players who shared a round played a match, hole by hole, each hole going to ${basis}; ` +
+      `a hole only one of them returned goes to the other. ${w} points for winning a match, ${d} for halving it. ` +
+      `Holes up is the running margin across every match.` + onlyMembers;
   } else if (kind === "gp") {
     const maxPts = Math.max(1, ...rows.map(r => r.counted));
     const scaleMax = 25 * Math.ceil((maxPts + 1) / 25);

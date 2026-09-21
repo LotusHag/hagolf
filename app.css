@@ -101,9 +101,11 @@ button { font: inherit; color: inherit; }
 .now .live { color: inherit; opacity: .95; margin-top: 8px; font-size: 14px; }
 .now .live b { color: var(--gold); }
 .now .cta { display: inline-block; margin-top: 12px; background: rgba(255,255,255,.18); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 14px; }
-.mecard { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; margin: 10px 0; box-shadow: var(--shadow); }
+/* display:block matters: the last-round card is an <a>, and an inline one fragments its own background */
+.mecard { display: block; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; margin: 10px 0; box-shadow: var(--shadow); color: var(--ink); }
 .mecard .big { font-size: 40px; font-weight: 600; line-height: 1; }
 .mecard .row { margin-top: 8px; }
+.mecard .row:first-child { margin-top: 0; }
 .stats { display: flex; gap: 18px; margin-top: 8px; }
 .stats div { display: flex; flex-direction: column; }
 .stats b { font-size: 26px; line-height: 1.1; } .stats small { color: var(--ink3); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
@@ -227,11 +229,58 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .stand .l { text-align: left; padding-left: 12px; } .stand td.acc { font-weight: 700; font-size: 17px; color: var(--green); padding-right: 12px; }
 .stand tr.acc td { background: var(--green-soft); }
 .stand td.pos { color: var(--ink3); font-weight: 700; padding-left: 12px; text-align: left; }
-.h2h { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; text-align: center; margin: 14px 0 6px; }
-.h2h b { display: block; font-size: 40px; line-height: 1; font-weight: 600; } .h2h small { color: var(--ink3); font-size: 12px; }
-.h2h .mid b { font-size: 22px; color: var(--ink3); }
-.h2hrow { padding: 8px 0; border-top: 1px solid var(--line); }
-.h2hrow b { font-size: 15px; }
+
+/* ---- head to head: two players, one green and one charcoal, every number as a shape first */
+.vspick { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; margin: 4px 0 10px; }
+.vspick select { margin: 0; min-width: 0; text-overflow: ellipsis; }
+.swapb { width: 42px; height: 42px; flex: none; border-radius: 50%; border: 1px solid var(--line2); background: var(--card); color: var(--ink2); font-size: 20px; line-height: 1; box-shadow: var(--shadow); }
+.swapb:active { background: var(--card2); }
+
+.vscard { padding: 16px; }
+.vsverdict { text-align: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .9px; color: var(--ink3); }
+.vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: start; margin-top: 12px; }
+.vsside { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.vsdisc { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-family: "Oswald", sans-serif; font-size: 19px; font-weight: 600; letter-spacing: .5px; color: #fff; }
+.vsdisc.a { background: var(--green); } .vsdisc.b { background: var(--ink); }
+.vsname { font-size: 13px; font-weight: 600; text-align: center; line-height: 1.2; overflow-wrap: anywhere; }
+.vsnum { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 6px; padding: 0 4px; }
+.vsnum b { font-family: "Oswald", sans-serif; font-variant-numeric: tabular-nums; font-size: 46px; line-height: .95; font-weight: 600; }
+.vsnum b:first-child { color: var(--green); } .vsnum b:nth-child(3) { color: var(--ink); }
+.vsnum s { text-decoration: none; color: var(--ink3); font-size: 26px; font-weight: 300; }
+.vsnum small { flex: 1 0 100%; text-align: center; color: var(--ink3); font-size: 11px; margin-top: 2px; }
+
+/* the balance of the rivalry as one strip: his share, halved, her share */
+.tug { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--card2); margin-top: 14px; }
+.tug.big { height: 14px; margin-top: 2px; }
+.tug i { display: block; }
+.tug .a { background: var(--green); } .tug .t { background: var(--line2); } .tug .b { background: var(--ink); }
+.vsline { text-align: center; color: var(--ink3); font-size: 13px; margin-top: 8px; }
+
+.vsform { display: flex; flex-wrap: wrap; gap: 5px; }
+.fdot { width: 34px; height: 34px; flex: none; border-radius: 10px; display: grid; place-items: center; font-size: 12px; font-weight: 700; letter-spacing: .3px; }
+.fdot.a { background: var(--green); color: #fff; } .fdot.b { background: var(--ink); color: #fff; }
+.fdot.tie { background: var(--card2); color: var(--ink3); border: 1px solid var(--line); }
+
+/* one stat per row: the two readings at the ends, the bar underneath filled in their proportion */
+.tapes { padding: 6px 16px 14px; }
+.tape { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 10px; padding: 12px 0 0; border-top: 1px solid var(--line); margin-top: 12px; }
+.tape:first-child { border-top: 0; margin-top: 0; }
+.tape b { font-family: "Oswald", sans-serif; font-variant-numeric: tabular-nums; font-size: 21px; font-weight: 500; color: var(--ink3); }
+.tape b.win { color: var(--ink); font-weight: 600; }
+.tape b:first-child.win { color: var(--green); }
+.tape span { text-align: center; color: var(--ink3); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+.tbar { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--ink); margin-top: 8px; overflow: hidden; }
+.tbar i { display: block; height: 100%; background: var(--green); border-right: 2px solid var(--card); }
+
+.holeskey { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 13px; color: var(--ink2); }
+.holeskey b { font-family: "Oswald", sans-serif; font-size: 17px; font-weight: 600; }
+.holeskey span:first-child b { color: var(--green); } .holeskey span:last-child b { color: var(--ink); }
+
+.h2hrow .when { min-width: 0; } .h2hrow .when b { font-size: 14px; font-weight: 600; } .h2hrow .when small { display: block; font-size: 12px; }
+.h2hrow .sc { display: flex; align-items: baseline; gap: 5px; flex: none; }
+.h2hrow .sc b { font-family: "Oswald", sans-serif; font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 500; color: var(--ink3); }
+.h2hrow .sc b.wa { color: var(--green); font-weight: 600; } .h2hrow .sc b.wb { color: var(--ink); font-weight: 600; }
+.h2hrow .sc s { text-decoration: none; color: var(--line2); }
 .merge { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
 .merge span { text-align: center; color: var(--ink3); }
 
@@ -262,6 +311,10 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .res { display: flex; align-items: baseline; gap: 14px; margin-top: 6px; flex-wrap: wrap; }
 .res .big { font-size: 44px; font-weight: 600; line-height: 1; }
 .res .big small { font-size: 15px; font-weight: 600; color: var(--ink3); margin-left: 4px; font-family: inherit; }
+
+/* a heading with an action on the same line */
+.h2row { display: flex; align-items: baseline; gap: 10px; }
+.h2row h2 { margin-right: auto; }
 
 /* the two nines of an 18, as they played that day */
 .nines { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

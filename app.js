@@ -15,23 +15,33 @@ const courseTitle = c => c.loop ? `${c.name} · ${c.loop}` : c.name;
 const sum = xs => xs.reduce((a, b) => a + b, 0);
 const go = hash => { location.hash = hash; };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const firstName = n => String(n || "").trim().split(/\s+/)[0];
+const inits = n => String(n || "").trim().split(/\s+/).slice(0, 2).map(w => [...w][0].toUpperCase()).join("");
 const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
 /** "Sat 5 Sep 2026" from an ISO date; the raw text if it is not a date. */
 const fmtDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : (d || ""); };
-const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay", gp: "Grand Prix", soccer: "Football table" };
+const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay (stroke)",
+  matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)", gp: "Grand Prix" };
+// What a hole-by-hole format settles a hole on. A format not in here is not a match format.
+const MATCH_BASIS = { match: "net", matchpts: "points", soccer: "net", soccerpts: "points" };
+const basisWord = b => b === "points" ? "Stableford points" : "net strokes";
 const FORMAT_BLURB = {
   stableford: "Stableford points added up across rounds",
   stroke: "Net score against par, lowest total wins",
-  match: "Every pair who shared a round played a match: 2 a win, 1 a draw",
-  gp: "Formula 1 points by finishing position: 25 for the win, then 18, 15, 126",
-  soccer: "A football table off the same matches: 3 a win, 1 a draw",
+  match: "Matches decided on net strokes, the ordinary golf way: 2 a win, 1 a draw",
+  matchpts: "Matches decided on Stableford points a hole: 2 a win, 1 a draw",
+  soccer: "The same matches on net strokes, as a football table: 3 a win, 1 a draw",
+  soccerpts: "The same matches on Stableford points, as a football table: 3 a win, 1 a draw",
+  gp: "Formula 1 points by finishing position: 25 for the win, then 18, 15, 12" + "…",
 };
 const FORMAT_NOTES = {
   stableford: "Stableford points per round; wins = most points in a round.",
   stroke: "Net strokes against par per round, lowest total wins; a round without a return does not count.",
-  match: "Every pair who shared a round played a match on net score, hole by hole. 2 points a win, 1 a draw.",
+  match: "Every pair who shared a round played a match, each hole going to the lower net score. 2 points a win, 1 a draw.",
+  matchpts: "Every pair who shared a round played a match, each hole going to the higher Stableford points. Points stop at zero, so two wrecked holes halve where net strokes would separate them. 2 points a win, 1 a draw.",
+  soccer: "Matches on net strokes, scored as a football table: 3 points a win, 1 a draw, nothing for a loss.",
+  soccerpts: "Matches on Stableford points a hole, scored as a football table: 3 points a win, 1 a draw, nothing for a loss.",
   gp: `Each round hands out points by finishing position, as Formula 1 does: ${GP_POINTS.join(", ")} down the board, nothing after that. Position is taken among this league's players, so a guest cannot take the win.`,
-  soccer: "The same matches as Matchplay, scored as a football table: 3 points a win, 1 a draw, nothing for a loss.",
 };
 let toastTimer = null;
 const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false,
@@ -179,23 +189,39 @@ async function join(payload) {
 }
 
 // ---------------------------------------------------------------- home
-function meCard(me) {
-  const mine = S.rounds().filter(r => r.status === "done" && r.entries.some(e => e.playerId === me.id));
-  const last = mine[0] ? safeCompute(mine[0]) : null;
-  const p = last ? last.players.find(x => x.id === me.id) : null;
-  const c = mine[0] ? courseBy(mine[0].course) : null;
-  const lines = [];
-  if (p) {
-    lines.push(`<div class="last muted small">${esc(c ? c.loop || c.name : mine[0].name)} · ${esc(fmtDate(mine[0].date))}</div>
-      <div class="row"><div class="res"><span class="big num">${p.pts}<small>pts</small></span><span class="muted">${ordinal(p.splace)} of ${last.field}${p.gross !== null ? ` · gross ${p.gross}` : " · no return"}</span></div>
-      <button class="btn small" data-act="my-card" data-rid="${mine[0].id}">My card</button></div>`);
-  } else lines.push(`<div class="muted small">No finished round yet.</div>`);
+/** What a player's line in a league's table is worth, in that league's own units. */
+function standingValue(kind, r) {
+  if (kind === "stroke") return r.played ? fmtToPar(r.counted) : "–";
+  if (kind in MATCH_BASIS) return `${r.points} pts`;
+  return `${r.counted} pts`;
+}
+
+/** Every leaderboard this player is on, scored the way that league opens. */
+function myLeaderboards(me) {
+  const rows = [];
   for (const g of S.leagues()) {
-    const { S: Sx } = leagueResults(g);
-    const row = Sx.rows.find(r => r.id === me.id);
-    if (row) lines.push(`<a class="lg" href="#league/${g.id}"><span>${esc(g.name)}</span><span><b>${ordinal(row.place)}</b> · ${row.counted} pts</span></a>`);
+    const { Ms, members } = leagueResults(g);
+    const kind = S.cleanFormats(g.formats)[0];
+    const row = standingsFor(g, Ms, members, kind).rows.find(r => r.id === me.id);
+    if (!row) continue;
+    rows.push(`<a href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div>
+      <div class="muted small">${FORMAT_NAMES[kind]} · ${plural(row.played, "round")}</div></div>
+      <span class="pill done">${ordinal(row.place)} · ${standingValue(kind, row)}</span></a>`);
   }
-  return `<div class="mecard"><div class="row"><div class="name">My last round</div><a class="btn small" href="#player/${me.id}">All my rounds ›</a></div>${lines.join("")}</div>`;
+  return rows.length ? `<h2>Leaderboards</h2><div class="list">${rows.join("")}</div>` : "";
+}
+
+/** One thing: what the last round was, and what it went round in. */
+function lastRoundCard(me) {
+  const head = `<div class="h2row"><h2>My last round</h2><a class="muted small" href="#player/${me.id}">All my rounds ›</a></div>`;
+  const mine = S.rounds().filter(r => r.status === "done" && r.entries.some(e => e.playerId === me.id));
+  if (!mine.length) return `${head}<div class="mecard"><div class="muted small">No finished round yet.</div></div>`;
+  const r = mine[0], M = safeCompute(r);
+  const p = M ? M.players.find(x => x.id === me.id) : null;
+  const c = courseBy(r.course);
+  return `${head}<a class="mecard" href="#review/${r.id}"><div class="row">
+    <div><div class="name">${esc(c ? c.loop || c.name : r.name)}</div><div class="muted small">${esc(fmtDate(r.date))}</div></div>
+    <span class="res"><span class="big num">${p && p.gross !== null ? p.gross : "–"}<small>gross</small></span></span></div></a>`;
 }
 
 function home() {
@@ -232,12 +258,11 @@ function home() {
     ${banners.join("")}
     ${now}
     <a class="btn primary big" href="#new">+ Start a round</a>
-    ${me ? meCard(me) : `<a class="banner" href="#welcome">Say who you are to see your own results here ›</a>`}
+    ${me ? myLeaderboards(me) + lastRoundCard(me) : `<a class="banner" href="#welcome">Say who you are to see your own results here ›</a>`}
     ${finished.length ? `<h2>Finished rounds</h2>` : ""}${filter}${list}`, { back: "", tabs: "home", brand: true });
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
-    if (b.dataset.act === "my-card") await myCard(b.dataset.rid);
     if (b.dataset.act === "mine") { ui.mineOnly = b.dataset.v === "1"; return home(); }
     if (b.dataset.act === "resync") await resyncNow();
   });
@@ -1012,8 +1037,7 @@ const LEAGUE_TABS = [["standings", "Standings"], ["nines", "Nines"], ["h2h", "He
 function standingsFor(g, Ms, members, kind) {
   if (kind === "stroke") return strokeStandings(Ms, members, g.bestN);
   if (kind === "gp") return gpStandings(Ms, members, g.bestN);
-  if (kind === "soccer") return matchStandings(Ms, members, 3, 1);
-  if (kind === "match") return matchStandings(Ms, members);
+  if (kind in MATCH_BASIS) return matchStandings(Ms, members, kind.startsWith("soccer") ? 3 : 2, 1, MATCH_BASIS[kind]);
   return standings(Ms, members, g.bestN);
 }
 
@@ -1040,7 +1064,7 @@ function league(gid) {
   const nameOf = id => { for (const M of Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
   const me = S.me();
   const tab = LEAGUE_TABS.some(([k]) => k === ui.leagueTab[gid]) ? ui.leagueTab[gid] : "standings";
-  let body = "";
+  let body = "", hA = null, hB = null;
   if (tab === "standings") {
     // One table, the way this league is scored; the rest are a tap away rather than stacked underneath.
     const pick = formats.includes(ui.fmtTab[gid]) ? ui.fmtTab[gid] : formats[0];
@@ -1082,16 +1106,73 @@ function league(gid) {
         <p class="muted small" style="margin:8px 4px 0">Every card on this loop, whether it was walked on its own or as half of an 18, scored on the loop's own stroke index and rating so they compare. Ranked by average points.</p>`;
     }
   } else if (tab === "h2h") {
+    // the matches follow however this league settles a hole; net strokes when it has no match table
+    const h2hKind = formats.find(f => f in MATCH_BASIS);
+    const h2hBasis = h2hKind ? MATCH_BASIS[h2hKind] : "net";
     const h = ui.h2h[gid] || {};
-    const a = members.includes(h.a) ? h.a : (me && members.includes(me.id) ? me.id : members[0]);
-    const b = members.includes(h.b) && h.b !== a ? h.b : members.find(m => m !== a);
-    if (a && b) {
-      const H = headToHead(Ms, a, b);
+    hA = members.includes(h.a) ? h.a : (me && members.includes(me.id) ? me.id : members[0]);
+    hB = members.includes(h.b) && h.b !== hA ? h.b : members.find(m => m !== hA);
+    if (hA && hB) {
+      const a = hA, b = hB;
+      const H = headToHead(Ms, a, b, h2hBasis);
+      const A = nameOf(a), B = nameOf(b);
+      const fA = firstName(A), fB = firstName(B);
       const sel = (name, val) => `<select data-h2h="${name}">${members.map(m => `<option value="${m}" ${m === val ? "selected" : ""}>${esc(nameOf(m))}</option>`).join("")}</select>`;
-      body = `<div class="card"><div class="two">${sel("a", a)}${sel("b", b)}</div>
-        <div class="h2h"><div><b class="num">${H.winsA}</b><small>${esc(nameOf(a))}</small></div><div class="mid"><b>${H.ties}</b><small>tied</small></div><div><b class="num">${H.winsB}</b><small>${esc(nameOf(b))}</small></div></div>
-        <div class="muted small center">${plural(H.rounds.length, "round")} together · Stableford ${H.ptsA} to ${H.ptsB}${formats.includes("match") ? ` · matches ${H.matchA}–${H.matchB}${H.matchTies ? ` (${H.matchTies} halved)` : ""}` : ""}</div>
-        ${H.rounds.map(r => `<div class="row small h2hrow"><span class="muted">${esc(fmtDate(r.date))} · ${esc(r.name)}</span><span><b class="${r.winner === "a" ? "acc" : ""}">${r.ptsA}</b> – <b class="${r.winner === "b" ? "acc" : ""}">${r.ptsB}</b>${formats.includes("match") ? ` <span class="muted">· ${r.up === 0 ? "halved" : `${Math.abs(r.up)} up ${esc(nameOf(r.up > 0 ? a : b).split(" ")[0])}`}</span>` : ""}</span></div>`).join("")}</div>`;
+      const picker = `<div class="vspick">${sel("a", a)}<button class="swapb" data-act="h2hswap" title="Swap">&#8646;</button>${sel("b", b)}</div>`;
+      if (!H.rounds.length) {
+        body = `${picker}<p class="muted center" style="margin:30px 0">${esc(fA)} and ${esc(fB)} have not played a round together in this league yet.</p>`;
+      } else {
+        // The strip under the score: wins, halves and wins in proportion, so the balance of the rivalry is the picture.
+        const tot = H.winsA + H.ties + H.winsB;
+        const pc = n => `${(n / tot) * 100}%`;
+        const verdict = H.winsA === H.winsB ? `All square at ${H.winsA}&#8211;${H.winsB}`
+          : `${esc(H.winsA > H.winsB ? fA : fB)} leads ${Math.max(H.winsA, H.winsB)}&#8211;${Math.min(H.winsA, H.winsB)}`;
+        const streak = H.streak.n >= 2 ? `${esc(H.streak.who === "a" ? fA : fB)} has won the last ${H.streak.n}`
+          : H.streak.n === 1 ? `${esc(H.streak.who === "a" ? fA : fB)} won the last one` : "the last one was halved";
+        const holes = H.holesA + H.holesB + H.holesHalved;
+        const widest = H.winsA >= H.winsB ? H.widestA : H.widestB;
+        const hero = `<div class="card vscard">
+          <div class="vsverdict">${verdict}</div>
+          <div class="vs">
+            <div class="vsside"><span class="vsdisc a">${esc(inits(A))}</span><span class="vsname">${esc(A)}</span></div>
+            <div class="vsnum"><b class="num">${H.winsA}</b><s>&#8211;</s><b class="num">${H.winsB}</b><small>${H.ties ? plural(H.ties, "halved round") : "none halved"}</small></div>
+            <div class="vsside"><span class="vsdisc b">${esc(inits(B))}</span><span class="vsname">${esc(B)}</span></div>
+          </div>
+          <div class="tug"><i class="a" style="width:${pc(H.winsA)}"></i><i class="t" style="width:${pc(H.ties)}"></i><i class="b" style="width:${pc(H.winsB)}"></i></div>
+          <div class="vsline">${plural(H.rounds.length, "round")} together &middot; ${streak}</div>
+        </div>`;
+        // Every result in order, newest on the right: the shape of the rivalry at a glance.
+        const formStrip = `<h2>Form</h2><div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${r.ptsA}&#8211;${r.ptsB}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A : B))}</a>`).join("")}</div>
+          <p class="muted small center" style="margin:6px 0 0">oldest to newest &middot; tap one for the card</p>`;
+        // One bar per stat, filled from the left in proportion, so who is ahead is a shape and not a reading.
+        const tape = (label, va, vb, lower = false, fmtv = v => v) => {
+          if (va === null || vb === null) return "";
+          const t = lower ? (va && vb ? 1 / va + 1 / vb : 0) : va + vb;
+          const share = !t ? 50 : ((lower ? 1 / va : va) / t) * 100;
+          const lead = va === vb ? "" : (lower ? va < vb : va > vb) ? "a" : "b";
+          return `<div class="tape"><b class="${lead === "a" ? "win" : ""}">${fmtv(va)}</b><span>${label}</span><b class="${lead === "b" ? "win" : ""}">${fmtv(vb)}</b>
+            <div class="tbar"><i style="width:${share}%"></i></div></div>`;
+        };
+        const stats = `<h2>Tale of the tape</h2><div class="card tapes">
+          ${tape("average points", H.avgPtsA, H.avgPtsB, false, fix)}
+          ${tape("best round", H.bestPtsA, H.bestPtsB)}
+          ${tape("total points", H.ptsA, H.ptsB)}
+          ${tape("average gross", H.avgGrossA, H.avgGrossB, true, fix)}
+          ${tape("best gross", H.bestGrossA, H.bestGrossB, true)}
+          ${H.birdiesA + H.birdiesB ? tape("birdies or better", H.birdiesA, H.birdiesB) : ""}
+          ${h2hKind ? tape(`matches won (${basisWord(h2hBasis)})`, H.matchA, H.matchB) : ""}
+        </div>`;
+        const holesBlock = `<h2>Hole by hole</h2><div class="card">
+          <div class="tug big"><i class="a" style="width:${(H.holesA / holes) * 100}%"></i><i class="t" style="width:${(H.holesHalved / holes) * 100}%"></i><i class="b" style="width:${(H.holesB / holes) * 100}%"></i></div>
+          <div class="holeskey"><span><b>${H.holesA}</b> ${esc(fA)}</span><span class="muted">${H.holesHalved} halved</span><span><b>${H.holesB}</b> ${esc(fB)}</span></div>
+          <p class="muted small" style="margin:10px 0 0">All ${holes} holes they have walked together, won on ${h2hBasis === "points" ? "points" : "net score"}: the running match if every round had been one long one, which ${H.up === 0 ? "ends dead level" : `${esc(H.up > 0 ? fA : fB)} would be ${Math.abs(H.up)} up in`}.</p>
+        </div>`;
+        const widestLine = widest ? `<p class="muted small" style="margin:-4px 4px 8px">Widest margin: ${esc(widest.winner === "a" ? fA : fB)} by ${Math.abs(widest.ptsA - widest.ptsB)} on ${esc(fmtDate(widest.date))}.</p>` : "";
+        const list = `<h2>Every round together</h2>${widestLine}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
+          <div class="when"><b>${esc(fmtDate(r.date))}</b><small class="muted">${esc(r.where)}${h2hKind ? ` &middot; ${r.up === 0 ? "halved" : `${Math.abs(r.up)} up ${esc(firstName(r.up > 0 ? A : B))}`}` : ""}</small></div>
+          <div class="sc"><b class="${r.winner === "a" ? "wa" : ""}">${r.ptsA}</b><s>&#8211;</s><b class="${r.winner === "b" ? "wb" : ""}">${r.ptsB}</b></div></a>`).join("")}</div>`;
+        body = picker + hero + formStrip + stats + holesBlock + list;
+      }
     } else body = `<p class="muted center" style="margin:30px 0">Head-to-heads appear once two players share a round in this league.</p>`;
   } else if (tab === "players") {
     body = `<div class="list">${members.map(m => `<a href="#player/${m}"><span>${esc(nameOf(m))}</span><span class="muted small">${plural(Ms.filter(M => M.players.some(p => p.id === m)).length, "round")} <span class="chev">›</span></span></a>`).sort().join("") || `<div class="muted small">Nobody yet.</div>`}</div>
@@ -1125,6 +1206,7 @@ function league(gid) {
     const b_ = ev.target.closest("[data-act]");
     if (!b_) return;
     if (b_.dataset.act === "ltab") { ui.leagueTab[gid] = b_.dataset.tab; return league(gid); }
+    if (b_.dataset.act === "h2hswap") { ui.h2h[gid] = { a: hB, b: hA }; return league(gid); }
     if (b_.dataset.act === "ninetab") { ui.nineTab[gid] = b_.dataset.slug; return league(gid); }
     if (b_.dataset.act === "fmt") { ui.fmtTab[gid] = b_.dataset.f; return league(gid); }
     if (b_.dataset.act === "new-in-league") { S.setSetting("lastLeague", gid); return go("#new"); }
@@ -1143,7 +1225,8 @@ function league(gid) {
     document.querySelectorAll("#rlist label").forEach(l => { l.style.display = !t || l.dataset.q.includes(t) ? "" : "none"; });
   });
   app.querySelectorAll("[data-h2h]").forEach(el => el.addEventListener("change", () => {
-    ui.h2h[gid] = { a: document.querySelector("[data-h2h=a]").value, b: document.querySelector("[data-h2h=b]").value };
+    const na = document.querySelector("[data-h2h=a]").value, nb = document.querySelector("[data-h2h=b]").value;
+    ui.h2h[gid] = na === nb ? (na === hA ? { a: hB, b: hA } : { a: hA, b: hB }) : { a: na, b: nb };
     league(gid);
   }));
   const gf = document.getElementById("gform");
@@ -1264,7 +1347,7 @@ function scan() {
 
   const cardBlock = (card, k) => {
     const from = offsets[k] + 1, to = offsets[k] + card.holes;
-    return `<h2>Card ${k + 1}${st.cards.length > 1 || missing > 0 ? ` \u00b7 holes ${from} to ${to}` : ""}</h2>
+    return `<h2>Card ${k + 1}${st.cards.length > 1 || missing > 0 ? ` · holes ${from} to ${to}` : ""}</h2>
       ${card.imageUrl ? `<img class="scan-prev" src="${card.imageUrl}" alt="scorecard ${k + 1}">` : ""}
       <label>Holes on this card<select class="choles" data-card="${k}"><option value="9" ${card.holes === 9 ? "selected" : ""}>9</option><option value="18" ${card.holes === 18 ? "selected" : ""}>18</option></select></label>
       ${card.rows.map((row, i) => {
@@ -1272,7 +1355,7 @@ function scan() {
         const mismatch = row.total !== null && row.total !== undefined && row.total !== tot;
         return `<div class="scan-row" data-card="${k}" data-i="${i}">
           <div class="row"><label class="small" style="margin:0"><input type="checkbox" class="use" checked> <b>Row ${i + 1}</b></label>
-            <span class="muted small">${tot} entered${row.total !== null && row.total !== undefined ? ` \u00b7 card says ${row.total}` : ""}</span></div>
+            <span class="muted small">${tot} entered${row.total !== null && row.total !== undefined ? ` · card says ${row.total}` : ""}</span></div>
           <div class="cells">${row.scores.map((v, h) => `<div><small>${offsets[k] + h + 1}</small><input inputmode="numeric" class="${row.unsure.includes(h) || v === null ? "unsure" : ""}" value="${v === null ? "" : v}" data-h="${h}"></div>`).join("")}</div>
           ${mismatch ? `<div class="warn small" style="margin-top:6px">These holes add up to ${tot}, the card says ${row.total}. Check the yellow cells.</div>` : ""}
           <div class="whorow"><select class="who"><option value="">Who played this row?</option>${players.map(p => `<option value="${p.id}" data-hi="${esc(fmtIndex(Number(p.hi)))}">${esc(p.name)}</option>`).join("")}</select></div>
@@ -1297,14 +1380,14 @@ function scan() {
     <p class="muted small">The scores came off the photo${st.cards.length > 1 ? "s" : ""}, in the order they sit on the card. Check the numbers, then say who each row belongs to. Pick the same player on both cards and they are one round. Untick a row to leave it out.</p>
     ${st.cards.map(cardBlock).join("")}` : "";
 
-  const label = st.busy ? "Reading the card\u2026" : !st.cards.length ? "Take or choose a photo"
+  const label = st.busy ? "Reading the card…" : !st.cards.length ? "Take or choose a photo"
     : missing > 0 ? `Take card ${st.cards.length + 1}` : "Scan another photo";
   page("Scan a scorecard", `
     <p class="muted small">Photograph an old paper scorecard (flat, in good light). Walked 18 with a card for each nine? Take them one after the other.</p>
     <label class="btn primary big" style="display:flex">${label}<input id="photo" type="file" accept="image/*" capture="environment" hidden ${st.busy ? "disabled" : ""}></label>
     ${st.cards.length ? `<button class="btn small" data-act="scan-reset" style="margin-top:8px">Start again</button>` : ""}
     ${body}`,
-  { back: "#new", bar: st.cards.length ? `<button class="btn primary" data-act="scan-create" ${missing === 0 ? "" : "disabled"}>Create round \u203a</button>` : "" });
+  { back: "#new", bar: st.cards.length ? `<button class="btn primary" data-act="scan-create" ${missing === 0 ? "" : "disabled"}>Create round ›</button>` : "" });
 
   document.getElementById("photo").addEventListener("change", async ev => {
     const f = ev.target.files[0];
