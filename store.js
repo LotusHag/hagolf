@@ -359,7 +359,7 @@ export function toModelRound(round) {
 // ---------------------------------------------------------------- leagues
 export function leagues() { return live(state.leagues).sort((a, b) => a.name.localeCompare(b.name)); }
 
-export const FORMATS = ["stableford", "stroke", "match"];
+export const FORMATS = ["stableford", "stroke", "match", "gp", "soccer"];
 export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {

@@ -226,33 +226,78 @@ export function holesPoster(M, T) {
 }
 
 /** Season standings for a group: `S` from model.standings, `group` the group record. */
-export function standingsPoster(S, group, T) {
+export const STANDINGS_TITLES = {
+  stableford: "Season standings", stroke: "Stroke play standings", match: "Matchplay standings",
+  soccer: "League table", gp: "Grand Prix standings",
+};
+
+/**
+ * One poster per way of scoring a league. `S` is the standings for that way (rows plus the rounds they
+ * came from); `kind` picks the columns and the wording, since a football table and a Stableford total
+ * have nothing in common but the players' names.
+ */
+export function standingsPoster(S, group, T, kind = "stableford") {
   const rows = S.rows;
-  const maxPts = Math.max(1, ...rows.map(r => r.counted));
-  const scaleMax = 10 * Math.ceil((maxPts + 1) / 10);
   const W = 10;
-  const countedTitle = S.bestN > 0 ? `Best ${S.bestN}` : "Points";
-  const cols = [
-    col("Pos", 0.15, 0.95, (ax, c, y, r) => posChip(ax, cx(c), y, r.place, 0.8, 12)),
-    col("Player", 1.15, 4.1, dName, "left"),
-    col("Rounds", 4.1, 4.9, dVal(r => String(r.played), 12, (r, T) => T.INK_2), "center"),
-    col("Wins", 5.0, 5.6, dVal(r => String(r.wins), 12, (r, T) => T.INK_2), "center"),
-    col("Best", 5.7, 6.3, dVal(r => String(r.best), 12, (r, T) => T.INK_2), "center"),
-    col("Avg", 6.4, 7.0, dVal(r => fix(r.avg), 12, (r, T) => T.INK_2), "center"),
-    col(countedTitle, 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display"), "center"),
-    col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left"),
-  ];
-  const dates = S.rounds.map(r => r.date).filter(Boolean).sort();
+  const rounds = S.rounds || [];
+  const dates = rounds.map(r => r.date).filter(Boolean).sort();
   const span = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} to ${dates[dates.length - 1]}`) : "";
-  const sub = [`${S.rounds.length} round${S.rounds.length === 1 ? "" : "s"}`, span].filter(Boolean).join("  ·  ");
-  const rule = S.bestN > 0 ? `The best ${S.bestN} rounds count towards the total; every round counts for the average.`
+  const sub = [`${rounds.length} round${rounds.length === 1 ? "" : "s"}`, span].filter(Boolean).join("  ·  ");
+  const bestRule = S.bestN > 0 ? `The best ${S.bestN} rounds count towards the total; every round counts for the average.`
     : "Every round counts towards the total.";
+  const onlyMembers = " Only rounds with at least one league member count, and only members' results.";
+  const pos = col("Pos", 0.15, 0.95, (ax, c, y, r) => posChip(ax, cx(c), y, r.place, 0.8, 12));
+  const num = (title, x0, x1, fn) => col(title, x0, x1, dVal(fn, 12, (r, T) => T.INK_2), "center");
+  let cols, right, foot;
+
+  if (kind === "stroke") {
+    const lead = rows.length ? rows[0].counted : 0;
+    cols = [pos, col("Player", 1.15, 4.6, dName, "left"),
+      num("Rounds", 4.6, 5.4, r => String(r.played)), num("Wins", 5.5, 6.2, r => String(r.wins)),
+      num("Best", 6.3, 7.1, r => r.best === null ? "–" : fmtToPar(r.best)),
+      num("Avg", 7.2, 8.1, r => r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"),
+      col(S.bestN > 0 ? `Best ${S.bestN}` : "Net to par", 8.2, 9.95, dVal(r => r.played ? fmtToPar(r.counted) : "–", 22, (r, T) => T.ACCENT, "display"), "center")];
+    right = `Net strokes against par\nLeader ${fmtToPar(lead)}  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
+    foot = `Net score against par in every round added up, lowest total wins, so a 9 and an 18 compare. ${bestRule} ` +
+      `A round without a return does not count for that player. Wins: best net against par among the league's players on the day.` + onlyMembers;
+  } else if (kind === "match" || kind === "soccer") {
+    const maxPts = Math.max(1, ...rows.map(r => r.points));
+    const scaleMax = 5 * Math.ceil((maxPts + 1) / 5);
+    const w = S.win ?? (kind === "soccer" ? 3 : 2), d = S.draw ?? 1;
+    cols = [pos, col("Player", 1.15, 4.2, dName, "left"),
+      num("P", 4.2, 4.8, r => String(r.played)), num("W", 4.9, 5.5, r => String(r.won)),
+      num("D", 5.6, 6.2, r => String(r.drawn)), num("L", 6.3, 6.9, r => String(r.lost)),
+      num("Holes up", 7.0, 7.85, r => (r.up > 0 ? "+" : "") + r.up),
+      col("Pts", 7.95, 8.7, dVal(r => String(r.points), 22, (r, T) => T.ACCENT, "display"), "center"),
+      col(`Points, 0 to ${scaleMax}`, 8.9, 9.95, pointsMeter(scaleMax, null, "points"), "left")];
+    right = `${w} points a win, ${d} a draw\nLeader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
+    foot = `Every pair of league players who shared a round played a match on net score, hole by hole; a hole only one of them ` +
+      `returned goes to the other. ${w} points for winning a match, ${d} for halving it. Holes up is the running margin across every match.` + onlyMembers;
+  } else if (kind === "gp") {
+    const maxPts = Math.max(1, ...rows.map(r => r.counted));
+    const scaleMax = 25 * Math.ceil((maxPts + 1) / 25);
+    cols = [pos, col("Player", 1.15, 4.1, dName, "left"),
+      num("Rounds", 4.1, 4.9, r => String(r.played)), num("Wins", 5.0, 5.6, r => String(r.wins)),
+      num("Best", 5.7, 6.3, r => String(r.best)), num("Avg", 6.4, 7.0, r => fix(r.avg)),
+      col(S.bestN > 0 ? `Best ${S.bestN}` : "Points", 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display"), "center"),
+      col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left")];
+    right = `Points by finishing position\nLeader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
+    foot = `Every round hands out points by finishing position: ${(S.table || []).join(", ")} down the board, nothing after that. ` +
+      `Position is taken among the league's own players on the day, so a guest cannot take the win. ${bestRule}` + onlyMembers;
+  } else {
+    const maxPts = Math.max(1, ...rows.map(r => r.counted));
+    const scaleMax = 10 * Math.ceil((maxPts + 1) / 10);
+    cols = [pos, col("Player", 1.15, 4.1, dName, "left"),
+      num("Rounds", 4.1, 4.9, r => String(r.played)), num("Wins", 5.0, 5.6, r => String(r.wins)),
+      num("Best", 5.7, 6.3, r => String(r.best)), num("Avg", 6.4, 7.0, r => fix(r.avg)),
+      col(S.bestN > 0 ? `Best ${S.bestN}` : "Points", 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display"), "center"),
+      col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left")];
+    right = `Stableford points across rounds\nLeader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
+    foot = `Most Stableford points wins. ${bestRule} Wins: most points among the league's players on the day, shared when equal.` + onlyMembers;
+  }
   const M = { name: group.name, sub };
-  const tableRows = rows.map(r => ({ ...r, penalty_total: 0 }));
-  return tablePoster(M, T, "Season standings", cols, tableRows, W,
-    `Stableford points across rounds\nLeader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`,
-    `Most Stableford points wins. ${rule} Wins: most points among the group's players on the day, shared when equal. ` +
-    "Only rounds with at least one group member count, and only members' results.", 11.5, group.name, sub);
+  return tablePoster(M, T, STANDINGS_TITLES[kind] || STANDINGS_TITLES.stableford, cols,
+    rows.map(r => ({ ...r, penalty_total: 0 })), W, right, foot, 11.5, group.name, sub);
 }
 
 export function renderPosters(M, T) {

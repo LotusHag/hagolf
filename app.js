@@ -3,9 +3,9 @@
 import { DATA } from "./data.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
-import { compute, computeNine, halves, standings, strokeStandings, matchStandings, headToHead, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
+import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
-import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster } from "./posters.js";
+import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
 import { renderCards } from "./cards.js";
 
 const app = document.getElementById("app");
@@ -18,10 +18,24 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
 /** "Sat 5 Sep 2026" from an ISO date; the raw text if it is not a date. */
 const fmtDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : (d || ""); };
-const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay" };
+const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay", gp: "Grand Prix", soccer: "Football table" };
+const FORMAT_BLURB = {
+  stableford: "Stableford points added up across rounds",
+  stroke: "Net score against par, lowest total wins",
+  match: "Every pair who shared a round played a match: 2 a win, 1 a draw",
+  gp: "Formula 1 points by finishing position: 25 for the win, then 18, 15, 126",
+  soccer: "A football table off the same matches: 3 a win, 1 a draw",
+};
+const FORMAT_NOTES = {
+  stableford: "Stableford points per round; wins = most points in a round.",
+  stroke: "Net strokes against par per round, lowest total wins; a round without a return does not count.",
+  match: "Every pair who shared a round played a match on net score, hole by hole. 2 points a win, 1 a draw.",
+  gp: `Each round hands out points by finishing position, as Formula 1 does: ${GP_POINTS.join(", ")} down the board, nothing after that. Position is taken among this league's players, so a guest cannot take the win.`,
+  soccer: "The same matches as Matchplay, scored as a football table: 3 points a win, 1 a draw, nothing for a loss.",
+};
 let toastTimer = null;
 const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false,
-  loops: {}, nineTab: {} };
+  loops: {}, nineTab: {}, fmtTab: {} };
 
 function toast(msg, ms = 2600, action = null) {
   let t = document.getElementById("toast");
@@ -964,7 +978,8 @@ function leagues() {
     ${rows ? `<div class="list">${rows}</div>` : `<p class="muted center" style="margin:24px 0">No leagues yet. A league is a running table over the rounds you add to it.</p>`}
     <button class="btn addbtn" data-act="toggle-newg"><span class="plus">+</span> New league</button>
     <form id="newg" class="card form"><h2>New league</h2><label style="margin-top:0">Name<input name="name" placeholder="e.g. Apeliotes 2026" required></label>
-      <label>Ranked by</label><div class="fmt">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${f === "stableford" ? "checked" : ""}> ${FORMAT_NAMES[f]}</label>`).join("")}</div>
+      <label>Scored by <span class="muted">(the first one is what the league opens on)</span></label>
+      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${f === "stableford" ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="0"></label>
       <button class="btn primary" type="submit">Create</button></form>`, { back: "", tabs: "leagues" });
   bind(ev => {
@@ -993,10 +1008,22 @@ function leagueResults(g) {
 
 const LEAGUE_TABS = [["standings", "Standings"], ["nines", "Nines"], ["h2h", "Head to head"], ["players", "Players"], ["rounds", "Rounds"], ["settings", "Settings"]];
 
-function standingsTable(kind, rows, g, me) {
+/** The standings for one way of scoring a league. Every screen and every poster goes through here. */
+function standingsFor(g, Ms, members, kind) {
+  if (kind === "stroke") return strokeStandings(Ms, members, g.bestN);
+  if (kind === "gp") return gpStandings(Ms, members, g.bestN);
+  if (kind === "soccer") return matchStandings(Ms, members, 3, 1);
+  if (kind === "match") return matchStandings(Ms, members);
+  return standings(Ms, members, g.bestN);
+}
+
+function standingsTable(kind, S, g, me) {
+  const rows = S.rows;
   const mark = r => me && r.id === me.id ? "acc" : "";
   if (!rows.length) return `<p class="muted center">Nothing to rank yet.</p>`;
   if (kind === "stableford") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
+  if (kind === "gp") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
   if (kind === "stroke") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Net ±"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best === null ? "–" : fmtToPar(r.best)}</td><td>${r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"}</td><td class="acc">${r.played ? fmtToPar(r.counted) : "–"}</td></tr>`).join("")}</tbody></table>`;
@@ -1015,10 +1042,15 @@ function league(gid) {
   const tab = LEAGUE_TABS.some(([k]) => k === ui.leagueTab[gid]) ? ui.leagueTab[gid] : "standings";
   let body = "";
   if (tab === "standings") {
-    const tables = { stableford: () => Sx.rows, stroke: () => strokeStandings(Ms, members, g.bestN).rows, match: () => matchStandings(Ms, members).rows };
-    const notes = { stableford: "Stableford points per round; wins = most points in a round.", stroke: "Net strokes against par per round, lowest total wins; a round without a return does not count.", match: "Every pair who shared a round played a match on net score, hole by hole. 2 points a win, 1 a draw." };
-    body = Ms.length ? formats.map(f => `${formats.length > 1 ? `<h2>${FORMAT_NAMES[f]}</h2>` : ""}${standingsTable(f, tables[f](), g, me)}<p class="muted small" style="margin:6px 4px 14px">${notes[f]}</p>`).join("")
-      + (formats.includes("stableford") ? `<a class="btn" href="#leagueposter/${gid}">Make a standings poster ›</a>` : "")
+    // One table, the way this league is scored; the rest are a tap away rather than stacked underneath.
+    const pick = formats.includes(ui.fmtTab[gid]) ? ui.fmtTab[gid] : formats[0];
+    body = Ms.length ? `
+      ${formats.length > 1 ? `<div class="subtabs">${formats.map(f => `<button data-act="fmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")}</div>`
+        : `<p class="muted small" style="margin:2px 4px 10px">${FORMAT_BLURB[pick]}</p>`}
+      ${standingsTable(pick, standingsFor(g, Ms, members, pick), g, me)}
+      <p class="muted small" style="margin:6px 4px 14px">${FORMAT_NOTES[pick]}</p>
+      <a class="btn" href="#leagueposter/${gid}">Make a standings poster ›</a>
+      <button class="btn" data-act="ltab" data-tab="settings" style="margin-top:8px">Score this league another way ›</button>`
       : `<p class="muted center" style="margin:30px 0 14px">No finished rounds in this league yet.</p>
         <button class="btn primary big" data-act="new-in-league">+ Start a round in this league</button>
         <button class="btn" data-act="ltab" data-tab="rounds" style="margin-top:8px">Add rounds already played ›</button>`;
@@ -1081,7 +1113,8 @@ function league(gid) {
       <div class="card checks" id="rlist">${done.map(line).join("") || `<p class="muted">No finished rounds yet.</p>`}</div>`;
   } else {
     body = `<form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
-      <label>Ranked by <span class="muted">(one table each)</span></label><div class="fmt">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> ${FORMAT_NAMES[f]}</label>`).join("")}</div>
+      <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
+      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
       ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
@@ -1093,6 +1126,7 @@ function league(gid) {
     if (!b_) return;
     if (b_.dataset.act === "ltab") { ui.leagueTab[gid] = b_.dataset.tab; return league(gid); }
     if (b_.dataset.act === "ninetab") { ui.nineTab[gid] = b_.dataset.slug; return league(gid); }
+    if (b_.dataset.act === "fmt") { ui.fmtTab[gid] = b_.dataset.f; return league(gid); }
     if (b_.dataset.act === "new-in-league") { S.setSetting("lastLeague", gid); return go("#new"); }
     if (b_.dataset.act === "toggle-round") { S.setLeagueRound(gid, b_.dataset.rid, b_.checked); league(gid); }
     if (b_.dataset.act === "merge") {
@@ -1124,16 +1158,25 @@ function league(gid) {
 function leaguePoster(gid) {
   const g = S.getLeague(gid);
   if (!g) return go("#leagues");
+  const formats = S.cleanFormats(g.formats);
   const themes = (S.state.settings.themes || ["navy"]).slice(0, 1);
-  page("Standings poster", `<h2>Theme</h2><div class="themes">${themeChips(themes)}</div><div id="out"></div>`,
-    { back: `#league/${gid}`, bar: `<button class="btn primary" data-act="generate">Generate image</button>` });
+  page("Standings poster", `
+    ${formats.length > 1 ? `<h2>Which standings</h2><div class="card checks">${formats.map(f => `<label><input type="checkbox" name="sf" value="${f}" checked> ${FORMAT_NAMES[f]}</label>`).join("")}</div>` : ""}
+    <h2>Theme</h2><div class="themes">${themeChips(themes)}</div><div id="out"></div>`,
+    { back: `#league/${gid}`, bar: `<button class="btn primary" data-act="generate">Generate image${formats.length > 1 ? "s" : ""}</button>` });
   app.querySelector(".themes").addEventListener("change", ev => { const l = ev.target.closest(".tchip"); if (l) l.classList.toggle("on", ev.target.checked); });
   document.querySelector(".bar [data-act=generate]").addEventListener("click", async () => {
     const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value);
     if (!chosen.length) return toast("Pick at least one theme");
+    const want = formats.length > 1 ? [...document.querySelectorAll("input[name=sf]:checked")].map(i => i.value) : formats;
+    if (!want.length) return toast("Pick at least one set of standings");
     S.setSetting("themes", chosen);
-    const { S: Sx } = leagueResults(g);
-    const jobs = chosen.map(tn => ({ label: `${chosen.length > 1 ? tn + "/" : ""}4_season_standings.png`, make: () => standingsPoster(Sx, g, makeTheme(DATA.themes.find(t => t.name === tn))) }));
+    const { Ms, members } = leagueResults(g);
+    const jobs = [];
+    chosen.forEach(tn => want.forEach((f, k) => jobs.push({
+      label: `${chosen.length > 1 ? tn + "/" : ""}${4 + k}_standings_${f}.png`,
+      make: () => standingsPoster(standingsFor(g, Ms, members, f), g, makeTheme(DATA.themes.find(t => t.name === tn)), f),
+    })));
     await runJobs(jobs, slugFile(g.name));
   });
 }
@@ -1232,7 +1275,9 @@ function scan() {
             <span class="muted small">${tot} entered${row.total !== null && row.total !== undefined ? ` \u00b7 card says ${row.total}` : ""}</span></div>
           <div class="cells">${row.scores.map((v, h) => `<div><small>${offsets[k] + h + 1}</small><input inputmode="numeric" class="${row.unsure.includes(h) || v === null ? "unsure" : ""}" value="${v === null ? "" : v}" data-h="${h}"></div>`).join("")}</div>
           ${mismatch ? `<div class="warn small" style="margin-top:6px">These holes add up to ${tot}, the card says ${row.total}. Check the yellow cells.</div>` : ""}
-          <select class="who" style="margin-top:8px"><option value="">Who played this row?</option>${players.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}<option value="__new">Someone new\u2026</option></select>
+          <div class="whorow"><select class="who"><option value="">Who played this row?</option>${players.map(p => `<option value="${p.id}" data-hi="${esc(fmtIndex(Number(p.hi)))}">${esc(p.name)}</option>`).join("")}</select></div>
+          <div class="picked muted small" hidden></div>
+          <button type="button" class="btn small rownew"><span class="plus">+</span> Someone new</button>
           <div class="newp two" hidden><label style="margin-top:6px">Name<input class="nm" autocapitalize="words" value="${esc(row.name || "")}"></label>
             <label style="margin-top:6px">Handicap index<input class="hi" inputmode="decimal" placeholder="18,4"></label></div>
         </div>`;
@@ -1291,10 +1336,32 @@ function scan() {
     scan();
   }));
   app.querySelectorAll(".scan-row").forEach(el => {
-    const who = el.querySelector(".who"), np = el.querySelector(".newp");
+    const who = el.querySelector(".who"), np = el.querySelector(".newp"), picked = el.querySelector(".picked");
     who.addEventListener("change", () => {
-      np.hidden = who.value !== "__new";
-      if (!np.hidden) np.querySelector(".nm").focus();
+      el.dataset.new = "";
+      np.hidden = true;
+      const opt = who.selectedOptions[0];
+      picked.hidden = !who.value;
+      // whoever is chosen brings the index they last played off along with them; the select shows their name
+      if (who.value) picked.textContent = `Last played off ${opt.dataset.hi}`;
+    });
+    // Typing a name that is already on the roster: show their index rather than quietly rewriting it.
+    const nm = np.querySelector(".nm"), hi = np.querySelector(".hi");
+    let autofilled = true;
+    hi.addEventListener("input", () => { autofilled = false; });
+    nm.addEventListener("input", () => {
+      const p = S.findPlayer(nm.value);
+      picked.hidden = !p;
+      if (!p) return;
+      picked.textContent = `Already on the roster, last played off ${fmtIndex(Number(p.hi))}`;
+      if (autofilled) hi.value = fmtIndex(Number(p.hi));
+    });
+    el.querySelector(".rownew").addEventListener("click", () => {
+      el.dataset.new = "1";
+      who.value = "";
+      picked.hidden = true;
+      np.hidden = false;
+      np.querySelector(".nm").focus();
     });
     const tally = el.querySelector(".row .muted");
     el.querySelectorAll(".cells input").forEach(inp => inp.addEventListener("input", () => {
@@ -1320,9 +1387,10 @@ function scan() {
     const byPlayer = new Map();
     for (const el of picked) {
       const k = Number(el.dataset.card), nth = Number(el.dataset.i) + 1;
+      const isNew = el.dataset.new === "1";
       const pid = el.querySelector(".who").value;
-      if (!pid) return toast(`Card ${k + 1}, row ${nth}: choose who played it, or untick it`);
-      const known = pid === "__new" ? null : S.players().find(p => p.id === pid);
+      if (!isNew && !pid) return toast(`Card ${k + 1}, row ${nth}: choose who played it, add someone new, or untick it`);
+      const known = isNew ? null : S.players().find(p => p.id === pid);
       const name = known ? known.name : el.querySelector(".nm").value.trim();
       const hi = known ? Number(known.hi) : parseHI(el.querySelector(".hi").value);
       if (!name) return toast(`Card ${k + 1}, row ${nth}: the new player needs a name`);

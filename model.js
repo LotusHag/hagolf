@@ -374,7 +374,7 @@ export function strokeStandings(results, memberIds, bestN = 0) {
   });
   out.sort((a, b) => (b.played > 0) - (a.played > 0) || a.counted - b.counted || a.avg - b.avg || (a.best ?? 99) - (b.best ?? 99) || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
-  return { rows: out, bestN };
+  return { rows: out, rounds: results, bestN };
 }
 
 /** One match: holes won on net score; a hole one player picked up on goes to the other. Returns holes up for a (negative = b up). */
@@ -389,8 +389,12 @@ export function matchResult(pa, pb) {
   return { up, holes };
 }
 
-/** Matchplay league: every pair who shared a round played a match; 2 points a win, 1 a draw. */
-export function matchStandings(results, memberIds) {
+/**
+ * Matchplay league: every pair who shared a round played a match on net score, hole by hole.
+ * `win` and `draw` set what a result is worth, so the same maths gives a golf matchplay table
+ * (2 and 1) or a football one (3 and 1).
+ */
+export function matchStandings(results, memberIds, win = 2, draw = 1) {
   const members = new Set(memberIds);
   const rows = new Map();
   const row = p => { if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, up: 0 }); const r = rows.get(p.id); r.name = p.name; return r; };
@@ -404,10 +408,45 @@ export function matchStandings(results, memberIds) {
       if (up > 0) { a.won++; b.lost++; } else if (up < 0) { b.won++; a.lost++; } else { a.drawn++; b.drawn++; }
     }
   }
-  const out = [...rows.values()].map(r => ({ ...r, points: 2 * r.won + r.drawn }));
+  const out = [...rows.values()].map(r => ({ ...r, points: win * r.won + draw * r.drawn }));
   out.sort((a, b) => b.points - a.points || b.up - a.up || b.won - a.won || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
-  return { rows: out };
+  return { rows: out, rounds: results, win, draw };
+}
+
+// The classic Formula 1 points table: winning a round is worth far more than turning up.
+export const GP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+
+/**
+ * Grand Prix scoring: each round hands out points by finishing position, as Formula 1 does, so one
+ * good day counts for more than being steadily mid-table. Position is taken among the league's own
+ * players on the day (from the Stableford board, countback and all), so a guest cannot take the win
+ * and a small turnout still gives the winner full points.
+ */
+export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS) {
+  const members = new Set(memberIds);
+  const rows = new Map();
+  for (const M of results) {
+    const mine = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
+    mine.forEach((p, i) => {
+      if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, scores: [], wins: 0, best: 0 });
+      const r = rows.get(p.id);
+      r.name = p.name;
+      const pts = table[i] ?? 0;
+      r.scores.push(pts);
+      if (i === 0) r.wins += 1;
+      r.best = Math.max(r.best, pts);
+    });
+  }
+  const out = [...rows.values()].map(r => {
+    const sorted = [...r.scores].sort((a, b) => b - a);
+    const counted = bestN > 0 ? sorted.slice(0, bestN) : sorted;
+    return { ...r, played: r.scores.length, total: sum(r.scores), counted: sum(counted),
+      avg: r.scores.length ? sum(r.scores) / r.scores.length : 0 };
+  });
+  out.sort((a, b) => b.counted - a.counted || b.wins - a.wins || b.best - a.best || a.name.localeCompare(b.name));
+  out.forEach((r, i) => { r.place = i + 1; });
+  return { rows: out, rounds: results, bestN, table };
 }
 
 /** Two players in a league: every attached round they both played, points, and the match between them. */
