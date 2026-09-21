@@ -32,6 +32,10 @@ const H2H_BASES = [["points", "Stableford", "the most Stableford points", "the h
   ["net", "Net score", "the lowest net score", "the lower net score"],
   ["gross", "Gross score", "the lowest gross score", "the lower gross score"]];
 const basisRow = b => H2H_BASES.find(x => x[0] === b) || H2H_BASES[0];
+const basisUnit = b => b === "points" ? "points" : b === "gross" ? "gross strokes" : "net strokes";
+/** The three currencies as a row of tabs, wherever two players are set against each other. */
+const basisPicker = (act, chosen) => `<p class="pickline">Compare them on</p>
+  <div class="subtabs small">${H2H_BASES.map(([k, label]) => `<button data-act="${act}" data-b="${k}" class="${k === chosen ? "on" : ""}">${label}</button>`).join("")}</div>`;
 // Every table is one of the two games, and the app says which before any number is read.
 const FORMAT_MODE = { stableford: "Stroke play", stroke: "Stroke play", gp: "Stroke play",
   match: "Match play", matchpts: "Match play", soccer: "Match play", soccerpts: "Match play" };
@@ -64,7 +68,7 @@ const h2tip = (title, text) => `<details class="tip"><summary><h2>${esc(title)}<
 const tip = (text, label = "What this means") => `<details class="tip solo"><summary>${ibtn}<span>${esc(label)}</span></summary>${tipBody(text)}</details>`;
 let toastTimer = null;
 const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, h2hBasis: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false, plSort: {},
-  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {} };
+  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {} };
 
 function toast(msg, ms = 2600, action = null) {
   let t = document.getElementById("toast");
@@ -1207,7 +1211,7 @@ function fieldStats(St, nines = "") {
 }
 
 /** One player: their own shape, then the same numbers for the rest of the field on exactly the days they were there. */
-function playerStats(St, p, nines = "") {
+function playerStats(St, p, nines = "", gid = "") {
   const R = p.rest, one = p.played === 1, first = firstName(p.name);
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
   const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span>
@@ -1246,7 +1250,7 @@ function playerStats(St, p, nines = "") {
     </div>
     ${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this league on the right, over the ${plural(p.played, "round")} they played together — so nobody is measured on a day the others missed. The bar fills in proportion and the green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixedLengths(p.rounds) ? " This league mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
     ${vsField}
-    ${rivalsBlock(St, p)}
+    ${rivalsBlock(St, p, gid)}
     ${one ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left, so a run of form is a shape rather than a number. The grey column behind a bar is what everyone else in the league scored that day, which is what makes a good round on a hard day look good. Tap a bar for that card.`)}${formChart(p.rounds, first)}`}
     ${one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear once ${esc(first)} has played a second round here.</p>` : `${h2tip("Over more than one round", `<p><b>Consistency</b> is how far a typical round sits either side of their average: the smaller it is, the steadier they are.</p>
       <p><b>Form</b> is the last three rounds against every round. <b>Trend</b> compares the first half of their rounds with the second half. <b>Streak</b> counts the latest rounds in a row where they beat the rest of the field.</p>
@@ -1282,8 +1286,8 @@ function rivalVerdict(r, me, them) {
   const l = r.lift === null ? null : r.lift * (r.scale || 18);  // a round's worth, so the threshold means something
   if (l !== null) {
     bits.push(Math.abs(l) < 1 ? `${them}'s day barely moves ${me}'s`
-      : l > 0 ? `${me} has tended to score higher on the days ${them} does too`
-      : `${me} has tended to score higher when ${them} is off`);
+      : l > 0 ? `${me} has tended to play better on the days ${them} does too`
+      : `${me} has tended to play better when ${them} is off`);
   }
   // a correlation over three or four rounds is noise; it only speaks up once there are five
   if (r.corr !== null && r.played >= 5 && Math.abs(r.corr) >= 0.5) {
@@ -1302,22 +1306,23 @@ function rivalRecord(r, me, them) {
 
 /** One rival in full: the two of them against each other, then what that rival's own day does. */
 function rivalCard(r, me, them) {
-  const unit = r.scale ? "points a round" : "points a hole";
+  const unit = `${basisUnit(r.basis)} a ${r.scale ? "round" : "hole"}`;
   const val = v => v === null ? "\u2013" : r.scale ? fix(v * r.scale) : fix(v, 2);
   const l = r.lift === null ? null : r.lift * (r.scale || 18);
-  const mark = l !== null && Math.abs(l) >= 1;  // under a point a round the two sides are the same story
+  const better = (a, b) => r.lower ? a < b : a > b;
+  const mark = l !== null && Math.abs(l) >= 1;  // under a point or a stroke a round the two sides are the same story
   const verdict = rivalVerdict(r, me, them);
-  const tile = (label, n, v, up) => `<div class="sside ${up ? "up" : ""}"><small>${label}<i>${plural(n, "round")}${up ? " \u00b7 higher" : ""}</i></small><b class="num">${val(v)}</b></div>`;
+  const tile = (label, n, v, up) => `<div class="sside ${up ? "up" : ""}"><small>${label}<i>${plural(n, "round")}${up ? " \u00b7 better" : ""}</i></small><b class="num">${val(v)}</b></div>`;
   const split = r.lift === null
-    ? `<p class="muted small" style="margin:10px 0 0">Splitting ${them}'s good days from their bad ones needs two rounds of each; so far ${r.goodN} above their own average and ${r.badN} below.${verdict ? ` ${verdict}` : ""}</p>`
+    ? `<p class="muted small" style="margin:10px 0 0">Splitting ${them}'s good days from their bad ones needs two rounds of each; so far ${r.goodN} better than their own average and ${r.badN} worse.${verdict ? ` ${verdict}` : ""}</p>`
     : `<div class="split">
-        ${tile(`${them} above their average`, r.goodN, r.onGood, mark && r.onGood > r.onBad)}
-        ${tile(`${them} below it`, r.badN, r.onBad, mark && r.onBad > r.onGood)}
+        ${tile(`${them} better than their average`, r.goodN, r.onGood, mark && better(r.onGood, r.onBad))}
+        ${tile(`${them} worse than it`, r.badN, r.onBad, mark && better(r.onBad, r.onGood))}
       </div>
-      <p class="muted small" style="margin:10px 0 0">Both numbers are ${me}'s ${unit}: on the left the ${plural(r.goodN, "round")} where ${them} played above their own average of ${val(r.theirAvg)}, on the right the ${r.badN} where they did not. ${verdict}</p>`;
+      <p class="muted small" style="margin:10px 0 0">Both numbers are ${me}'s ${unit}: on the left the ${plural(r.goodN, "round")} where ${them} played better than their own average of ${val(r.theirAvg)}, on the right the ${r.badN} where they did not. ${verdict}</p>`;
   return `<div class="card rival">
     <div class="rhead"><b>${esc(r.name)}</b><span class="muted small">${plural(r.played, "round")} together \u00b7 ${rivalRecord(r, me, them)}</span></div>
-    <div class="tapes mine">${tapeRow(unit, r.myAvg, r.theirAvg, false, val)}</div>
+    <div class="tapes mine">${tapeRow(unit, r.myAvg, r.theirAvg, r.lower, val)}</div>
     ${split}</div>`;
 }
 
@@ -1330,9 +1335,11 @@ function rivalRows(rs, me, nameOf) {
 }
 
 /** Everyone this player has shared a card with in this league, the most-played first. */
-function rivalsBlock(St, p) {
-  const rs = rivals(St.rounds, p.id);
-  if (!rs.length) return "";
+function rivalsBlock(St, p, gid) {
+  const basis = H2H_BASES.some(([k]) => k === ui.rivalBasis[gid]) ? ui.rivalBasis[gid] : "points";
+  const rs = rivals(St.rounds, p.id, basis);
+  // points can always be compared, so an empty list there means there is nobody to compare with at all
+  if (!rs.length && !rivals(St.rounds, p.id).length) return "";
   const me = esc(firstName(p.name));
   // two players can share a first name, and "Maurits scores better when Maurits is off" helps nobody
   const seen = {};
@@ -1342,11 +1349,14 @@ function rivalsBlock(St, p) {
   const shown = deep.slice(0, 5), rest = deep.slice(5);
   const mixed = mixedLengths(St.rounds.filter(x => x.pid === p.id));
   return `${h2tip("Against each player", `<p>Only the rounds the two of them played together, so neither is measured on a day the other one missed.${mixed ? " A nine and an eighteen are compared a hole at a time." : ""}</p>
-      <p>The line at the top of each card is their two averages against each other. The two boxes under it split the other player's own days: what ${me} scored on the rounds where that player beat their own average, and on the rounds where they did not — a rough way of asking whether ${me} rises to a good playing partner or wilts.</p>
+      <p>The line at the top of each card is their two averages against each other, in whatever the tabs below are set to: <b>Stableford</b> points, where more is better, or <b>net</b> or <b>gross</b> strokes, where less is. The two boxes under it split the other player's own days: what ${me} scored on the rounds where that player played better than their own average, and on the rounds where they did not — a rough way of asking whether ${me} rises to a good playing partner or wilts.</p>
+      <p>On strokes, a round only one of them finished a card for cannot be compared and is left out, so the rounds counted can differ from the Stableford ones.</p>
       <p>A handful of rounds cannot settle anything, so read these as talking points rather than facts.</p>`)}
+    ${basisPicker("rivalbasis", basis)}
+    ${rs.length ? "" : `<p class="muted small" style="margin:14px 4px">${me} has no round against anybody where both of them finished a full card, so there is nothing to compare on ${esc(basisUnit(basis))}.</p>`}
     ${shown.map(r => rivalCard(r, me, nameOf(r))).join("")}
     ${rest.length ? `<details class="card"><summary class="small">${plural(rest.length, "more player")}</summary>${rest.map(r => rivalCard(r, me, nameOf(r))).join("")}</details>` : ""}
-    ${thin.length ? `<p class="muted small" style="margin:16px 4px 6px">Met once so far</p>${rivalRows(thin, me, nameOf)}` : ""}`;
+    ${thin.length ? `<p class="muted small" style="margin:16px 4px 6px">Met once so far, in ${esc(basisUnit(basis))} a ${thin[0].scale ? "round" : "hole"}</p>${rivalRows(thin, me, nameOf)}` : ""}`;
 }
 
 /** The finished rounds a league counts, newest first. */
@@ -1428,7 +1438,7 @@ function leagueStatsBody(g, Ms, members) {
     <button class="pchip ${who ? "" : "on"}" data-act="statswho" data-id="">The field<small>${plural(St.field.rounds, "round")}</small></button>
     ${St.players.map(p => `<button class="pchip ${p.id === who ? "on" : ""}" data-act="statswho" data-id="${esc(p.id)}">${esc(p.name)}<small>${plural(p.played, "round")}</small></button>`).join("")}</div>`;
   const p = who ? St.players.find(x => x.id === who) : null;
-  const body = p ? playerStats(St, p, ninesPlayerBlock(rounds, p.id, firstName(p.name)))
+  const body = p ? playerStats(St, p, ninesPlayerBlock(rounds, p.id, firstName(p.name)), g.id)
     : fieldStats(St, ninesFieldBlock(g.id, rounds, S.me()));
   return `${chips}<div class="statsbody">${body}
     <a class="btn" href="#statsposter/${g.id}" style="margin-top:16px">Make stats images ›</a></div>`;
@@ -1473,9 +1483,7 @@ function league(gid) {
       const sel = (name, val) => `<select data-h2h="${name}">${members.map(m => `<option value="${m}" ${m === val ? "selected" : ""}>${esc(nameOf(m))}</option>`).join("")}</select>`;
       const picker = `<div class="vspick">${sel("a", a)}<button class="swapb" data-act="h2hswap" title="Swap">&#8646;</button>${sel("b", b)}</div>`;
       const [, basisName, roundWord, holeWord] = basisRow(h2hBasis);
-      const picker2 = `<p class="pickline">Compare them on</p>
-        <div class="subtabs small">${H2H_BASES.map(([k, label]) => `<button data-act="h2hbasis" data-b="${k}" class="${k === h2hBasis ? "on" : ""}">${label}</button>`).join("")}</div>`;
-      const basis = `${picker2}<div class="basis"><span><b>Rounds · stroke play</b>the day goes to ${esc(roundWord)}</span>
+      const basis = `${basisPicker("h2hbasis", h2hBasis)}<div class="basis"><span><b>Rounds · stroke play</b>the day goes to ${esc(roundWord)}</span>
         <span><b>Holes · match play</b>each hole goes to ${esc(holeWord)}</span></div>
         ${tip(`<p>This page keeps two scores, and they are two different games. Both are settled on whatever the tabs above are set to — at the moment ${esc(basisName.toLowerCase())}.</p>
           <p><b>Stroke play</b> settles the big score at the top: each round they played together goes to ${esc(roundWord)} that day, whole round against whole round.</p>
@@ -1626,6 +1634,7 @@ function league(gid) {
     if (b_.dataset.act === "ltab") { ui.leagueTab[gid] = b_.dataset.tab; return league(gid); }
     if (b_.dataset.act === "h2hswap") { ui.h2h[gid] = { a: hB, b: hA }; return league(gid); }
     if (b_.dataset.act === "h2hbasis") { ui.h2hBasis[gid] = b_.dataset.b; return league(gid); }
+    if (b_.dataset.act === "rivalbasis") { ui.rivalBasis[gid] = b_.dataset.b; return league(gid); }
     if (b_.dataset.act === "ninetab") { ui.nineTab[gid] = b_.dataset.slug; return league(gid); }
     if (b_.dataset.act === "statswho") { ui.statsWho[gid] = b_.dataset.id; return league(gid); }
     if (b_.dataset.act === "plsort") { ui.plSort[gid] = b_.dataset.s; return league(gid); }

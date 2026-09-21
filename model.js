@@ -720,17 +720,21 @@ export function correlation(xs, ys) {
 
 /**
  * A player against each of the others over the rounds they actually shared, and the thing a
- * head-to-head cannot say: whether the other one's own day moves theirs. Everything is points a hole,
- * because a league mixes nines and eighteens and half a round must not sit beside a whole one; `scale`
- * is the hole count when every shared round has the same one, null when they mix, and only then does
- * the screen multiply back up to a round.
+ * head-to-head cannot say: whether the other one's own day moves theirs. `basis` is the currency --
+ * Stableford points, net strokes or gross strokes -- and everything is read a hole at a time, because a
+ * league mixes nines and eighteens and half a round must not sit beside a whole one; `scale` is the hole
+ * count when every shared round has the same one, null when they mix, and only then does the screen
+ * multiply back up to a round. On strokes a round only one of them returned a card for cannot be
+ * compared and drops out, so `played` is the rounds this currency can actually speak for.
  *
- * `onGood` and `onBad` are what the player scored on the rounds where the rival beat their own average
- * over those same rounds, and on the rounds where they did not: measured against the rival's own
- * average, so a good player is not simply always on song and a weak one never. Both sides need two
+ * `onGood` and `onBad` are what the player scored on the rounds where the rival played better than their
+ * own average over those same rounds, and on the rounds where they did not: measured against the rival's
+ * own average, so a good player is not simply always on song and a weak one never. Both sides need two
  * rounds before either appears. `rounds` is the list leagueStats returns, so guests are already out.
+ * `lift` and `corr` are in better-is-more terms whatever the currency; `myAvg`, `theirAvg`, `onGood` and
+ * `onBad` are the numbers as they are read, and `lower` says which way round that is.
  */
-export function rivals(rounds, pid) {
+export function rivals(rounds, pid, basis = "points") {
   const byRound = new Map(rounds.filter(r => r.pid === pid && r.n).map(r => [r.id, r]));
   const others = new Map();
   for (const r of rounds) {
@@ -738,27 +742,34 @@ export function rivals(rounds, pid) {
     if (!others.has(r.pid)) others.set(r.pid, { id: r.pid, name: r.player, pairs: [] });
     others.get(r.pid).pairs.push({ me: byRound.get(r.id), them: r });
   }
-  const rate = r => r.pts / r.n;
+  const lower = basis !== "points";
+  const score = r => basis === "points" ? r.pts : basis === "gross" ? r.gross : r.net;
+  const rate = r => { const v = score(r); return v === null ? null : v / r.n; };  // a hole at a time, as it is read
+  const value = r => { const x = rate(r); return x === null ? null : lower ? -x : x; };  // and again, where more is better
   return [...others.values()].map(o => {
-    const pairs = o.pairs.sort((a, b) => String(a.me.date || "").localeCompare(String(b.me.date || "")));
+    const pairs = o.pairs.filter(p => rate(p.me) !== null && rate(p.them) !== null)
+      .sort((a, b) => String(a.me.date || "").localeCompare(String(b.me.date || "")));
+    if (!pairs.length) return null;
     const ns = new Set(pairs.map(p => p.me.n));
     const myRate = pairs.map(p => rate(p.me)), theirRate = pairs.map(p => rate(p.them));
-    const theirAvg = mean(theirRate);
+    const myValue = pairs.map(p => value(p.me)), theirValue = pairs.map(p => value(p.them));
+    const theirMean = mean(theirValue);
     // A round that lands on their average is neither a good day nor a bad one. The tolerance matters:
     // the mean of a list of rates and one of those same rates can differ in the last bit, and with small
     // integer point totals a round sitting exactly on the average is an ordinary occurrence, not a freak.
     const EPS = 1e-9;
-    const good = pairs.filter(p => rate(p.them) > theirAvg + EPS), bad = pairs.filter(p => rate(p.them) < theirAvg - EPS);
+    const good = pairs.filter(p => value(p.them) > theirMean + EPS), bad = pairs.filter(p => value(p.them) < theirMean - EPS);
     const split = good.length >= 2 && bad.length >= 2;
     const onGood = split ? mean(good.map(p => rate(p.me))) : null;
     const onBad = split ? mean(bad.map(p => rate(p.me))) : null;
-    const won = pairs.filter(p => rate(p.me) > rate(p.them)).length;
-    const lost = pairs.filter(p => rate(p.me) < rate(p.them)).length;
+    const won = pairs.filter(p => value(p.me) > value(p.them)).length;
+    const lost = pairs.filter(p => value(p.me) < value(p.them)).length;
     return {
-      id: o.id, name: o.name, played: pairs.length, scale: ns.size === 1 ? [...ns][0] : null,
-      myAvg: mean(myRate), theirAvg, won, lost, tied: pairs.length - won - lost,
+      id: o.id, name: o.name, played: pairs.length, scale: ns.size === 1 ? [...ns][0] : null, basis, lower,
+      myAvg: mean(myRate), theirAvg: mean(theirRate), won, lost, tied: pairs.length - won - lost,
       goodN: good.length, badN: bad.length, onGood, onBad,
-      lift: split ? onGood - onBad : null, corr: correlation(myRate, theirRate), pairs,
+      lift: split ? mean(good.map(p => value(p.me))) - mean(bad.map(p => value(p.me))) : null,
+      corr: correlation(myValue, theirValue), pairs,
     };
-  }).sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
+  }).filter(Boolean).sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
 }
