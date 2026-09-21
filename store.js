@@ -2,7 +2,6 @@
 // leagues, league-round attachments, courses added on phones, course handicaps from club tables, settings.
 // Every record carries updated_at and deleted; the queue remembers which records changed and when.
 import { DATA } from "./data.js";
-import { SLOT, SLOT_BASELINES, SLOT_ADJUST } from "./model.js";
 
 const KEY = "hagolf-v2";
 const OLD_KEYS = ["hagolf-v1", "apeliotes-golf-v1"];
@@ -393,19 +392,11 @@ export function toModelRound(round) {
 // ---------------------------------------------------------------- leagues
 export function leagues() { return live(state.leagues).sort((a, b) => a.name.localeCompare(b.name)); }
 
-export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "soccerpts", "gp", "form", "formstroke"];
+export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "soccerpts", "gp", "gpstroke"];
 export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
 
-/** The three dials of the season form tables, cleaned to what model.js knows (see app/LEAGUE-SCORING.md). */
-export const slotOpts = g => ({
-  slots: Math.max(3, Math.min(20, Math.round(Number(g.slots)) || SLOT.slots)),
-  baseline: g.baseline in SLOT_BASELINES ? g.baseline : SLOT.baseline,
-  adjust: g.adjust in SLOT_ADJUST ? g.adjust : SLOT.adjust,
-});
-
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
-  const g = { id: uid(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats),
-    slots: SLOT.slots, baseline: SLOT.baseline, adjust: SLOT.adjust };
+  const g = { id: uid(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats) };
   state.leagues.push(g);
   touch("leagues", g);
   save();

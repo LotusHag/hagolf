@@ -240,8 +240,6 @@ async function join(payload) {
 // ---------------------------------------------------------------- home
 /** What a player's line in a league's table is worth, in that league's own units. */
 function standingValue(kind, r) {
-  if (kind === "form") return `${fix(r.total, 2)} pts`;
-  if (kind === "formstroke") return `${fmtSigned(r.total, 2)} net`;
   if (kind === "stroke") return r.played ? fmtToPar(r.counted) : "–";
   if (kind in MATCH_BASIS) return `${r.points} pts`;
   return `${r.counted} pts`;
@@ -1088,34 +1086,10 @@ function leagueResults(g) {
 
 const LEAGUE_TABS = [["standings", "Standings"], ["stats", "Stats"], ["h2h", "Head to head"], ["players", "Players"], ["rounds", "Rounds"], ["settings", "Settings"]];
 
-/**
- * The three dials of the season form tables. They sit on the league whether or not one of those tables
- * is on, so ticking the format later finds them already set.
- */
-function slotDials(g) {
-  const o = S.slotOpts(g);
-  const pick = (name, label, hint, options) => `<label>${label} <span class="muted">${hint}</span>
-    <select name="${name}">${options.map(([v, l]) => `<option value="${v}" ${v === o[name] ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
-  return `<details class="sub" ${S.cleanFormats(g.formats).some(f => SLOT_FORMATS.includes(f)) ? "open" : ""}>
-    <summary>Season form settings</summary>
-    <label>Score slots each player owns <span class="muted">(8 is a season)</span><input name="slots" inputmode="numeric" value="${o.slots}"></label>
-    ${pick("baseline", "An empty slot counts as", "(how kind the table is to missing weeks)", [
-      ["p10", "A poor round — anyone who plays is clear of anyone who does not"],
-      ["p25", "A modest round — recommended"],
-      ["p50", "An average round — kind to absence"]])}
-    ${pick("adjust", "Credit for how the day played", "(against what the rest of the card usually shoots)", [
-      ["off", "Off — every round at face value"],
-      ["light", "Light"], ["normal", "Normal — recommended"], ["strong", "Strong"]])}
-    <p class="muted small">Only the two Season form tables read these.</p>
-  </details>`;
-}
-
 /** The standings for one way of scoring a league. Every screen and every poster goes through here. */
 function standingsFor(g, Ms, members, kind) {
-  if (kind === "form") return slotStandings(Ms, members, S.slotOpts(g));
-  if (kind === "formstroke") return slotStrokeStandings(Ms, members, S.slotOpts(g));
   if (kind === "stroke") return strokeStandings(Ms, members, g.bestN);
-  if (kind === "gp") return gpStandings(Ms, members, g.bestN);
+  if (kind in GP_BASIS) return gpStandings(Ms, members, g.bestN, GP_POINTS, GP_BASIS[kind]);
   if (kind in MATCH_BASIS) return matchStandings(Ms, members, kind.startsWith("soccer") ? 3 : 2, 1, MATCH_BASIS[kind]);
   return standings(Ms, members, g.bestN);
 }
@@ -1126,19 +1100,10 @@ function standingsTable(kind, S, g, me) {
   if (!rows.length) return `<p class="muted center">Nothing to rank yet.</p>`;
   if (kind === "stableford") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
-  if (kind === "gp") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
-    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
+  if (kind in GP_BASIS) return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
   if (kind === "stroke") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Net ±"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best === null ? "–" : fmtToPar(r.best)}</td><td>${r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"}</td><td class="acc">${r.played ? fmtToPar(r.counted) : "–"}</td></tr>`).join("")}</tbody></table>`;
-  if (SLOT_FORMATS.includes(kind)) {
-    const stroke = kind === "formstroke";
-    const val = (v, d = 2) => v === null ? "–" : stroke ? fmtSigned(v, d) : fix(v, d);
-    // where they stood before the last card: the movement is most of what a season table is for
-    const move = r => !r.moved ? "" : r.moved > 0 ? `<span class="mv up" title="up ${r.moved} since the last card">▲${r.moved}</span>`
-      : `<span class="mv down" title="down ${-r.moved} since the last card">▼${-r.moved}</span>`;
-    return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Slots</th><th>Form</th><th>+Play</th><th>Total</th></tr></thead>
-    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""} ${move(r)}</td><td>${r.played}</td><td>${r.used}/${r.slots}</td><td>${val(r.form)}</td><td>${stroke ? "−" : "+"}${fix(r.presence, 2)}</td><td class="acc">${val(r.total)}</td></tr>`).join("")}</tbody></table>`;
-  }
   return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>Up</th><th>Pts</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${r.up > 0 ? "+" : ""}${r.up}</td><td class="acc">${r.points}</td></tr>`).join("")}</tbody></table>`;
 }
@@ -1521,7 +1486,7 @@ function league(gid) {
     body = Ms.length ? `
       ${formats.length > 1 ? subtabs(formats.map(f => `<button data-act="fmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")) : ""}
       ${standingsTable(pick, standingsFor(g, Ms, members, pick), g, me)}
-      ${tip(SLOT_FORMATS.includes(pick) ? slotNote(pick, g) : FORMAT_NOTES[pick], "How this table is scored")}
+      ${tip(FORMAT_NOTES[pick], "How this table is scored")}
       <a class="btn" href="#leagueposter/${gid}">Make a standings poster ›</a>
       <button class="btn" data-act="ltab" data-tab="settings" style="margin-top:8px">Score this league another way ›</button>`
       : `<p class="muted center" style="margin:30px 0 14px">No finished rounds in this league yet.</p>
@@ -1607,10 +1572,8 @@ function league(gid) {
     const St = Ms.length ? leagueStats(Ms, members) : { players: [] };
     const pick = formats.includes(ui.fmtTab[gid]) ? ui.fmtTab[gid] : formats[0];
     const Sp = Ms.length ? standingsFor(g, Ms, members, pick) : { rows: [] };
-    const cur = r => pick === "stroke" ? (r.played ? fmtToPar(r.counted) : "–")
-      : pick === "formstroke" ? fmtSigned(r.total, 1) : pick === "form" ? fix(r.total, 1)
-      : String(pick in MATCH_BASIS ? r.points : r.counted);
-    const unit = pick === "stroke" || pick === "formstroke" ? "net" : "pts";
+    const cur = r => pick === "stroke" ? (r.played ? fmtToPar(r.counted) : "–") : String(pick in MATCH_BASIS ? r.points : r.counted);
+    const unit = pick === "stroke" ? "net" : "pts";
     const SORTS = [["league", "League order"], ["avg", "Average"], ["rounds", "Rounds"], ["par", "Par or better"]];
     const sort = SORTS.some(([k]) => k === ui.plSort[gid]) ? ui.plSort[gid] : "league";
     const rows = St.players.map(p => ({ p, row: Sp.rows.find(r => r.id === p.id) || null,
@@ -1636,7 +1599,7 @@ function league(gid) {
     </div>`;
     body = rows.length ? `
       ${tip(`<p>Everyone who has played a round in this league, and what those rounds say about them.</p>
-        <p>The big figure on the right of a card is ${pick === "stroke" ? "their net total" : SLOT_FORMATS.includes(pick) ? "their form plus turnout" : pick in MATCH_BASIS ? "their match points" : "their league points"} in the ${esc(FORMAT_NAMES[pick])} table, which is ${FORMAT_MODE[pick].toLowerCase()}. The coloured bar is every hole they have played here, best scores on the left and worst on the right; the key just above the cards says which colour is which.</p>`, "What is on these cards")}
+        <p>The big figure on the right of a card is ${pick === "stroke" ? "their net total" : pick in MATCH_BASIS ? "their match points" : "their league points"} in the ${esc(FORMAT_NAMES[pick])} table, which is ${FORMAT_MODE[pick].toLowerCase()}. The coloured bar is every hole they have played here, best scores on the left and worst on the right; the key just above the cards says which colour is which.</p>`, "What is on these cards")}
       ${subtabs(SORTS.map(([k, l]) => `<button data-act="plsort" data-s="${k}" class="${k === sort ? "on" : ""}">${l}</button>`).join(""), true)}
       <div class="dkeywrap">${inlineKey()}</div>
       ${rows.map(card).join("")}
@@ -1686,7 +1649,6 @@ function league(gid) {
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
       <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
-      ${slotDials(g)}
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
       ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
   }
@@ -1734,7 +1696,6 @@ function league(gid) {
     ev.preventDefault();
     g.name = ev.target.name.value.trim() || g.name; g.bestN = Number(ev.target.bestN.value) || 0;
     g.formats = S.cleanFormats([...ev.target.querySelectorAll("input[name=fmt]:checked")].map(i => i.value));
-    Object.assign(g, S.slotOpts({ slots: ev.target.slots.value, baseline: ev.target.baseline.value, adjust: ev.target.adjust.value }));
     S.saveLeague(g); toast("Saved"); ui.leagueTab[gid] = "standings"; league(gid);
   });
 }
