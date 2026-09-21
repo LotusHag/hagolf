@@ -369,6 +369,28 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
   font-size: 14px; color: var(--ink); box-shadow: var(--shadow); }
 .basis b { display: block; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--ink3); }
 
+/* ---- an explanation behind an "i": the screen stays numbers, the words are one tap away */
+.tip > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 22px 4px 8px; }
+.tip:first-child > summary { margin-top: 6px; }
+.tip > summary h2 { margin: 0; }
+.tip.solo > summary { margin: 8px 4px 10px; color: var(--ink3); font-size: 13px; font-weight: 600; }
+.tip[open] > summary { color: var(--ink2); }
+.ibtn { width: 19px; height: 19px; flex: none; border-radius: 50%; border: 1.5px solid var(--line2); color: var(--ink3);
+  display: grid; place-items: center; font: italic 700 12px/1 Georgia, "Times New Roman", serif; }
+.tip[open] .ibtn { background: var(--green); border-color: var(--green); color: var(--green-ink); }
+.tipbody { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-s); box-shadow: var(--shadow);
+  padding: 12px 14px; margin: 0 4px 14px; color: var(--ink2); font-size: 14px; }
+.tipbody p { margin: 0 0 8px; } .tipbody p:last-child { margin-bottom: 0; }
+.tipbody b { color: var(--ink); font-weight: 600; }
+.card .tipbody { margin: 10px 0 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* which of the two games a table or a score is playing, said in one chip */
+.modeline { display: flex; align-items: center; gap: 8px; margin: 0 4px 10px; color: var(--ink3); font-size: 13px; }
+.modeline.mid { justify-content: center; text-align: center; margin: 0 0 6px; }
+.modetag { flex: none; background: var(--green-soft); color: var(--green); border-radius: 999px; padding: 3px 9px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+
 /* ---- misc */
 #toast { position: fixed; left: 50%; bottom: calc(96px + var(--sab)); transform: translateX(-50%) translateY(12px); background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; opacity: 0; transition: all .2s; z-index: 20; max-width: 90vw; text-align: center; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 #toast.show { opacity: 1; transform: translateX(-50%); }

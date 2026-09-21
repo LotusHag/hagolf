@@ -27,24 +27,36 @@ const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "
 // What a hole-by-hole format settles a hole on. A format not in here is not a match format.
 const MATCH_BASIS = { match: "net", matchpts: "points", soccer: "net", soccerpts: "points" };
 const basisWord = b => b === "points" ? "Stableford points" : "net strokes";
+// Every table is one of the two games, and the app says which before any number is read.
+const FORMAT_MODE = { stableford: "Stroke play", stroke: "Stroke play", gp: "Stroke play",
+  match: "Match play", matchpts: "Match play", soccer: "Match play", soccerpts: "Match play" };
 const FORMAT_BLURB = {
-  stableford: "Stableford points added up across rounds",
-  stroke: "Net score against par, lowest total wins",
-  match: "Matches decided on net strokes, the ordinary golf way: 2 a win, 1 a draw",
-  matchpts: "Matches decided on Stableford points a hole: 2 a win, 1 a draw",
-  soccer: "The same matches on net strokes, as a football table: 3 a win, 1 a draw",
-  soccerpts: "The same matches on Stableford points, as a football table: 3 a win, 1 a draw",
-  gp: "Formula 1 points by finishing position: 25 for the win, then 18, 15, 12" + "…",
+  stableford: "Everyone's Stableford points added up; most points wins",
+  stroke: "Everyone's net score against par added up; lowest wins",
+  match: "Everyone who played together plays a match, each hole to the lower net score: 2 for a win, 1 for a draw",
+  matchpts: "Everyone who played together plays a match, each hole to the higher Stableford points: 2 for a win, 1 for a draw",
+  soccer: "The same matches on net scores, in a football table: 3 for a win, 1 for a draw",
+  soccerpts: "The same matches on Stableford points, in a football table: 3 for a win, 1 for a draw",
+  gp: "Points for where you finish each round, as in Formula 1: 25 for the win, then 18, 15, 12" + "…",
 };
 const FORMAT_NOTES = {
-  stableford: "Stableford points per round; wins = most points in a round.",
-  stroke: "Net strokes against par per round, lowest total wins; a round without a return does not count.",
-  match: "Every pair who shared a round played a match, each hole going to the lower net score. 2 points a win, 1 a draw.",
-  matchpts: "Every pair who shared a round played a match, each hole going to the higher Stableford points. Points stop at zero, so two wrecked holes halve where net strokes would separate them. 2 points a win, 1 a draw.",
-  soccer: "Matches on net strokes, scored as a football table: 3 points a win, 1 a draw, nothing for a loss.",
-  soccerpts: "Matches on Stableford points a hole, scored as a football table: 3 points a win, 1 a draw, nothing for a loss.",
-  gp: `Each round hands out points by finishing position, as Formula 1 does: ${GP_POINTS.join(", ")} down the board, nothing after that. Position is taken among this league's players, so a guest cannot take the win.`,
+  stableford: "<b>Stroke play.</b> Everyone plays for their own score and nobody plays against anybody: each round gives you your Stableford points and this table adds them up. <b>Rds</b> is rounds played, <b>Wins</b> how often you had the most points on the day, <b>Avg</b> your points per round.",
+  stroke: "<b>Stroke play.</b> Each round counts your net score against par, so −2 means two under. The lowest total wins. A round you did not finish a full card for counts nothing and is marked NR.",
+  match: "<b>Match play.</b> Everyone who played the same round played a match against everyone else in it. Each hole goes to the lower net score, which is the score after handicap strokes, and whoever wins more holes wins the match. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost across every match.",
+  matchpts: "<b>Match play.</b> Everyone who played the same round played a match against everyone else in it, and each hole goes to the higher Stableford points. Points stop at zero, so two ruined holes are halved where net scores would still separate them. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost.",
+  soccer: "<b>Match play, football table.</b> The same matches, each hole on the lower net score, scored the way a football league is: 3 points for a win, 1 for a draw, nothing for a loss.",
+  soccerpts: "<b>Match play, football table.</b> The same matches, each hole on the higher Stableford points, scored 3 for a win, 1 for a draw, nothing for a loss.",
+  gp: `<b>Stroke play.</b> Each round hands out points for where you finished, as Formula 1 does: ${GP_POINTS.join(", ")} down the board and nothing after that. Only this league's players count towards a position, so a guest cannot take the win off you.`,
 };
+
+/** An explanation folded away behind an "i": the screen stays numbers and the words are one tap off.
+    The text is trusted HTML; every caller escapes what it puts in. */
+const tipBody = text => `<div class="tipbody">${text}</div>`;
+const ibtn = `<i class="ibtn" aria-hidden="true">i</i>`;
+/** A heading that carries its own explanation: tapping the heading or its "i" opens it. */
+const h2tip = (title, text) => `<details class="tip"><summary><h2>${esc(title)}</h2>${ibtn}<span class="sr">what this means</span></summary>${tipBody(text)}</details>`;
+/** The same, where there is no heading to hang it on. */
+const tip = (text, label = "What this means") => `<details class="tip solo"><summary>${ibtn}<span>${esc(label)}</span></summary>${tipBody(text)}</details>`;
 let toastTimer = null;
 const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false, plSort: {},
   loops: {}, nineTab: {}, fmtTab: {}, statsWho: {} };
@@ -327,7 +339,8 @@ function loops(club) {
   page(club, `
     <div class="filter"><button data-act="holes" data-v="9" class="${st.holes === 9 ? "on" : ""}">9 holes</button><button data-act="holes" data-v="18" class="${st.holes === 18 ? "on" : ""}">18 holes</button></div>
     ${body}
-    <p class="muted small" style="margin-top:18px">${plural(nines.length, "loop")}, so ${nines.length} nines and ${nines.length * (nines.length - 1)} ways round for 18. Each one has its own stroke index and its own rating, and the round splits back into its nines for the statistics.</p>`,
+    ${tip(`<p>This club has ${plural(nines.length, "loop")} of nine holes, which makes ${nines.length * (nines.length - 1)} ways of walking 18: the order matters, because each combination has its own stroke index and its own course rating, and so its own handicap strokes.</p>
+      <p>Say which nine you started on and which you went out on second, and the app picks the right card. Afterwards the round is split back into its two nines for the statistics.</p>`, "Why the order matters")}`,
     { back: "#new", sub: `${plural(nines.length, "nine")} · 9 or 18 holes` });
   bind(ev => {
     const b = ev.target.closest("[data-act]");
@@ -398,6 +411,8 @@ function roundForm(slug) {
       <label>Tee <span class="muted">(per player later)</span><select id="rtee">${tees.map(t => `<option ${t === dflt ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
       <label>Handicap allowance<select id="rallow"><option value="100">100% (society default)</option><option value="95">95% (WHS individual Stableford)</option><option value="90">90%</option></select></label>
     </div>
+    ${tip(`<p>Everyone's course handicap is worked out from their index and this course's rating first. The allowance is the slice of that handicap they actually play off, and it applies to everybody equally.</p>
+      <p>100% is the ordinary society round. The World Handicap System asks for 95% in an individual Stableford competition, and a big or strong field is sometimes cut to 90%.</p>`, "What is a handicap allowance?")}
     ${S.leagues().length ? `<div class="card checks"><h2>Counts for</h2>${S.leagues().map(g => `<label><input type="checkbox" name="lg" value="${g.id}" ${g.id === last ? "checked" : ""}> ${esc(g.name)}</label>`).join("")}</div>` : ""}`,
   { back: "#new", bar: `<button class="btn primary" data-act="create-round" data-slug="${esc(slug)}">Next: who is playing ›</button>` });
 }
@@ -427,7 +442,8 @@ function players(rid) {
       </div></div>`;
   }).join("");
   const body = `
-    <h2>${plural(r.entries.length, "player")} in this round</h2>
+    ${h2tip(`${plural(r.entries.length, "player")} in this round`, `<p>Each player's handicap index is turned into a course handicap for the tee they are standing on: the index is stretched by this course's slope and shifted by its rating, so the same index gives more strokes off a harder tee.</p>
+      <p>Those strokes are then spread over the holes by stroke index, hardest hole first. If the club's own table gives a different number, put it in the course handicap override when you add the player, and that is what counts.</p>`)}
     ${rows || `<p class="muted small">Nobody yet. Tap names below to add them.</p>`}
     ${roster.length ? `<h2>Tap to add</h2><div class="chips-wrap">${roster.map(p => `<button class="pchip ${me && p.id === me.id ? "on" : ""}" data-act="add-roster" data-id="${p.id}"><span><span class="plus">+</span>${esc(p.name)}</span><small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
     <form id="addf" class="card form ${roster.length || r.entries.length ? "" : "open"}">
@@ -541,7 +557,7 @@ function score(rid, hArg) {
       <div class="muted small">Stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${n}</div></div></div>
     <div class="card" style="padding:4px 14px" id="rows">${shown.map(([e, i]) => scoreRow(r, c, e, i, h)).join("")}</div>
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}
-    <p class="hint">First tap on − or + enters par. Tap the score itself for a pick-up, which counts ${NO_SCORE}.</p>
+    <p class="hint">The first tap on − or + puts par in. Tap the score itself if the hole was picked up, which counts ${NO_SCORE} strokes.</p>
     <p class="center"><a class="btn small" href="#players/${rid}">Add or remove players</a></p>`;
   const bar = (h === 0 ? `<a class="btn" href="#players/${rid}">‹ Players</a>` : `<a class="btn" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`) +
     (h < n - 1 ? `<a class="btn primary" href="#score/${rid}/${h + 1}">Hole ${c.first_hole + h + 1} ›</a>` : `<a class="btn primary" href="#review/${rid}">Review ›</a>`);
@@ -637,7 +653,8 @@ function review(rid, keep = false) {
   const lg = S.leaguesOfRound(rid);
   const body = `
     ${missing ? `<h2>Not finished</h2>${missing}` : ""}
-    ${rows ? `<h2>Stableford order</h2><p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score. The order holds still while you edit and settles when you save.</p>${rows}` : `<p class="muted center">No complete scorecards yet.</p>`}
+    ${rows ? `${h2tip("Stableford order", `<p>Stableford scores each hole on its own, against the par you get with your handicap strokes: a net double bogey or worse is 0 points, a net bogey 1, a net par 2, a net birdie 3, and so on up. The round is the points added up, and unlike a stroke play total one ruined hole costs at most two points.</p>
+      <p>Each row shows that player's <b>gross</b> (every stroke they took), their <b>net</b> (gross less their course handicap) and their <b>points</b>. The board is ordered on points.</p>`)}<p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score. The order stays put while you edit and settles when you save.</p>${rows}` : `<p class="muted center">No complete scorecards yet.</p>`}
     <h2>Round</h2>
     <div class="card row"><div class="small">Counts for <b>${lg.length ? lg.map(g => esc(g.name)).join(", ") : "no league"}</b></div><a class="btn small" href="#attach/${rid}">Change</a></div>
     <details class="card"><summary class="small">Name and date: ${esc(r.name)} · ${esc(r.date || "no date")}</summary>
@@ -689,7 +706,7 @@ function attach(rid) {
   const list = S.leagues().map(g => `<label><input type="checkbox" data-act="toggle-league" data-gid="${g.id}" ${mine.has(g.id) ? "checked" : ""}> ${esc(g.name)}<span class="muted"> · ${plural(S.leagueRoundIds(g.id).length, "round")}</span></label>`).join("");
   const backTo = r.status === "done" ? `#graphics/${rid}` : `#review/${rid}`;
   page("Counts for", `
-    <p class="muted small">${esc(r.name)}: tick the leagues this round counts for. Running totals and head-to-heads update on every phone.</p>
+    <p class="muted small">${esc(r.name)}: tick the leagues this round should count for. Every phone sees the tables and head-to-heads update.</p>
     <div class="card checks">${list || `<p class="muted">No leagues yet. Make one below.</p>`}</div>
     <form id="newg" class="card form open"><h2>New league</h2><label>Name<input name="name" placeholder="e.g. Apeliotes 2026" required></label>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="0"></label>
@@ -931,8 +948,7 @@ function player(id) {
       <button class="btn small" data-act="my-card" data-rid="${r.id}" data-pid="${p.id}">Save card</button></div>`;
   }).join("");
   const nines = ninesPlayed(S.roundsOf(p.id), p.id);
-  const ninesBlock = nines.length ? `<h2>Nines walked</h2>
-    <p class="muted small" style="margin:-4px 4px 8px">Each loop scored on its own card and rating, whether it was walked alone or as half of an 18, so these compare.</p>
+  const ninesBlock = nines.length ? `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18, so the loops can be compared with each other.`)}
     <table class="stand"><thead><tr><th class="l">Loop</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
       <tbody>${nines.map(x => `<tr><td class="l">${esc(nineName(x.slug))}</td><td>${x.played}</td><td>${x.bestGross === null ? "–" : x.bestGross}</td>
         <td>${x.avgGross === null ? "–" : fix(x.avgGross)}</td><td class="acc">${fix(x.avgPts)}</td></tr>`).join("")}</tbody></table>` : "";
@@ -1006,7 +1022,7 @@ function leagues() {
     <button class="btn addbtn" data-act="toggle-newg"><span class="plus">+</span> New league</button>
     <form id="newg" class="card form"><h2>New league</h2><label style="margin-top:0">Name<input name="name" placeholder="e.g. Apeliotes 2026" required></label>
       <label>Scored by <span class="muted">(the first one is what the league opens on)</span></label>
-      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${f === "stableford" ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
+      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${f === "stableford" ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="0"></label>
       <button class="btn primary" type="submit">Create</button></form>`, { back: "", tabs: "leagues" });
   bind(ev => {
@@ -1132,7 +1148,7 @@ function formChart(rs, who) {
       <small>${esc(shortDate(r.date))}</small></a>`;
   }).join("");
   return `<div class="card"><div class="fchart">${cols}</div>
-    <p class="muted small center" style="margin:8px 0 0">${esc(who)}'s points ${mixed ? "a hole" : "in each round"}, oldest first.${any ? " The grey column behind each bar is what the rest of the field scored that day." : ""} Tap a round for its card.</p></div>`;
+    <p class="muted small center" style="margin:8px 0 0">${esc(who)}'s points ${mixed ? "a hole" : "in each round"}, oldest first.${any ? " Grey is what the rest of the field scored that day." : ""} Tap a round for its card.</p></div>`;
 }
 
 /** A table row of holes of one kind: how many, what they were played in, what they paid. */
@@ -1142,6 +1158,12 @@ function parRow(label, x) {
     <td class="acc">${fix(x.pts, 2)}</td><td>${pct(x.counts[0] + x.counts[1], x.holes)}%</td></tr>`;
 }
 
+/** The columns of a par table in words: every one of them is a different unit. */
+const parTableTip = who => `<p>How ${who} plays each kind of hole.</p>
+  <p><b>Played</b> is how many holes of that kind have been walked, <b>Avg</b> the average score on one, <b>Vs par</b> how far that average is over or under par, <b>Pts</b> the Stableford points a hole, and <b>Birdie+</b> how often the hole was birdied or better.</p>
+  <p>Stableford points measure a score against the handicap: 2 points is exactly your handicap's par, so anything above 2 is a hole played better than your handicap asks for.</p>`;
+const BANDS_TIP = `<p>Every scorecard gives each hole a stroke index, the number that ranks the holes from hardest (1) to easiest. Sorted by it, a card falls into three bands: the hardest third, the middle third and the easiest third. On a nine that is three holes each.</p>
+  <p>The hardest holes are also where handicap strokes are given, which is why they often pay the most Stableford points even though they are played worst against par.</p>`;
 const PAR_TABLE_HEAD = `<thead><tr><th class="l">Holes</th><th>Played</th><th>Avg</th><th>Vs par</th><th>Pts</th><th>Birdie+</th></tr></thead>`;
 // a stats table never wraps a heading or a row label: the numbers are what has to line up
 const PAR_TABLE = `<table class="stand partab">`;
@@ -1160,18 +1182,15 @@ function fieldStats(St, nines = "") {
   return `
     <div class="card statcard">
       <div class="dwrap">${donut(F.counts, `${pct(parOrBetter(F), F.holes)}%`, "par or better")}${donutKey(F.counts, F.cards, "card")}</div>
-      <p class="muted small" style="margin:10px 0 0">Every hole this league has walked: ${plural(F.holes, "hole")} over ${plural(F.cards, "card")} and ${plural(F.rounds, "round")}.
+      <p class="muted small" style="margin:10px 0 0">Every hole this league has played: ${plural(F.holes, "hole")} over ${plural(F.cards, "card")} in ${plural(F.rounds, "round")}.
         A card is worth ${fix(F.avgPts)} points, and a hole is played in ${fmtSigned(F.vspar, 2)} against par.</p>
     </div>
-    <h2>Par 3s, 4s and 5s</h2>
+    ${h2tip("Par 3s, 4s and 5s", parTableTip("everyone in this league together"))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(F)}${everyHoleRow(F)}</tbody></table>
-    <p class="muted small" style="margin:6px 4px 0">The field's average on each kind of hole. Points are Stableford, so 2 is the handicap's par.</p>
-    <h2>Easy holes and hard ones</h2>
+    ${h2tip("Easy holes and hard ones", BANDS_TIP)}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${F.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>
-    <p class="muted small" style="margin:6px 4px 0">Split by stroke index on each card, so the hardest third of a nine is its three lowest-index holes.
-      Those are also where the strokes are given, which is why they usually pay the most points.</p>
     ${nines}
-    <h2>Who scores what</h2>
+    ${h2tip("Who scores what", `One bar a player: every hole they have played in this league, best scores on the left and worst on the right, in the colours of the key just below. The longer the left end, the more often they are at par or better — which is also how the list is sorted.`)}
     <div class="card dists">${inlineKey()}${dist}</div>
     <h2>Records</h2>
     <div class="card">
@@ -1204,11 +1223,9 @@ function playerStats(St, p, nines = "") {
       ${Object.keys(p.byPar).map(k => enough(p.byPar[k], R.byPar[k]) ? tapeRow(`points on par ${k}s`, p.byPar[k].pts, R.byPar[k].pts, false, v => fix(v, 2)) : "").join("")}
       ${enough(p.bands[0], R.bands[0]) ? tapeRow("points on the hardest third", p.bands[0].pts, R.bands[0].pts, false, v => fix(v, 2)) : ""}
     </div>
-    <p class="muted small" style="margin:6px 4px 0">${esc(first)} on the left, everyone else in this league on the right, over the ${plural(p.played, "round")} they played together.
-      ${p.vsField === null ? "" : (p.beatOf === 1
+    <p class="muted small" style="margin:6px 4px 0">${p.vsField === null ? "" : (p.beatOf === 1
         ? `${esc(first)} ${p.beat ? "beat" : "did not beat"} the rest of the field in the one round they have shared.`
-        : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}
-      ${mixedLengths(p.rounds) ? "This league mixes nine- and eighteen-hole rounds, so compare the numbers given a hole at a time rather than a round at a time." : ""}</p>`;
+        : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}</p>`;
   return `
     <div class="mecard"><div class="stats">
       ${tile(p.played, plural(p.played, "round").split(" ")[1])}
@@ -1222,11 +1239,13 @@ function playerStats(St, p, nines = "") {
       <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} in this league. ${esc(first)} ${birdies ? `makes ${fix(birdies / p.played)} birdies or better` : "has yet to make a birdie"}
         and ${fix(per(2))} pars a round, and plays a hole in ${fmtSigned(p.vspar, 2)} against par.</p>
     </div>
-    <h2>Against the field</h2>
+    ${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this league on the right, over the ${plural(p.played, "round")} they played together — so nobody is measured on a day the others missed. The bar fills in proportion and the green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixedLengths(p.rounds) ? " This league mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
     ${vsField}
     ${rivalsBlock(St, p)}
-    ${one ? "" : `<h2>Round by round</h2>${formChart(p.rounds, first)}`}
-    ${one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear once ${esc(first)} has played a second round here.</p>` : `<h2>Over more than one round</h2><div class="card">
+    ${one ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left, so a run of form is a shape rather than a number. The grey column behind a bar is what everyone else in the league scored that day, which is what makes a good round on a hard day look good. Tap a bar for that card.`)}${formChart(p.rounds, first)}`}
+    ${one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear once ${esc(first)} has played a second round here.</p>` : `${h2tip("Over more than one round", `<p><b>Consistency</b> is how far a typical round sits either side of their average: the smaller it is, the steadier they are.</p>
+      <p><b>Form</b> is the last three rounds against every round. <b>Trend</b> compares the first half of their rounds with the second half. <b>Streak</b> counts the latest rounds in a row where they beat the rest of the field.</p>
+      <p><b>Finishing</b> splits a round in two and gives the points a hole in each half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>`)}<div class="card">
       ${line("Consistency", `${fix(p.consistency)} points either side of their average${mixedLengths(p.rounds) ? ", though this league mixes round lengths" : ""}`)}
       ${p.form === null ? "" : line("Form", `${fix(p.form)} points over the last three, against ${fix(p.avgPts)} across every round`)}
       ${p.trend === null ? "" : line("Trend", `${fmtSigned(p.trend)} points from the first half of their rounds to the second`)}
@@ -1238,9 +1257,9 @@ function playerStats(St, p, nines = "") {
       ${p.penalties ? line("Penalty strokes", String(p.penalties)) : ""}
       ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
     </div>`}
-    <h2>Par 3s, 4s and 5s</h2>
+    ${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
-    <h2>Easy holes and hard ones</h2>
+    ${h2tip("Easy holes and hard ones", BANDS_TIP)}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${p.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>
     ${nines}
     <h2>${esc(first)} in this league</h2>
@@ -1290,7 +1309,7 @@ function rivalCard(r, me, them) {
         ${tile(`${them} above their average`, r.goodN, r.onGood, mark && r.onGood > r.onBad)}
         ${tile(`${them} below it`, r.badN, r.onBad, mark && r.onBad > r.onGood)}
       </div>
-      <p class="muted small" style="margin:10px 0 0">Both figures are ${me}'s ${unit}: the left on the ${plural(r.goodN, "round")} where ${them} beat their own average of ${val(r.theirAvg)}, the right on the ${r.badN} where they did not. ${verdict}</p>`;
+      <p class="muted small" style="margin:10px 0 0">Both numbers are ${me}'s ${unit}: on the left the ${plural(r.goodN, "round")} where ${them} played above their own average of ${val(r.theirAvg)}, on the right the ${r.badN} where they did not. ${verdict}</p>`;
   return `<div class="card rival">
     <div class="rhead"><b>${esc(r.name)}</b><span class="muted small">${plural(r.played, "round")} together \u00b7 ${rivalRecord(r, me, them)}</span></div>
     <div class="tapes mine">${tapeRow(unit, r.myAvg, r.theirAvg, false, val)}</div>
@@ -1317,9 +1336,9 @@ function rivalsBlock(St, p) {
   const deep = rs.filter(r => r.played > 1), thin = rs.filter(r => r.played === 1);
   const shown = deep.slice(0, 5), rest = deep.slice(5);
   const mixed = mixedLengths(St.rounds.filter(x => x.pid === p.id));
-  return `<h2>Against each player</h2>
-    <p class="muted small" style="margin:-4px 4px 10px">Only the rounds the two of them played together, so neither is measured on a day the other one missed.${mixed ? " A nine and an eighteen are compared a hole at a time." : ""}
-      A handful of rounds cannot settle anything, so read these as talking points.</p>
+  return `${h2tip("Against each player", `<p>Only the rounds the two of them played together, so neither is measured on a day the other one missed.${mixed ? " A nine and an eighteen are compared a hole at a time." : ""}</p>
+      <p>The line at the top of each card is their two averages against each other. The two boxes under it split the other player's own days: what ${me} scored on the rounds where that player beat their own average, and on the rounds where they did not — a rough way of asking whether ${me} rises to a good playing partner or wilts.</p>
+      <p>A handful of rounds cannot settle anything, so read these as talking points rather than facts.</p>`)}
     ${shown.map(r => rivalCard(r, me, nameOf(r))).join("")}
     ${rest.length ? `<details class="card"><summary class="small">${plural(rest.length, "more player")}</summary>${rest.map(r => rivalCard(r, me, nameOf(r))).join("")}</details>` : ""}
     ${thin.length ? `<p class="muted small" style="margin:16px 4px 6px">Met once so far</p>${rivalRows(thin, me, nameOf)}` : ""}`;
@@ -1351,20 +1370,18 @@ function ninesFieldBlock(gid, rounds, me) {
     bestGross: e.gs.length ? Math.min(...e.gs) : null,
     avgGross: e.gs.length ? e.gs.reduce((a, b) => a + b, 0) / e.gs.length : null }))
     .sort((a, b) => b.avgPts - a.avgPts || (a.avgGross ?? 99) - (b.avgGross ?? 99) || a.name.localeCompare(b.name));
-  return `<h2>The nines walked</h2>
+  return `${h2tip("The nines walked", `This club's loops are rated on their own, so every nine is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18. That makes the cards on one loop comparable, however the day was put together. Pick a loop below; the table then ranks the players on it by average points.`)}
     <div class="chips-wrap">${nines.map(x => `<button class="pchip ${x.slug === pick ? "on" : ""}" data-act="ninetab" data-slug="${esc(x.slug)}">${esc(nineName(x.slug))}<small>${plural(x.played, "card")}</small></button>`).join("")}</div>
     <table class="stand" style="margin-top:12px"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
       <tbody>${table.map((e, i) => `<tr class="${me && e.id === me.id ? "acc" : ""}"><td class="pos">${i + 1}</td><td class="l">${esc(e.name)}</td><td>${e.played}</td>
-        <td>${e.bestGross === null ? "–" : e.bestGross}</td><td>${e.avgGross === null ? "–" : fix(e.avgGross)}</td><td class="acc">${fix(e.avgPts)}</td></tr>`).join("")}</tbody></table>
-    <p class="muted small" style="margin:8px 4px 0">Every card on this loop, whether it was walked on its own or as half of an 18, scored on the loop's own stroke index and rating so they compare. Ranked by average points.</p>`;
+        <td>${e.bestGross === null ? "–" : e.bestGross}</td><td>${e.avgGross === null ? "–" : fix(e.avgGross)}</td><td class="acc">${fix(e.avgPts)}</td></tr>`).join("")}</tbody></table>`;
 }
 
 /** The loops one player has walked in this league, each scored on its own card. */
 function ninesPlayerBlock(rounds, pid, first) {
   const nines = ninesPlayed(rounds, pid);
   if (!nines.length) return "";
-  return `<h2>Nines walked</h2>
-    <p class="muted small" style="margin:-4px 4px 8px">Each loop scored on its own card and rating, whether ${esc(first)} walked it alone or as half of an 18, so these compare.</p>
+  return `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether ${esc(first)} walked it alone or as half of an 18, so the loops can be compared with each other.`)}
     <table class="stand"><thead><tr><th class="l">Loop</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
       <tbody>${nines.map(x => `<tr><td class="l">${esc(nineName(x.slug))}</td><td>${x.played}</td><td>${x.bestGross === null ? "–" : x.bestGross}</td>
         <td>${x.avgGross === null ? "–" : fix(x.avgGross)}</td><td class="acc">${fix(x.avgPts)}</td></tr>`).join("")}</tbody></table>`;
@@ -1426,10 +1443,10 @@ function league(gid) {
     // One table, the way this league is scored; the rest are a tap away rather than stacked underneath.
     const pick = formats.includes(ui.fmtTab[gid]) ? ui.fmtTab[gid] : formats[0];
     body = Ms.length ? `
-      ${formats.length > 1 ? `<div class="subtabs">${formats.map(f => `<button data-act="fmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")}</div>`
-        : `<p class="muted small" style="margin:2px 4px 10px">${FORMAT_BLURB[pick]}</p>`}
+      ${formats.length > 1 ? `<div class="subtabs">${formats.map(f => `<button data-act="fmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")}</div>` : ""}
+      <div class="modeline"><span class="modetag">${FORMAT_MODE[pick]}</span><span>${FORMAT_BLURB[pick]}</span></div>
       ${standingsTable(pick, standingsFor(g, Ms, members, pick), g, me)}
-      <p class="muted small" style="margin:6px 4px 14px">${FORMAT_NOTES[pick]}</p>
+      ${tip(FORMAT_NOTES[pick], "How this table is scored")}
       <a class="btn" href="#leagueposter/${gid}">Make a standings poster ›</a>
       <button class="btn" data-act="ltab" data-tab="settings" style="margin-top:8px">Score this league another way ›</button>`
       : `<p class="muted center" style="margin:30px 0 14px">No finished rounds in this league yet.</p>
@@ -1451,10 +1468,14 @@ function league(gid) {
       const fA = firstName(A), fB = firstName(B);
       const sel = (name, val) => `<select data-h2h="${name}">${members.map(m => `<option value="${m}" ${m === val ? "selected" : ""}>${esc(nameOf(m))}</option>`).join("")}</select>`;
       const picker = `<div class="vspick">${sel("a", a)}<button class="swapb" data-act="h2hswap" title="Swap">&#8646;</button>${sel("b", b)}</div>`;
-      const basis = `<div class="basis"><span><b>Rounds</b>Stableford points</span><span><b>Holes</b>${basisWord(h2hBasis)}</span></div>
-        <p class="muted small" style="margin:6px 4px 12px">A round goes to whoever scored more points that day. A hole goes to ${h2hBasis === "points" ? "the higher Stableford points" : "the lower net score"}, because
-        ${h2hKind ? `this league keeps a ${FORMAT_NAMES[h2hKind]} table and this follows it` : `this league has no matchplay table, and net strokes are the ordinary golf way; add a Matchplay (Stableford) table in Settings to settle holes on points instead`}.
-        ${h2hBasis === "points" ? "Points stop at zero, so two wrecked holes halve." : "Net strokes separate every hole: a 7 beats a 9 even when neither scored a point."}</p>`;
+      const holeWord = h2hBasis === "points" ? "the higher Stableford points" : "the lower net score";
+      const basis = `<div class="basis"><span><b>Rounds · stroke play</b>the day goes to the most Stableford points</span>
+        <span><b>Holes · match play</b>each hole goes to ${esc(holeWord)}</span></div>
+        ${tip(`<p>This page keeps two scores, and they are two different games.</p>
+          <p><b>Stroke play</b> settles the big score at the top: each round the two of them played together goes to whoever had more Stableford points that day, whole round against whole round.</p>
+          <p><b>Match play</b> settles the hole-by-hole part further down: every hole is its own little contest, won by ${esc(holeWord)}, and all their holes are added up as if every round together had been one long match.</p>
+          <p>${h2hKind ? `Holes go on ${esc(basisWord(h2hBasis))} because this league keeps a ${esc(FORMAT_NAMES[h2hKind])} table and this follows it.` : "This league has no match play table, so holes go on net score, the ordinary golf way. Add a Matchplay (Stableford) table in Settings to settle them on points instead."}
+          ${h2hBasis === "points" ? "Stableford points stop at zero, so two ruined holes are halved." : "Net scores separate every hole: a 7 beats a 9 even where neither hole scored a point."}</p>`, "Match play or stroke play?")}`;
       if (!H.rounds.length) {
         body = `${picker}<p class="muted center" style="margin:30px 0">${esc(fA)} and ${esc(fB)} have not played a round together in this league yet.</p>`;
       } else {
@@ -1468,35 +1489,37 @@ function league(gid) {
         const holes = H.holesA + H.holesB + H.holesHalved;
         const widest = H.winsA >= H.winsB ? H.widestA : H.widestB;
         const hero = `<div class="card vscard">
+          <div class="modeline mid"><span class="modetag">Stroke play</span><span>rounds won on the day's points</span></div>
           <div class="vsverdict">${verdict}</div>
           <div class="vs">
             <div class="vsside"><span class="vsdisc a">${esc(inits(A))}</span><span class="vsname">${esc(A)}</span></div>
-            <div class="vsnum"><b class="num">${H.winsA}</b><s>&#8211;</s><b class="num">${H.winsB}</b><small>${H.ties ? plural(H.ties, "halved round") : "none halved"}</small></div>
+            <div class="vsnum"><b class="num">${H.winsA}</b><s>&#8211;</s><b class="num">${H.winsB}</b><small>rounds won · ${H.ties ? plural(H.ties, "halved") : "none halved"}</small></div>
             <div class="vsside"><span class="vsdisc b">${esc(inits(B))}</span><span class="vsname">${esc(B)}</span></div>
           </div>
           <div class="tug"><i class="a" style="width:${pc(H.winsA)}"></i><i class="t" style="width:${pc(H.ties)}"></i><i class="b" style="width:${pc(H.winsB)}"></i></div>
           <div class="vsline">${plural(H.rounds.length, "round")} together &middot; ${streak}</div>
         </div>`;
         // Every result in order, newest on the right: the shape of the rivalry at a glance.
-        const formStrip = `<h2>Form, round by round</h2><div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${r.ptsA}&#8211;${r.ptsB}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A : B))}</a>`).join("")}</div>
+        const formStrip = `${h2tip("Round by round", `Every round they played together, oldest first. Each square is one round and carries the initials of whoever took it on Stableford points; = means they tied. Tap one to see that card.`)}<div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${r.ptsA}&#8211;${r.ptsB}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A : B))}</a>`).join("")}</div>
           <p class="muted small center" style="margin:6px 0 0">oldest to newest &middot; tap one for the card</p>`;
         // One bar per stat, filled from the left in proportion, so who is ahead is a shape and not a reading.
-        const stats = `<h2>Tale of the tape</h2><div class="card tapes">
+        const stats = `${h2tip("The numbers side by side", `${esc(fA)} on the left, ${esc(fB)} on the right, over the rounds they played together. The bar under each line fills in proportion, and the green end is whoever is ahead — on gross scores that is the lower number.`)}<div class="card tapes">
           ${tapeRow("average points", H.avgPtsA, H.avgPtsB, false, fix)}
           ${tapeRow("best round", H.bestPtsA, H.bestPtsB)}
           ${tapeRow("total points", H.ptsA, H.ptsB)}
           ${tapeRow("average gross", H.avgGrossA, H.avgGrossB, true, fix)}
           ${tapeRow("best gross", H.bestGrossA, H.bestGrossB, true)}
           ${H.birdiesA + H.birdiesB ? tapeRow("birdies or better", H.birdiesA, H.birdiesB) : ""}
-          ${h2hKind ? tapeRow(`matches won (${basisWord(h2hBasis)})`, H.matchA, H.matchB) : ""}
+          ${h2hKind ? tapeRow("match play wins", H.matchA, H.matchB) : ""}
         </div>`;
-        const holesBlock = `<h2>Hole by hole, on ${esc(basisWord(h2hBasis))}</h2><div class="card">
+        const holesBlock = `${h2tip("Match play, hole by hole", `Every hole the two of them have played together, each one won by ${esc(holeWord)} — the way a match is played. Add them all up as one long match and that is the bar: ${esc(fA)}'s holes on the left, halved holes in the middle, ${esc(fB)}'s on the right.`)}<div class="card">
+          <div class="modeline"><span class="modetag">Match play</span><span>holes won on ${esc(basisWord(h2hBasis))}</span></div>
           <div class="tug big"><i class="a" style="width:${(H.holesA / holes) * 100}%"></i><i class="t" style="width:${(H.holesHalved / holes) * 100}%"></i><i class="b" style="width:${(H.holesB / holes) * 100}%"></i></div>
           <div class="holeskey"><span><b>${H.holesA}</b> ${esc(fA)}</span><span class="muted">${H.holesHalved} halved</span><span><b>${H.holesB}</b> ${esc(fB)}</span></div>
-          <p class="muted small" style="margin:10px 0 0">All ${holes} holes they have walked together, won on ${esc(basisWord(h2hBasis))}: the running match if every round had been one long one, which ${H.up === 0 ? "ends dead level" : `${esc(H.up > 0 ? fA : fB)} would be ${Math.abs(H.up)} up in`}.</p>
+          <p class="muted small" style="margin:10px 0 0">All ${holes} holes together as one long match: ${H.up === 0 ? "dead level" : `${esc(H.up > 0 ? fA : fB)} would be ${Math.abs(H.up)} up`}.</p>
         </div>`;
         const widestLine = widest ? `<p class="muted small" style="margin:-4px 4px 8px">Widest margin: ${esc(widest.winner === "a" ? fA : fB)} by ${Math.abs(widest.ptsA - widest.ptsB)} on ${esc(fmtDate(widest.date))}.</p>` : "";
-        const list = `<h2>Every round together</h2>${widestLine}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
+        const list = `${h2tip("Every round together", `One line a round, newest first: the two point totals for that day, the winner's in colour. These are the rounds the big score at the top counts — stroke play, whole round against whole round.${h2hKind ? " The line underneath each date says how the match went hole by hole." : ""}`)}${widestLine}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
           <div class="when"><b>${esc(fmtDate(r.date))}</b><small class="muted">${esc(r.where)}${h2hKind ? ` &middot; ${r.up === 0 ? "halved" : `${Math.abs(r.up)} up ${esc(firstName(r.up > 0 ? A : B))}`}` : ""}</small></div>
           <div class="sc"><b class="${r.winner === "a" ? "wa" : ""}">${r.ptsA}</b><s>&#8211;</s><b class="${r.winner === "b" ? "wb" : ""}">${r.ptsB}</b></div></a>`).join("")}</div>`;
         body = picker + basis + hero + formStrip + stats + holesBlock + list;
@@ -1533,7 +1556,8 @@ function league(gid) {
         <button class="btn small" data-act="ph2h" data-id="${esc(p.id)}">Head to head ›</button></div>
     </div>`;
     body = rows.length ? `
-      <p class="muted small" style="margin:2px 4px 10px">Everyone who has played a round in this league, and what those rounds say about them. The big figure is ${pick === "stroke" ? "their net total" : pick in MATCH_BASIS ? "their match points" : "their league points"} in the ${FORMAT_NAMES[pick]} table.</p>
+      ${tip(`<p>Everyone who has played a round in this league, and what those rounds say about them.</p>
+        <p>The big figure on the right of a card is ${pick === "stroke" ? "their net total" : pick in MATCH_BASIS ? "their match points" : "their league points"} in the ${esc(FORMAT_NAMES[pick])} table, which is ${FORMAT_MODE[pick].toLowerCase()}. The coloured bar is every hole they have played here, best scores on the left and worst on the right; the key just above the cards says which colour is which.</p>`, "What is on these cards")}
       <div class="subtabs small">${SORTS.map(([k, l]) => `<button data-act="plsort" data-s="${k}" class="${k === sort ? "on" : ""}">${l}</button>`).join("")}</div>
       <div class="dkeywrap">${inlineKey()}</div>
       ${rows.map(card).join("")}
@@ -1581,7 +1605,7 @@ function league(gid) {
   } else {
     body = `<form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
-      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
+      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
       ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
@@ -1713,7 +1737,9 @@ function statsPoster(gid) {
 // ---------------------------------------------------------------- a course typed on the phone
 function newCourse() {
   page("New course", `
-    <p class="muted small">For a course the app does not have. Par and stroke index from the scorecard, course rating and slope from the club's handicap table. It syncs to every phone; the organiser can pull it into the course files later.</p>
+    ${tip(`<p>For a course the app does not carry yet. You need two things from the clubhouse: the scorecard, which gives the par and the stroke index of every hole, and the club's handicap table, which gives the course rating and the slope for the tee you are playing.</p>
+      <p>Course rating is the score a scratch golfer is expected to shoot; slope is how much harder the course gets for everybody else. Together they turn a handicap index into the course handicap the app gives each player.</p>
+      <p>The course is sent to every phone in the society straight away.</p>`, "What the club's card and table give you")}
     <form id="cf" class="card form open">
       <label>Club<input name="name" placeholder="e.g. Golfclub De Hoge Kleij" required></label>
       <label>Loop or course name <span class="muted">(optional)</span><input name="loop" placeholder="e.g. Championship course"></label>
@@ -1823,13 +1849,15 @@ function scan() {
     <label>Played on<input id="sdate" type="date" value="${esc(first.date || S.today())}"></label>
     <label>Name of the round<input id="sname" value="${esc(first.name || ((first.course ? first.course + " " : "") + (first.date || "")).trim() || "Scanned round")}"></label>
     <h2>Whose card is this?</h2>
-    <p class="muted small">The scores came off the photo${st.cards.length > 1 ? "s" : ""}, in the order they sit on the card. Check the numbers, then say who each row belongs to. Pick the same player on both cards and they are one round. Untick a row to leave it out.</p>
+    <p class="muted small">Check the numbers read off the photo${st.cards.length > 1 ? "s" : ""}, then say who each row belongs to.</p>
+    ${tip(`<p>The rows are in the order they sit on the card, and a number the reader was unsure of is marked in amber — those are worth a second look against the paper.</p>
+      <p>Walked 18 as two cards of nine? Pick the same player on both and the two halves become one round for them. Untick a row to leave that player out altogether.</p>`, "Reading a photographed card")}
     ${st.cards.map(cardBlock).join("")}` : "";
 
   const label = st.busy ? "Reading the card…" : !st.cards.length ? "Take or choose a photo"
     : missing > 0 ? `Take card ${st.cards.length + 1}` : "Scan another photo";
   page("Scan a scorecard", `
-    <p class="muted small">Photograph an old paper scorecard (flat, in good light). Walked 18 with a card for each nine? Take them one after the other.</p>
+    <p class="muted small">Photograph an old paper scorecard, laid flat and in good light. Two cards of nine for one 18-hole round? Take them one after the other.</p>
     <label class="btn primary big" style="display:flex">${label}<input id="photo" type="file" accept="image/*" capture="environment" hidden ${st.busy ? "disabled" : ""}></label>
     ${st.cards.length ? `<button class="btn small" data-act="scan-reset" style="margin-top:8px">Start again</button>` : ""}
     ${body}`,
@@ -1966,7 +1994,7 @@ function settings() {
       <label class="checks" style="margin-top:10px"><input type="checkbox" id="orgtoggle" ${organiser() ? "checked" : ""}> Organiser on this phone <span class="muted">&nbsp;(can delete rounds and leagues)</span></label></div>
     <h2>Shared database</h2>
     <div class="card"><div class="name">${esc(status)}</div>
-      ${invite ? `<p class="muted small">Invite another phone: let them scan this code or send them the link. It connects them to ${esc(cfg.label || "this database")} and asks who they are.</p>
+      ${invite ? `<p class="muted small">Invite another phone: let them scan this code, or send them the link. It connects them to ${esc(cfg.label || "this database")} and asks who they are.</p>
         <canvas class="qr" id="qr" width="220" height="220"></canvas>
         <div class="two"><button class="btn" data-act="share-link" data-link="${esc(invite)}">Share join link</button><button class="btn" data-act="share-link" data-link="${esc(inviteOrg)}">Organiser link</button></div>` : ""}
       <details style="margin-top:10px"><summary class="muted small">${DATA.sync ? "Connection details (only change to use another database)" : "Connect to a database"}</summary>
@@ -1988,7 +2016,7 @@ function settings() {
     <div class="card"><div class="muted small">${S.players().length} players · ${S.rounds().length} rounds · ${S.leagues().length} leagues${S.state.settings.lastExport ? ` · last export ${S.state.settings.lastExport.slice(0, 16).replace("T", " ")}` : ""}</div>
       <div class="two"><button class="btn primary" data-act="export">Export backup</button><label class="btn">Import backup<input type="file" id="imp" accept="application/json,.json" hidden></label></div></div>
     <h2>For the desktop kit</h2>
-    <p class="muted small">A round as tournament.yaml: put it in tournaments/&lt;slug&gt;/ on the computer and run python golf.py render.</p>
+    ${tip(`Saves a round as a tournament.yaml file, the format the desktop scripts read. Put it in tournaments/&lt;slug&gt;/ on the computer and run <b>python golf.py render</b> to get the same posters and cards at full size.`, "What this file is for")}
     <div class="list">${done.map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(fmtDate(r.date))}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
     ${organiser() ? `<h2>Delete a round</h2><div class="list">${S.rounds().map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${roundStatus(r)}</div></div><button class="btn small danger" data-act="del-round" data-rid="${r.id}">Delete</button></div>`).join("") || `<div class="muted small">No rounds.</div>`}</div>` : ""}
     <p class="foot">Hagolf ${DATA.version} · ${S.courses().length} courses · ${DATA.themes.length} themes</p>`, { back: "", tabs: "settings" });
