@@ -3,7 +3,7 @@
 import { DATA } from "./data.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
-import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
+import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
 import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
 import { renderCards } from "./cards.js";
@@ -45,7 +45,7 @@ const FORMAT_NOTES = {
 };
 let toastTimer = null;
 const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false,
-  loops: {}, nineTab: {}, fmtTab: {} };
+  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {} };
 
 function toast(msg, ms = 2600, action = null) {
   let t = document.getElementById("toast");
@@ -1031,7 +1031,7 @@ function leagueResults(g) {
   return { Ms, members, S: standings(Ms, members, g.bestN) };
 }
 
-const LEAGUE_TABS = [["standings", "Standings"], ["nines", "Nines"], ["h2h", "Head to head"], ["players", "Players"], ["rounds", "Rounds"], ["settings", "Settings"]];
+const LEAGUE_TABS = [["standings", "Standings"], ["stats", "Stats"], ["nines", "Nines"], ["h2h", "Head to head"], ["players", "Players"], ["rounds", "Rounds"], ["settings", "Settings"]];
 
 /** The standings for one way of scoring a league. Every screen and every poster goes through here. */
 function standingsFor(g, Ms, members, kind) {
@@ -1053,6 +1053,292 @@ function standingsTable(kind, S, g, me) {
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best === null ? "–" : fmtToPar(r.best)}</td><td>${r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"}</td><td class="acc">${r.played ? fmtToPar(r.counted) : "–"}</td></tr>`).join("")}</tbody></table>`;
   return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>Up</th><th>Pts</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${r.up > 0 ? "+" : ""}${r.up}</td><td class="acc">${r.points}</td></tr>`).join("")}</tbody></table>`;
+}
+
+// ---------------------------------------------------------------- stats: what a pile of rounds says
+// Six score colours, good to bad, with par as the neutral in the middle: a diverging scale, and the only
+// place in the app where colour carries the meaning on its own, so every reading is labelled beside it.
+const BUCKET_KEY = SCORE_BUCKETS.map(b => b.key);
+const shortDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : (d || "–"); };
+const pct = (v, t) => t ? Math.round((v / t) * 100) : 0;
+const sumc = cs => cs.reduce((a, b) => a + b, 0);
+const parOrBetter = x => x.counts[0] + x.counts[1] + x.counts[2];
+const whereName = w => String(w || "").replace(/, 9 holes$/, "");
+
+/** Part to whole at a glance: one ring, six segments, a gap of surface between them, the headline in the hole. */
+function donut(counts, big, small) {
+  const total = sumc(counts), R = 56, W = 22, C = 2 * Math.PI * R;  // a narrower ring leaves the hole wide enough for the headline
+  const shown = counts.filter(v => v > 0).length;
+  let off = 0;
+  const arcs = counts.map((v, k) => {
+    if (!v) return "";
+    const len = (C * v) / total, on = Math.max(len - (shown > 1 ? 2 : 0), 0.6);
+    const seg = `<circle class="dseg ${BUCKET_KEY[k]}" cx="70" cy="70" r="${R}" stroke-width="${W}" stroke-dasharray="${on} ${C - on}" stroke-dashoffset="${-off}"></circle>`;
+    off += len;
+    return seg;
+  }).join("");
+  return `<svg class="donut" viewBox="0 0 140 140" role="img" aria-label="Scoring distribution, given as numbers beside it">
+    <g transform="rotate(-90 70 70)">${total ? arcs : `<circle class="dseg par" cx="70" cy="70" r="${R}" stroke-width="${W}"></circle>`}</g>
+    <text class="dbig" x="70" y="70">${esc(big)}</text><text class="dsmall" x="70" y="89">${esc(small)}</text></svg>`;
+}
+
+/** The donut's table view: every bucket with its count and its share, so nothing rests on colour. */
+function donutKey(counts, per = 0, unit = "round") {
+  const total = sumc(counts);
+  return `<ul class="dkey">${SCORE_BUCKETS.map((b, k) => `<li class="${counts[k] ? "" : "off"}"><i class="${b.key}"></i>
+    <span>${b.label}</span><b class="num">${counts[k]}</b>
+    <small>${counts[k] ? `${pct(counts[k], total)}%${per ? ` · ${fix(counts[k] / per)} a ${unit}` : ""}` : "&mdash;"}</small></li>`).join("")}</ul>`;
+}
+
+/** The same six colours named in one line, for the bars that sit far below the ring. */
+function inlineKey() {
+  return `<div class="dkeyline">${SCORE_BUCKETS.map(b => `<span><i class="${b.key}"></i>${b.short}</span>`).join("")}</div>`;
+}
+
+/** The same six numbers as one bar, for comparing players down a column. */
+function distBar(counts) {
+  const total = sumc(counts);
+  return `<div class="dbar">${counts.map((v, k) => v ? `<i class="${BUCKET_KEY[k]}" style="width:${(v / total) * 100}%"></i>` : "").join("")}</div>`;
+}
+
+/** One reading against another, the bar underneath filled in their proportion. Used for player against field. */
+function tapeRow(label, va, vb, lower = false, fmtv = v => v) {
+  if (va === null || va === undefined || vb === null || vb === undefined) return "";
+  // both readings shifted clear of zero first, so a score under par (a negative) still fills the right way
+  const s = 1 - Math.min(va, vb, 0), a = va + s, b = vb + s;
+  const share = lower ? ((1 / a) / (1 / a + 1 / b)) * 100 : (a / (a + b)) * 100;
+  const lead = va === vb ? "" : (lower ? va < vb : va > vb) ? "a" : "b";
+  return `<div class="tape"><b class="${lead === "a" ? "win" : ""}">${fmtv(va)}</b><span>${label}</span><b class="${lead === "b" ? "win" : ""}">${fmtv(vb)}</b>
+    <div class="tbar"><i style="width:${share}%"></i></div></div>`;
+}
+
+/** True when these rounds are not all the same number of holes, which points a round cannot survive. */
+const mixedLengths = rs => new Set(rs.map(r => r.n)).size > 1;
+
+/** Points round by round, oldest first, with what the rest of the league scored that day as a column behind. */
+function formChart(rs, who) {
+  const mixed = mixedLengths(rs), any = rs.some(r => r.fieldPts !== null);
+  const val = r => mixed ? r.pts / r.n : r.pts;  // a hole at a time when nine- and eighteen-hole rounds are side by side
+  const fld = r => r.fieldPts === null ? null : (mixed ? r.fieldPts / r.n : r.fieldPts);
+  const top = Math.max(...rs.map(r => Math.max(val(r), fld(r) || 0)), 0.01);
+  const cols = rs.map(r => {
+    const h = (val(r) / top) * 88, f = fld(r) === null ? null : (fld(r) / top) * 88;
+    const title = `${fmtDate(r.date)} · ${whereName(r.where)} · ${r.pts} points over ${plural(r.n, "hole")}${r.fieldPts === null ? "" : `, the rest of the field ${fix(r.fieldPts)}`}`;
+    return `<a class="fcol" href="#review/${r.id}" title="${esc(title)}">
+      <div class="fplot">${rs.length <= 10 ? `<b class="fval num" style="bottom:calc(${h}% + 2px)">${mixed ? fix(val(r), 2) : r.pts}</b>` : ""}
+        ${f === null ? "" : `<i class="fghost" style="height:${f}%"></i>`}<i class="fbar" style="height:${h}%"></i></div>
+      <small>${esc(shortDate(r.date))}</small></a>`;
+  }).join("");
+  return `<div class="card"><div class="fchart">${cols}</div>
+    <p class="muted small center" style="margin:8px 0 0">${esc(who)}'s points ${mixed ? "a hole" : "in each round"}, oldest first.${any ? " The grey column behind each bar is what the rest of the field scored that day." : ""} Tap a round for its card.</p></div>`;
+}
+
+/** A table row of holes of one kind: how many, what they were played in, what they paid. */
+function parRow(label, x) {
+  if (!x || !x.holes) return "";
+  return `<tr><td class="l">${label}</td><td>${x.holes}</td><td>${fix(x.avg, 2)}</td><td>${fmtSigned(x.vspar, 2)}</td>
+    <td class="acc">${fix(x.pts, 2)}</td><td>${pct(x.counts[0] + x.counts[1], x.holes)}%</td></tr>`;
+}
+
+const PAR_TABLE_HEAD = `<thead><tr><th class="l">Holes</th><th>Played</th><th>Avg</th><th>Vs par</th><th>Pts</th><th>Birdie+</th></tr></thead>`;
+// a stats table never wraps a heading or a row label: the numbers are what has to line up
+const PAR_TABLE = `<table class="stand partab">`;
+const parRows = x => Object.keys(x.byPar).sort().map(k => parRow(`Par ${k}`, x.byPar[k])).join("");
+const everyHoleRow = x => `<tr class="tot"><td class="l">Every hole</td><td>${x.holes}</td><td>${fix(x.avg, 2)}</td><td>${fmtSigned(x.vspar, 2)}</td>
+  <td class="acc">${fix(x.pts, 2)}</td><td>${pct(x.counts[0] + x.counts[1], x.holes)}%</td></tr>`;
+const BANDS = ["Hardest third", "Middle third", "Easiest third"];
+
+/** The league as one field: how everybody together plays a hole, and the records they have set. */
+function fieldStats(St) {
+  const F = St.field;
+  const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span>
+    <span class="muted">${esc(firstName(r.player))} · ${value} · ${esc(shortDate(r.date))}</span></a>` : "";
+  const courses = [...new Set(St.holes.map(h => h.where))];
+  const dist = [...St.players].sort((a, b) => pct(parOrBetter(b), b.holes) - pct(parOrBetter(a), a.holes) || a.name.localeCompare(b.name))
+    .map(p => `<div class="drow"><div class="dname">${esc(p.name)}<small class="muted">${pct(parOrBetter(p), p.holes)}% par or better</small></div>${distBar(p.counts)}</div>`).join("");
+  const hard = (xs, cls) => `<table class="stand partab"><thead><tr><th class="l">Hole</th><th>Par</th><th>SI</th><th>Cards</th><th>Vs par</th><th>Pts</th></tr></thead><tbody>
+    ${xs.map(h => `<tr><td class="l">${esc(h.label)}${courses.length > 1 ? ` <span class="muted small">${esc(h.where)}</span>` : ""}</td><td>${h.par}</td><td>${h.si}</td><td>${h.n}</td>
+      <td class="${cls}">${fmtSigned(h.vspar, 2)}</td><td>${fix(h.pts, 2)}</td></tr>`).join("")}</tbody></table>`;
+  return `
+    <div class="card statcard">
+      <div class="dwrap">${donut(F.counts, `${pct(parOrBetter(F), F.holes)}%`, "par or better")}${donutKey(F.counts, F.cards, "card")}</div>
+      <p class="muted small" style="margin:10px 0 0">Every hole this league has walked: ${plural(F.holes, "hole")} over ${plural(F.cards, "card")} and ${plural(F.rounds, "round")}.
+        A card is worth ${fix(F.avgPts)} points, and a hole is played in ${fmtSigned(F.vspar, 2)} against par.</p>
+    </div>
+    <h2>Par 3s, 4s and 5s</h2>
+    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(F)}${everyHoleRow(F)}</tbody></table>
+    <p class="muted small" style="margin:6px 4px 0">The field's average on each kind of hole. Points are Stableford, so 2 is the handicap's par.</p>
+    <h2>Easy holes and hard ones</h2>
+    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${F.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>
+    <p class="muted small" style="margin:6px 4px 0">Split by stroke index on each card, so the hardest third of a nine is its three lowest-index holes.
+      Those are also where the strokes are given, which is why they usually pay the most points.</p>
+    <h2>Who scores what</h2>
+    <div class="card dists">${inlineKey()}${dist}</div>
+    <h2>Records</h2>
+    <div class="card">
+      ${rec("Best round", F.bestRound, `${F.bestRound ? F.bestRound.pts : ""} pts`)}
+      ${rec("Best against par", F.lowRound, F.lowRound ? `${F.lowRound.gross} (${fmtToPar(F.lowRound.topar)})` : "")}
+      ${rec("Most birdies", F.mostBirdies && F.mostBirdies.birdies > 1 ? F.mostBirdies : null, F.mostBirdies ? plural(F.mostBirdies.birdies, "birdie") : "")}
+      ${F.bounce === null ? "" : `<div class="kv"><span>Bounce back</span><span class="muted">${Math.round(F.bounce * 100)}% of the holes after a bogey or worse were played in par or better</span></div>`}
+    </div>
+    <h2>The holes that hurt</h2>
+    ${courses.length > 1 ? "" : `<p class="muted small" style="margin:-4px 4px 8px">${esc(whereName(courses[0] || ""))}</p>`}
+    ${hard(F.hardest, "warn")}
+    <p class="muted small" style="margin:8px 4px 0">Holes this league has played at least twice, by how far over par they were played.</p>
+    <details class="card" style="margin-top:10px"><summary class="small">The holes that give shots back</summary>${hard(F.easiest, "acc")}</details>`;
+}
+
+/** One player: their own shape, then the same numbers for the rest of the field on exactly the days they were there. */
+function playerStats(St, p) {
+  const R = p.rest, one = p.played === 1, first = firstName(p.name);
+  const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
+  const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span>
+    <span class="muted">${value} · ${esc(whereName(r.where))} · ${esc(shortDate(r.date))}</span></a>` : "";
+  const line = (label, value) => `<div class="kv"><span>${label}</span><span class="muted">${value}</span></div>`;
+  const per = k => p.played ? p.counts[k] / p.played : 0;
+  const birdies = p.counts[0] + p.counts[1];
+  // a split of a handful of holes is noise at two decimals, so it only earns a row once there are six of them
+  const enough = (a, b) => a && b && a.holes >= 6 && b.holes >= 6;
+  const vsField = !R.holes ? `<p class="muted small" style="margin:0 4px">${esc(first)} has not yet shared a round in this league with anyone else, so there is nothing to measure against.</p>` : `
+    <div class="card tapes mine">
+      ${tapeRow("points a round", p.avgPts, R.pts * (p.holes / p.played), false, v => fix(v))}
+      ${tapeRow("points a hole", p.pts, R.pts, false, v => fix(v, 2))}
+      ${tapeRow("strokes against par", p.vspar, R.vspar, true, v => fmtSigned(v, 2))}
+      ${tapeRow("par or better", pct(parOrBetter(p), p.holes), pct(parOrBetter(R), R.holes), false, v => `${v}%`)}
+      ${tapeRow("birdies or better", pct(birdies, p.holes), pct(R.counts[0] + R.counts[1], R.holes), false, v => `${v}%`)}
+      ${tapeRow("double or worse", pct(p.counts[4] + p.counts[5], p.holes), pct(R.counts[4] + R.counts[5], R.holes), true, v => `${v}%`)}
+      ${Object.keys(p.byPar).map(k => enough(p.byPar[k], R.byPar[k]) ? tapeRow(`points on par ${k}s`, p.byPar[k].pts, R.byPar[k].pts, false, v => fix(v, 2)) : "").join("")}
+      ${enough(p.bands[0], R.bands[0]) ? tapeRow("points on the hardest third", p.bands[0].pts, R.bands[0].pts, false, v => fix(v, 2)) : ""}
+    </div>
+    <p class="muted small" style="margin:6px 4px 0">${esc(first)} on the left, everyone else in this league on the right, over the ${plural(p.played, "round")} they played together.
+      ${p.vsField === null ? "" : (p.beatOf === 1
+        ? `${esc(first)} ${p.beat ? "beat" : "did not beat"} the rest of the field in the one round they have shared.`
+        : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}
+      ${mixedLengths(p.rounds) ? "This league mixes nine- and eighteen-hole rounds, so compare the numbers given a hole at a time rather than a round at a time." : ""}</p>`;
+  return `
+    <div class="mecard"><div class="stats">
+      ${tile(p.played, plural(p.played, "round").split(" ")[1])}
+      ${tile(fix(p.avgPts), "avg pts")}
+      ${one ? "" : tile(p.bestPts, "best")}
+      ${p.returns ? tile(fmtToPar(Math.round(p.avgTopar)), "avg to par") : ""}
+      ${p.wins ? tile(p.wins, plural(p.wins, "win").split(" ")[1]) : ""}
+    </div></div>
+    <div class="card statcard">
+      <div class="dwrap">${donut(p.counts, `${pct(parOrBetter(p), p.holes)}%`, "par or better")}${donutKey(p.counts, p.played, "round")}</div>
+      <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} in this league. ${esc(first)} ${birdies ? `makes ${fix(birdies / p.played)} birdies or better` : "has yet to make a birdie"}
+        and ${fix(per(2))} pars a round, and plays a hole in ${fmtSigned(p.vspar, 2)} against par.</p>
+    </div>
+    <h2>Against the field</h2>
+    ${vsField}
+    ${rivalsBlock(St, p)}
+    ${one ? "" : `<h2>Round by round</h2>${formChart(p.rounds, first)}`}
+    ${one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear once ${esc(first)} has played a second round here.</p>` : `<h2>Over more than one round</h2><div class="card">
+      ${line("Consistency", `${fix(p.consistency)} points either side of their average${mixedLengths(p.rounds) ? ", though this league mixes round lengths" : ""}`)}
+      ${p.form === null ? "" : line("Form", `${fix(p.form)} points over the last three, against ${fix(p.avgPts)} across every round`)}
+      ${p.trend === null ? "" : line("Trend", `${fmtSigned(p.trend)} points from the first half of their rounds to the second`)}
+      ${p.streak ? line("Streak", `above the rest of the field in the last ${plural(p.streak, "round")}`) : ""}
+      ${line("Finishing", `${fix(p.firstHalf, 2)} points a hole in the first half of a round, ${fix(p.lastHalf, 2)} in the second`)}
+      ${p.bounce === null ? "" : line("Bounce back", `${Math.round(p.bounce * 100)}% of the ${p.bounceOf} holes after a bogey or worse were played in par or better`)}
+      ${line("Blow-ups", `${fix(p.blowups)} doubles or worse a round`)}
+      ${line("Where they finish", `${ordinal(Math.round(p.avgPlace))} on average in this league${p.podiums ? `; ${p.podiums} of their ${plural(p.played, "round")} were in the top three` : ""}`)}
+      ${p.penalties ? line("Penalty strokes", String(p.penalties)) : ""}
+      ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
+    </div>`}
+    <h2>Par 3s, 4s and 5s</h2>
+    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
+    <h2>Easy holes and hard ones</h2>
+    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${p.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>
+    <h2>${esc(first)} in this league</h2>
+    <div class="card">
+      ${rec("Best round", p.bestRound, p.bestRound ? `${p.bestRound.pts} pts` : "")}
+      ${rec("Best against par", p.lowRound, p.lowRound ? `${p.lowRound.gross} (${fmtToPar(p.lowRound.topar)})` : "")}
+      ${rec("Most birdies", p.mostBirdies && p.mostBirdies.birdies > 1 ? p.mostBirdies : null, p.mostBirdies ? plural(p.mostBirdies.birdies, "birdie") : "")}
+      ${one ? "" : line("Best and worst", `${p.bestPts} points at best, ${p.worstPts} at worst`)}
+    </div>`;
+}
+
+/** What the numbers add up to in words, hedged to what a handful of rounds can honestly carry. */
+function rivalVerdict(r, me, them) {
+  const bits = [];
+  const l = r.lift === null ? null : r.lift * (r.scale || 18);  // a round's worth, so the threshold means something
+  if (l !== null) {
+    bits.push(Math.abs(l) < 1 ? `${them}'s day barely moves ${me}'s`
+      : l > 0 ? `${me} has tended to score higher on the days ${them} does too`
+      : `${me} has tended to score higher when ${them} is off`);
+  }
+  // a correlation over three or four rounds is noise; it only speaks up once there are five
+  if (r.corr !== null && r.played >= 5 && Math.abs(r.corr) >= 0.5) {
+    bits.push(r.corr > 0 ? "over these rounds their cards have moved together"
+      : "when one of them has a good day, the other tends not to");
+  }
+  return bits.length ? `${bits.join("; ")}.` : "";
+}
+
+/** Who came out ahead, in words: a dash score says nothing about what it counts. */
+function rivalRecord(r, me, them) {
+  if (r.played === 1) return r.won ? `${me} ahead` : r.lost ? `${them} ahead` : "level";
+  if (r.won === r.lost) return `level, ${r.won} each${r.tied ? `, ${plural(r.tied, "round")} tied` : ""}`;
+  return `${r.won > r.lost ? me : them} ahead in ${Math.max(r.won, r.lost)} of ${r.played}`;
+}
+
+/** One rival in full: the two of them against each other, then what that rival's own day does. */
+function rivalCard(r, me, them) {
+  const unit = r.scale ? "points a round" : "points a hole";
+  const val = v => v === null ? "\u2013" : r.scale ? fix(v * r.scale) : fix(v, 2);
+  const l = r.lift === null ? null : r.lift * (r.scale || 18);
+  const mark = l !== null && Math.abs(l) >= 1;  // under a point a round the two sides are the same story
+  const verdict = rivalVerdict(r, me, them);
+  const tile = (label, n, v, up) => `<div class="sside ${up ? "up" : ""}"><small>${label}<i>${plural(n, "round")}${up ? " \u00b7 higher" : ""}</i></small><b class="num">${val(v)}</b></div>`;
+  const split = r.lift === null
+    ? `<p class="muted small" style="margin:10px 0 0">Splitting ${them}'s good days from their bad ones needs two rounds of each; so far ${r.goodN} above their own average and ${r.badN} below.${verdict ? ` ${verdict}` : ""}</p>`
+    : `<div class="split">
+        ${tile(`${them} above their average`, r.goodN, r.onGood, mark && r.onGood > r.onBad)}
+        ${tile(`${them} below it`, r.badN, r.onBad, mark && r.onBad > r.onGood)}
+      </div>
+      <p class="muted small" style="margin:10px 0 0">Both figures are ${me}'s ${unit}: the left on the ${plural(r.goodN, "round")} where ${them} beat their own average of ${val(r.theirAvg)}, the right on the ${r.badN} where they did not. ${verdict}</p>`;
+  return `<div class="card rival">
+    <div class="rhead"><b>${esc(r.name)}</b><span class="muted small">${plural(r.played, "round")} together \u00b7 ${rivalRecord(r, me, them)}</span></div>
+    <div class="tapes mine">${tapeRow(unit, r.myAvg, r.theirAvg, false, val)}</div>
+    ${split}</div>`;
+}
+
+/** The rivals met only once: a row each, because a card around two numbers is all chrome. */
+function rivalRows(rs, me, nameOf) {
+  return `<div class="card rivalrows">${rs.map(r => {
+    const val = v => r.scale ? fix(v * r.scale) : fix(v, 2);
+    return `<div class="kv"><span>${esc(r.name)}</span><span class="muted">${val(r.myAvg)} to ${val(r.theirAvg)} \u00b7 ${rivalRecord(r, me, nameOf(r))}</span></div>`;
+  }).join("")}</div>`;
+}
+
+/** Everyone this player has shared a card with in this league, the most-played first. */
+function rivalsBlock(St, p) {
+  const rs = rivals(St.rounds, p.id);
+  if (!rs.length) return "";
+  const me = esc(firstName(p.name));
+  // two players can share a first name, and "Maurits scores better when Maurits is off" helps nobody
+  const seen = {};
+  for (const n of [p.name, ...rs.map(r => r.name)]) seen[firstName(n)] = (seen[firstName(n)] || 0) + 1;
+  const nameOf = r => esc(seen[firstName(r.name)] > 1 ? r.name : firstName(r.name));
+  const deep = rs.filter(r => r.played > 1), thin = rs.filter(r => r.played === 1);
+  const shown = deep.slice(0, 5), rest = deep.slice(5);
+  const mixed = mixedLengths(St.rounds.filter(x => x.pid === p.id));
+  return `<h2>Against each player</h2>
+    <p class="muted small" style="margin:-4px 4px 10px">Only the rounds the two of them played together, so neither is measured on a day the other one missed.${mixed ? " A nine and an eighteen are compared a hole at a time." : ""}
+      A handful of rounds cannot settle anything, so read these as talking points.</p>
+    ${shown.map(r => rivalCard(r, me, nameOf(r))).join("")}
+    ${rest.length ? `<details class="card"><summary class="small">${plural(rest.length, "more player")}</summary>${rest.map(r => rivalCard(r, me, nameOf(r))).join("")}</details>` : ""}
+    ${thin.length ? `<p class="muted small" style="margin:16px 4px 6px">Met once so far</p>${rivalRows(thin, me, nameOf)}` : ""}`;
+}
+
+/** The Stats tab: the field, or any one player of it, chosen at the top. */
+function leagueStatsBody(g, Ms, members) {
+  const St = leagueStats(Ms, members);
+  if (!St.rounds.length) return `<p class="muted center" style="margin:30px 0">No finished rounds in this league yet. Every number here appears as soon as one is added.</p>`;
+  const who = St.players.some(p => p.id === ui.statsWho[g.id]) ? ui.statsWho[g.id] : "";
+  const chips = `<div class="chips-wrap scroll">
+    <button class="pchip ${who ? "" : "on"}" data-act="statswho" data-id="">The field<small>${plural(St.field.rounds, "round")}</small></button>
+    ${St.players.map(p => `<button class="pchip ${p.id === who ? "on" : ""}" data-act="statswho" data-id="${esc(p.id)}">${esc(p.name)}<small>${plural(p.played, "round")}</small></button>`).join("")}</div>`;
+  return `${chips}<div class="statsbody">${who ? playerStats(St, St.players.find(p => p.id === who)) : fieldStats(St)}</div>`;
 }
 
 function league(gid) {
@@ -1078,6 +1364,8 @@ function league(gid) {
       : `<p class="muted center" style="margin:30px 0 14px">No finished rounds in this league yet.</p>
         <button class="btn primary big" data-act="new-in-league">+ Start a round in this league</button>
         <button class="btn" data-act="ltab" data-tab="rounds" style="margin-top:8px">Add rounds already played ›</button>`;
+  } else if (tab === "stats") {
+    body = leagueStatsBody(g, Ms, members);
   } else if (tab === "nines") {
     const rounds = S.rounds().filter(r => attached.has(r.id) && r.status === "done");
     const nines = ninesPlayed(rounds);
@@ -1145,22 +1433,14 @@ function league(gid) {
         const formStrip = `<h2>Form</h2><div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${r.ptsA}&#8211;${r.ptsB}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A : B))}</a>`).join("")}</div>
           <p class="muted small center" style="margin:6px 0 0">oldest to newest &middot; tap one for the card</p>`;
         // One bar per stat, filled from the left in proportion, so who is ahead is a shape and not a reading.
-        const tape = (label, va, vb, lower = false, fmtv = v => v) => {
-          if (va === null || vb === null) return "";
-          const t = lower ? (va && vb ? 1 / va + 1 / vb : 0) : va + vb;
-          const share = !t ? 50 : ((lower ? 1 / va : va) / t) * 100;
-          const lead = va === vb ? "" : (lower ? va < vb : va > vb) ? "a" : "b";
-          return `<div class="tape"><b class="${lead === "a" ? "win" : ""}">${fmtv(va)}</b><span>${label}</span><b class="${lead === "b" ? "win" : ""}">${fmtv(vb)}</b>
-            <div class="tbar"><i style="width:${share}%"></i></div></div>`;
-        };
         const stats = `<h2>Tale of the tape</h2><div class="card tapes">
-          ${tape("average points", H.avgPtsA, H.avgPtsB, false, fix)}
-          ${tape("best round", H.bestPtsA, H.bestPtsB)}
-          ${tape("total points", H.ptsA, H.ptsB)}
-          ${tape("average gross", H.avgGrossA, H.avgGrossB, true, fix)}
-          ${tape("best gross", H.bestGrossA, H.bestGrossB, true)}
-          ${H.birdiesA + H.birdiesB ? tape("birdies or better", H.birdiesA, H.birdiesB) : ""}
-          ${h2hKind ? tape(`matches won (${basisWord(h2hBasis)})`, H.matchA, H.matchB) : ""}
+          ${tapeRow("average points", H.avgPtsA, H.avgPtsB, false, fix)}
+          ${tapeRow("best round", H.bestPtsA, H.bestPtsB)}
+          ${tapeRow("total points", H.ptsA, H.ptsB)}
+          ${tapeRow("average gross", H.avgGrossA, H.avgGrossB, true, fix)}
+          ${tapeRow("best gross", H.bestGrossA, H.bestGrossB, true)}
+          ${H.birdiesA + H.birdiesB ? tapeRow("birdies or better", H.birdiesA, H.birdiesB) : ""}
+          ${h2hKind ? tapeRow(`matches won (${basisWord(h2hBasis)})`, H.matchA, H.matchB) : ""}
         </div>`;
         const holesBlock = `<h2>Hole by hole</h2><div class="card">
           <div class="tug big"><i class="a" style="width:${(H.holesA / holes) * 100}%"></i><i class="t" style="width:${(H.holesHalved / holes) * 100}%"></i><i class="b" style="width:${(H.holesB / holes) * 100}%"></i></div>
@@ -1208,6 +1488,7 @@ function league(gid) {
     if (b_.dataset.act === "ltab") { ui.leagueTab[gid] = b_.dataset.tab; return league(gid); }
     if (b_.dataset.act === "h2hswap") { ui.h2h[gid] = { a: hB, b: hA }; return league(gid); }
     if (b_.dataset.act === "ninetab") { ui.nineTab[gid] = b_.dataset.slug; return league(gid); }
+    if (b_.dataset.act === "statswho") { ui.statsWho[gid] = b_.dataset.id; return league(gid); }
     if (b_.dataset.act === "fmt") { ui.fmtTab[gid] = b_.dataset.f; return league(gid); }
     if (b_.dataset.act === "new-in-league") { S.setSetting("lastLeague", gid); return go("#new"); }
     if (b_.dataset.act === "toggle-round") { S.setLeagueRound(gid, b_.dataset.rid, b_.checked); league(gid); }
@@ -1226,7 +1507,8 @@ function league(gid) {
   });
   app.querySelectorAll("[data-h2h]").forEach(el => el.addEventListener("change", () => {
     const na = document.querySelector("[data-h2h=a]").value, nb = document.querySelector("[data-h2h=b]").value;
-    ui.h2h[gid] = na === nb ? (na === hA ? { a: hB, b: hA } : { a: hA, b: hB }) : { a: na, b: nb };
+    // only one box can have changed, so a duplicate is always a swap: the box just picked keeps it, the other takes what it displaced
+    ui.h2h[gid] = na === nb ? { a: hB, b: hA } : { a: na, b: nb };
     league(gid);
   }));
   const gf = document.getElementById("gform");

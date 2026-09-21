@@ -513,3 +513,249 @@ export function headToHead(results, a, b, basis = "net") {
     widestA: widest("a"), widestB: widest("b"),
     matchA: rounds.filter(r => r.matchWinner === "a").length, matchB: rounds.filter(r => r.matchWinner === "b").length, matchTies: rounds.filter(r => r.matchWinner === "tie").length };
 }
+
+// ---------------------------------------------------------------- statistics over a set of rounds
+/**
+ * The six ways a hole ends, good to bad. Kept to six so the distribution still reads as one ring;
+ * the donut and every distribution bar in the app go in this order.
+ */
+export const SCORE_BUCKETS = [
+  { key: "eagle", label: "Eagle or better", short: "Eagle+" },
+  { key: "birdie", label: "Birdie", short: "Birdie" },
+  { key: "par", label: "Par", short: "Par" },
+  { key: "bogey", label: "Bogey", short: "Bogey" },
+  { key: "double", label: "Double bogey", short: "Double" },
+  { key: "triple", label: "Triple or worse", short: "Triple+" },
+];
+
+export function scoreBucket(delta) {
+  return delta <= -2 ? 0 : delta === -1 ? 1 : delta === 0 ? 2 : delta === 1 ? 3 : delta === 2 ? 4 : 5;
+}
+
+/** Sample standard deviation: how far a player's rounds scatter around their own average. */
+export function stdev(xs) {
+  if (xs.length < 2) return null;
+  const m = mean(xs);
+  return Math.sqrt(sum(xs.map(x => (x - m) ** 2)) / (xs.length - 1));
+}
+
+/**
+ * Every hole every one of these players has walked in these rounds, as one flat list. Each row carries
+ * what the hole was (par, stroke index, how hard it ranks on its card) and what they did with it, so any
+ * split -- by par, by difficulty, by player -- is one filter away. Holes nobody played (a late start) are
+ * left out; a hole counted NO_SCORE is a hole that was walked and belongs in the numbers.
+ */
+export function statHoles(results, memberIds) {
+  const members = new Set(memberIds);
+  const out = [];
+  for (const M of results) {
+    const rank = siRanks(M.si);
+    const where = M.course.loop || M.course.name;
+    for (const p of M.players) {
+      if (p.id === null || !members.has(p.id)) continue;
+      for (let h = 0; h < M.n; h++) {
+        if (p.scores[h] === null) continue;
+        out.push({
+          pid: p.id, round: M.id, where, hole: h, label: M.labels[h], si: M.si[h],
+          band: rank[h] <= M.n / 3 ? 0 : rank[h] > (2 * M.n) / 3 ? 2 : 1,  // hardest third, middle, easiest third
+          par: p.par[h], score: p.scores[h], delta: p.deltas[h], pts: p.hpts[h], bucket: scoreBucket(p.deltas[h]),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Counts and averages over a set of holes, split by par and by how hard the hole ranks on its card. */
+function tally(hs) {
+  const counts = new Array(SCORE_BUCKETS.length).fill(0);
+  for (const h of hs) counts[h.bucket]++;
+  const part = xs => ({
+    holes: xs.length, avg: mean(xs.map(h => h.score)), vspar: mean(xs.map(h => h.delta)), pts: mean(xs.map(h => h.pts)),
+    counts: SCORE_BUCKETS.map((_, k) => xs.filter(h => h.bucket === k).length),
+  });
+  const byPar = {};
+  for (const par of [...new Set(hs.map(h => h.par))].sort((a, b) => a - b)) byPar[par] = part(hs.filter(h => h.par === par));
+  return { ...part(hs), counts, byPar, bands: [0, 1, 2].map(b => part(hs.filter(h => h.band === b))) };
+}
+
+/** The holes of a set of rounds ranked by how far over par they were played, hardest first. */
+function holeDifficulty(hs) {
+  const m = new Map();
+  for (const h of hs) {
+    const k = `${h.where}|${h.label}`;
+    if (!m.has(k)) m.set(k, { where: h.where, label: h.label, par: h.par, si: h.si, xs: [] });
+    m.get(k).xs.push(h);
+  }
+  return [...m.values()].filter(x => x.xs.length >= 2)
+    .map(x => ({ where: x.where, label: x.label, par: x.par, si: x.si, n: x.xs.length,
+      vspar: mean(x.xs.map(h => h.delta)), pts: mean(x.xs.map(h => h.pts)) }))
+    .sort((a, b) => b.vspar - a.vspar || a.si - b.si);
+}
+
+/**
+ * One player's line from one round, with what the rest of the league did that day beside it.
+ * `place` is their position among the league's own players, as the league's tables take it, so a
+ * guest can never take a win off a member; `splace` is where they came on the day among everyone.
+ */
+function roundLine(M, p, others, place, of) {
+  const n = M.n, counts = new Array(SCORE_BUCKETS.length).fill(0);
+  let chances = 0, backs = 0, blowups = 0;
+  for (let h = 0; h < n; h++) {
+    const d = p.deltas[h];
+    if (d === null) continue;
+    counts[scoreBucket(d)]++;
+    if (d >= 2) blowups++;
+    // bounce-back: the hole straight after dropping a shot, played in par or better
+    if (d >= 1 && h + 1 < n && p.deltas[h + 1] !== null) { chances++; if (p.deltas[h + 1] <= 0) backs++; }
+  }
+  const half = Math.floor(n / 2);  // points a hole in each half: a nine and an eighteen only average together per hole
+  const otherTopar = others.map(q => q.topar).filter(v => v !== null);
+  return {
+    id: M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name, n,
+    pid: p.id, player: p.name, pts: p.pts, gross: p.gross, topar: p.topar, net: p.net, ph: p.ph,
+    place, of, splace: p.splace, field: M.field, counts, holes: p.holes_played,
+    penalties: p.penalty_total, counted10: p.filled.filter(Boolean).length,
+    chances, backs, blowups, first: sum(p.hpts.slice(0, half)) / half, last: sum(p.hpts.slice(n - half)) / half,
+    fieldPts: others.length ? mean(others.map(q => q.pts)) : null,
+    fieldTopar: otherTopar.length ? mean(otherTopar) : null,
+  };
+}
+
+/**
+ * Everything the rounds of a league can say about the players in it: the field as a whole, and each
+ * player both on their own and against the rest of the field on exactly the rounds they were there for.
+ * `results` is a list of computed rounds (M) with `.id`, `memberIds` the league's own players, so a
+ * guest never moves a number. Returns { rounds, holes, field, players } with players sorted by average
+ * points. Everything on the Stats screen is read straight off this.
+ */
+export function leagueStats(results, memberIds) {
+  const members = new Set(memberIds);
+  const holes = statHoles(results, memberIds);
+  const rounds = [];
+  const names = new Map();
+  for (const M of results) {
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+    const board = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
+    for (const p of mine) {
+      names.set(p.id, p.name);
+      rounds.push(roundLine(M, p, mine.filter(q => q !== p), board.indexOf(p) + 1, board.length));
+    }
+  }
+  rounds.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+
+  const best = (xs, key, lowest = false) => xs.filter(x => x[key] !== null)
+    .sort((a, b) => (lowest ? a[key] - b[key] : b[key] - a[key]) || String(a.date || "").localeCompare(String(b.date || "")))[0] || null;
+
+  const players = [...names.keys()].map(id => {
+    const rs = rounds.filter(r => r.pid === id);
+    const mineRounds = new Set(rs.map(r => r.id));
+    const mine = tally(holes.filter(h => h.pid === id));
+    // the rest of the league, on the same days only, so the comparison is like for like
+    const rest = tally(holes.filter(h => h.pid !== id && mineRounds.has(h.round)));
+    const pts = rs.map(r => r.pts);
+    const topars = rs.map(r => r.topar).filter(v => v !== null);
+    const vs = rs.filter(r => r.fieldPts !== null);
+    const vsTopar = rs.filter(r => r.fieldTopar !== null && r.topar !== null);
+    const chances = sum(rs.map(r => r.chances)), backs = sum(rs.map(r => r.backs));
+    // the run of rounds at the end in which they were above the rest of the field
+    let streak = 0;
+    for (let i = rs.length - 1; i >= 0; i--) {
+      if (rs[i].fieldPts === null || rs[i].pts <= rs[i].fieldPts) break;
+      streak++;
+    }
+    const half = Math.floor(rs.length / 2);
+    return {
+      id, name: names.get(id), played: rs.length, rounds: rs, ...mine, rest,
+      totalPts: sum(pts), avgPts: mean(pts), bestPts: pts.length ? Math.max(...pts) : null,
+      worstPts: pts.length ? Math.min(...pts) : null, consistency: stdev(pts),
+      avgTopar: mean(topars), bestTopar: topars.length ? Math.min(...topars) : null,
+      returns: topars.length, wins: rs.filter(r => r.place === 1).length,
+      podiums: rs.filter(r => r.place <= 3).length, avgPlace: mean(rs.map(r => r.place)),
+      vsField: vs.length ? mean(vs.map(r => r.pts - r.fieldPts)) : null,
+      beat: vs.filter(r => r.pts > r.fieldPts).length, beatOf: vs.length,
+      vsFieldTopar: vsTopar.length ? mean(vsTopar.map(r => r.topar - r.fieldTopar)) : null,
+      streak, form: rs.length >= 3 ? mean(rs.slice(-3).map(r => r.pts)) : null,
+      trend: rs.length >= 4 ? mean(rs.slice(half).map(r => r.pts)) - mean(rs.slice(0, half).map(r => r.pts)) : null,
+      bounce: chances ? backs / chances : null, bounceOf: chances,
+      blowups: rs.length ? sum(rs.map(r => r.blowups)) / rs.length : null,
+      penalties: sum(rs.map(r => r.penalties)), counted10: sum(rs.map(r => r.counted10)),
+      firstHalf: mean(rs.map(r => r.first)), lastHalf: mean(rs.map(r => r.last)),
+      bestRound: best(rs, "pts"), lowRound: best(rs, "topar", true),
+      mostBirdies: rs.map(r => ({ ...r, birdies: r.counts[0] + r.counts[1] }))
+        .sort((a, b) => b.birdies - a.birdies)[0] || null,
+    };
+  }).sort((a, b) => (b.avgPts ?? -1) - (a.avgPts ?? -1) || b.played - a.played || a.name.localeCompare(b.name));
+
+  const diff = holeDifficulty(holes);
+  const field = {
+    ...tally(holes), players: players.length, cards: rounds.length,
+    rounds: new Set(rounds.map(r => r.id)).size,
+    avgPts: mean(rounds.map(r => r.pts)), avgTopar: mean(rounds.map(r => r.topar)),
+    bestRound: best(rounds, "pts"), lowRound: best(rounds, "topar", true),
+    mostBirdies: rounds.map(r => ({ ...r, birdies: r.counts[0] + r.counts[1] })).sort((a, b) => b.birdies - a.birdies)[0] || null,
+    bounce: sum(rounds.map(r => r.chances)) ? sum(rounds.map(r => r.backs)) / sum(rounds.map(r => r.chances)) : null,
+    hardest: diff.slice(0, 5), easiest: [...diff].reverse().slice(0, 5),
+  };
+  return { rounds, holes, field, players };
+}
+
+// ---------------------------------------------------------------- one player against another
+
+/** Pearson correlation. Null under three pairs, or when one side never moves and there is nothing to correlate. */
+export function correlation(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return null;
+  const mx = mean(xs), my = mean(ys);
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - mx, dy = ys[i] - my;
+    sxy += dx * dy; sxx += dx * dx; syy += dy * dy;
+  }
+  return sxx && syy ? sxy / Math.sqrt(sxx * syy) : null;
+}
+
+/**
+ * A player against each of the others over the rounds they actually shared, and the thing a
+ * head-to-head cannot say: whether the other one's own day moves theirs. Everything is points a hole,
+ * because a league mixes nines and eighteens and half a round must not sit beside a whole one; `scale`
+ * is the hole count when every shared round has the same one, null when they mix, and only then does
+ * the screen multiply back up to a round.
+ *
+ * `onGood` and `onBad` are what the player scored on the rounds where the rival beat their own average
+ * over those same rounds, and on the rounds where they did not: measured against the rival's own
+ * average, so a good player is not simply always on song and a weak one never. Both sides need two
+ * rounds before either appears. `rounds` is the list leagueStats returns, so guests are already out.
+ */
+export function rivals(rounds, pid) {
+  const byRound = new Map(rounds.filter(r => r.pid === pid && r.n).map(r => [r.id, r]));
+  const others = new Map();
+  for (const r of rounds) {
+    if (r.pid === pid || !r.n || !byRound.has(r.id)) continue;
+    if (!others.has(r.pid)) others.set(r.pid, { id: r.pid, name: r.player, pairs: [] });
+    others.get(r.pid).pairs.push({ me: byRound.get(r.id), them: r });
+  }
+  const rate = r => r.pts / r.n;
+  return [...others.values()].map(o => {
+    const pairs = o.pairs.sort((a, b) => String(a.me.date || "").localeCompare(String(b.me.date || "")));
+    const ns = new Set(pairs.map(p => p.me.n));
+    const myRate = pairs.map(p => rate(p.me)), theirRate = pairs.map(p => rate(p.them));
+    const theirAvg = mean(theirRate);
+    // A round that lands on their average is neither a good day nor a bad one. The tolerance matters:
+    // the mean of a list of rates and one of those same rates can differ in the last bit, and with small
+    // integer point totals a round sitting exactly on the average is an ordinary occurrence, not a freak.
+    const EPS = 1e-9;
+    const good = pairs.filter(p => rate(p.them) > theirAvg + EPS), bad = pairs.filter(p => rate(p.them) < theirAvg - EPS);
+    const split = good.length >= 2 && bad.length >= 2;
+    const onGood = split ? mean(good.map(p => rate(p.me))) : null;
+    const onBad = split ? mean(bad.map(p => rate(p.me))) : null;
+    const won = pairs.filter(p => rate(p.me) > rate(p.them)).length;
+    const lost = pairs.filter(p => rate(p.me) < rate(p.them)).length;
+    return {
+      id: o.id, name: o.name, played: pairs.length, scale: ns.size === 1 ? [...ns][0] : null,
+      myAvg: mean(myRate), theirAvg, won, lost, tied: pairs.length - won - lost,
+      goodN: good.length, badN: bad.length, onGood, onBad,
+      lift: split ? onGood - onBad : null, corr: correlation(myRate, theirRate), pairs,
+    };
+  }).sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
+}
