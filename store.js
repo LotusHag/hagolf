@@ -249,6 +249,41 @@ export function mergePlayers(keepId, dropId) {
   return true;
 }
 
+/** The day of the most recent round this player has an entry in, ignoring one round. */
+function lastPlayedDate(pid, exceptId = null) {
+  let best = "";
+  for (const r of state.rounds) {
+    if (r.deleted || r.id === exceptId) continue;
+    if ((r.entries || []).some(e => e.playerId === pid && !e.deleted)) best = (r.date || "") > best ? (r.date || "") : best;
+  }
+  return best;
+}
+
+/** The tee a player last stood on: this course first, then the last round whose tee this course also has. */
+export function lastTee(pid, course, tees) {
+  const seen = [];
+  for (const r of state.rounds) {
+    if (r.deleted) continue;
+    const e = (r.entries || []).find(x => x.playerId === pid && !x.deleted && x.tee);
+    if (e) seen.push({ when: `${r.date || ""}|${r.created || ""}`, course: r.course, tee: e.tee });
+  }
+  seen.sort((a, b) => b.when.localeCompare(a.when));
+  const hit = seen.find(x => x.course === course && tees.includes(x.tee)) || seen.find(x => tees.includes(x.tee));
+  return hit ? hit.tee : null;
+}
+
+/** The index a player is playing this round off; the roster keeps it unless they have played since. */
+export function setEntryHi(round, e, hi) {
+  e.hi = hi;
+  saveEntry(round, e);
+  const p = state.players.find(x => x.id === e.playerId);
+  if (!p || (round.date && lastPlayedDate(p.id, round.id) > round.date)) return;
+  p.hi = hi;
+  p.hiUpdated = now();
+  touch("players", p);
+  save();
+}
+
 export function roundsOf(pid) {
   return rounds().filter(r => r.entries.some(e => e.playerId === pid));
 }
@@ -358,7 +393,9 @@ export function deleteRound(id) {
 
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */
 export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1 }) {
-  const p = upsertPlayer(name, hi, gender);
+  const known = findPlayer(name);  // a scan of an old card must not rewrite the index they play off today
+  const stale = known && round.date && lastPlayedDate(known.id, round.id) > round.date;
+  const p = upsertPlayer(name, stale ? null : hi, gender);
   const ghost = round.removed.find(x => x.playerId === p.id);  // taken out earlier: their scores come back with them
   round.removed = round.removed.filter(x => x.playerId !== p.id);
   const e = { playerId: p.id, name: p.name, hi, tee, gender: gender || "m", courseHandicap: courseHandicap ?? null, group, fromHole,

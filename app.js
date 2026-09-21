@@ -443,7 +443,7 @@ function roundForm(slug) {
     <div class="card">
       <label style="margin-top:0">Name of the round<input id="rname" value="${esc((c.loop || c.name) + " " + date)}"></label>
       <div class="two"><label>Date<input id="rdate" type="date" value="${date}"></label>
-      <label>Tee <span class="muted">(per player later)</span><select id="rtee">${tees.map(t => `<option ${t === dflt ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
+      <label>Tee <span class="muted">(anyone new to the course)</span><select id="rtee">${tees.map(t => `<option ${t === dflt ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
       <label>Handicap allowance<select id="rallow"><option value="100">100% (society default)</option><option value="95">95% (WHS individual Stableford)</option><option value="90">90%</option></select></label>
     </div>
     ${tip(`<p>Everyone's course handicap is worked out from their index and this course's rating first. The allowance is the slice of that handicap they actually play off, and it applies to everybody equally.</p>
@@ -465,20 +465,24 @@ function players(rid) {
   const showGroups = r.entries.length > 4 || r.entries.some(e => (e.group || 1) > 1);
   const rows = r.entries.map((e, i) => {
     let hc = "", missing = false;
-    try { const h = handicapFor(c, { ...e, courseHandicap: e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee) }, r.defaultTee, r.allowance); hc = `course hcp ${fmtHcp(h.ch)}`; }
+    const ov = e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee);  // a course handicap read off the club's table
+    const hasOv = ov !== null && ov !== undefined;
+    try { const h = handicapFor(c, { ...e, courseHandicap: ov }, r.defaultTee, r.allowance); hc = `course hcp ${fmtHcp(h.ch)}`; }
     catch (err) { hc = `<span class="warn">${esc(err.message)}</span>`; missing = true; }
-    return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}</div><div class="muted small">index ${fmtIndex(Number(e.hi))} · ${e.gender === "f" ? "women's" : "men's"} rating · ${hc}</div></div>
+    return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}</div><div class="muted small">${e.gender === "f" ? "women's" : "men's"} rating · ${hc}${hasOv ? " (club table)" : ""}</div></div>
         <button class="x" data-act="remove-entry" data-i="${i}" aria-label="Remove">×</button></div>
       <div class="entry-tools">
+        <span class="tool"><span class="seg-label">index</span><input class="hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="Handicap index"></span>
         <select data-act="tee" data-i="${i}" aria-label="Tee">${tees.map(t => `<option ${t === e.tee ? "selected" : ""}>${esc(t)} tee</option>`).join("")}</select>
-        ${showGroups ? `<span class="seg-label">group</span><span class="seg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</span>` : ""}
+        ${showGroups ? `<span class="tool"><span class="seg-label">group</span><span class="seg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</span></span>` : ""}
         <select data-act="from" data-i="${i}" title="Joins at hole"><option value="1" ${(e.fromHole || 1) === 1 ? "selected" : ""}>from hole 1</option>${c.par.slice(1).map((_, k) => `<option value="${k + 2}" ${(e.fromHole || 1) === k + 2 ? "selected" : ""}>joins at hole ${c.first_hole + k + 1}</option>`).join("")}</select>
-        ${missing ? `<input data-act="pch" data-i="${i}" inputmode="numeric" placeholder="course hcp (club table)">` : ""}
+        ${missing || hasOv ? `<input data-act="pch" data-i="${i}" inputmode="numeric" value="${hasOv ? ov : ""}" placeholder="course hcp (club table)" aria-label="Course handicap from the club table">` : ""}
       </div></div>`;
   }).join("");
   const body = `
     ${h2tip(`${plural(r.entries.length, "player")} in this round`, `<p>Each player's handicap index is turned into a course handicap for the tee they are standing on: the index is stretched by this course's slope and shifted by its rating, so the same index gives more strokes off a harder tee.</p>
-      <p>Those strokes are then spread over the holes by stroke index, hardest hole first. If the club's own table gives a different number, put it in the course handicap override when you add the player, and that is what counts.</p>`)}
+      <p>Index and tee are asked again every round, filled in with what that player last used, because both change. Type over either one and the course handicap follows.</p>
+      <p>Those strokes are then spread over the holes by stroke index, hardest hole first. If the club's own table gives a different number, put it in the course handicap box and that is what counts; it is remembered for this course and tee.</p>`)}
     ${rows || `<p class="muted small">Nobody yet. Tap names below to add them.</p>`}
     ${roster.length ? `<h2>Tap to add</h2><div class="chips-wrap">${roster.map(p => `<button class="pchip ${me && p.id === me.id ? "on" : ""}" data-act="add-roster" data-id="${p.id}"><span><span class="plus">+</span>${esc(p.name)}</span><small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
     <form id="addf" class="card form ${roster.length || r.entries.length ? "" : "open"}">
@@ -493,16 +497,16 @@ function players(rid) {
       <button class="btn primary" type="submit">Add player</button>
     </form>
     <button class="btn addbtn ${roster.length || r.entries.length ? "" : "hidden"}" data-act="toggle-add"><span class="plus">+</span> Someone new</button>`;
-  const bar = r.entries.length
-    ? `<button class="btn primary" data-act="start-scoring" data-rid="${rid}">${r.status === "setup" ? "Start scoring ›" : "Back to scoring ›"}</button>`
-    : `<button class="btn" disabled>Add players to start</button>`;
-  page("Who is playing?", body, { back: "#home", bar, sub: `${r.name} · ${courseTitle(c)}` });
+  const bar = !r.entries.length ? `<button class="btn" disabled>Add players to start</button>`
+    : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
+    : `<button class="btn primary" data-act="start-scoring" data-rid="${rid}">${r.status === "setup" ? "Start scoring ›" : "Back to scoring ›"}</button>`;
+  page("Who is playing?", body, { back: r.status === "done" ? `#review/${rid}` : "#home", bar, sub: `${r.name} · ${courseTitle(c)}` });
   bind(ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "add-roster") {
       const p = S.players().find(x => x.id === b.dataset.id);
-      S.addEntry(r, c.n, { name: p.name, hi: p.hi, tee: r.defaultTee, gender: p.gender || "m", courseHandicap: null });
+      S.addEntry(r, c.n, { name: p.name, hi: p.hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
       return players(rid);
     }
     if (b.dataset.act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid); }
@@ -513,10 +517,19 @@ function players(rid) {
     const e = r.entries[Number(el.dataset.i)];
     if (el.dataset.act === "tee") { e.tee = el.value; S.saveEntry(r, e); players(rid); }
     if (el.dataset.act === "from") { e.fromHole = Number(el.value); S.saveEntry(r, e); players(rid); }
+    if (el.dataset.act === "hi") {
+      const hi = parseHI(el.value);
+      if (!(hi >= -10 && hi <= 54)) { el.value = fmtIndex(Number(e.hi)); return toast("Handicap index between +10 and 54, e.g. 18,4"); }
+      S.setEntryHi(r, e, hi); players(rid);
+    }
     if (el.dataset.act === "pch") {
-      const v = Number(el.value.trim());
-      if (!Number.isInteger(v)) return toast("Course handicap must be a whole number");
-      S.setPch(e.playerId, r.course, e.tee, v); players(rid);
+      const raw = el.value.trim();
+      const v = Number(raw);
+      if (raw !== "" && !Number.isInteger(v)) return toast("Course handicap must be a whole number");
+      e.courseHandicap = null;  // the club-table number lives with the course and tee, so it is there next time too
+      S.saveEntry(r, e);
+      S.setPch(e.playerId, r.course, e.tee, raw === "" ? null : v);
+      players(rid);
     }
   });
   const f = document.getElementById("addf"), nameEl = document.getElementById("pname");
@@ -692,6 +705,7 @@ function review(rid, keep = false) {
       <p>Each row shows that player's <b>gross</b> (every stroke they took), their <b>net</b> (gross less their course handicap) and their <b>points</b>. The board is ordered on points.</p>`)}<p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score. The order stays put while you edit and settles when you save.</p>${rows}` : `<p class="muted center">No complete scorecards yet.</p>`}
     <h2>Round</h2>
     <div class="card row"><div class="small">Counts for <b>${lg.length ? lg.map(g => esc(g.name)).join(", ") : "no league"}</b></div><a class="btn small" href="#attach/${rid}">Change</a></div>
+    <div class="card row"><div class="small">Tees and handicaps <span class="muted">· ${plural(r.entries.length, "player")}</span></div><a class="btn small" href="#players/${rid}">Change</a></div>
     <details class="card"><summary class="small">Name and date: ${esc(r.name)} · ${esc(r.date || "no date")}</summary>
       <form id="rdet"><label>Name<input name="name" value="${esc(r.name)}"></label><label>Played on<input name="date" type="date" value="${esc(r.date || "")}"></label>
       <button class="btn small" type="submit">Save details</button></form></details>`;
@@ -1860,6 +1874,17 @@ function scan() {
   const course = all.find(c => c.slug === st.courseSlug) || null;
   const want = course ? course.n : null;
   const missing = want === null ? null : want - covered;
+  const tees = course ? Object.keys(course.tees) : [];
+  const dfltTee = tees.includes("yellow") ? "yellow" : tees[0];
+  // Who a row belongs to stays the reader's choice, never the handwritten name; the tee and the index they
+  // played off are kept on the row, so changing the course or the number of holes does not lose them.
+  if (course) for (const card of st.cards) for (const row of card.rows) {
+    if (row.who === undefined) { row.who = ""; row.isNew = false; }
+    if (!tees.includes(row.tee)) {
+      const p = row.who ? S.players().find(x => x.id === row.who) : null;
+      row.tee = (p && S.lastTee(p.id, course.slug, tees)) || dfltTee;
+    }
+  }
 
   const cardBlock = (card, k) => {
     const from = offsets[k] + 1, to = offsets[k] + card.holes;
@@ -1869,16 +1894,19 @@ function scan() {
       ${card.rows.map((row, i) => {
         const tot = row.scores.reduce((a, v) => a + (v || 0), 0);
         const mismatch = row.total !== null && row.total !== undefined && row.total !== tot;
-        return `<div class="scan-row" data-card="${k}" data-i="${i}">
+        const chosen = row.isNew || !row.who ? null : players.find(p => p.id === row.who);
+        return `<div class="scan-row" data-card="${k}" data-i="${i}" data-new="${row.isNew ? "1" : ""}">
           <div class="row"><label class="small" style="margin:0"><input type="checkbox" class="use" checked> <b>Row ${i + 1}</b></label>
             <span class="muted small">${tot} entered${row.total !== null && row.total !== undefined ? ` · card says ${row.total}` : ""}</span></div>
           <div class="cells">${row.scores.map((v, h) => `<div><small>${offsets[k] + h + 1}</small><input inputmode="numeric" class="${row.unsure.includes(h) || v === null ? "unsure" : ""}" value="${v === null ? "" : v}" data-h="${h}"></div>`).join("")}</div>
           ${mismatch ? `<div class="warn small" style="margin-top:6px">These holes add up to ${tot}, the card says ${row.total}. Check the yellow cells.</div>` : ""}
-          <div class="whorow"><select class="who"><option value="">Who played this row?</option>${players.map(p => `<option value="${p.id}" data-hi="${esc(fmtIndex(Number(p.hi)))}">${esc(p.name)}</option>`).join("")}</select></div>
-          <div class="picked muted small" hidden></div>
+          <div class="whorow"><select class="who"><option value="">Who played this row?</option>${players.map(p => `<option value="${p.id}" ${!row.isNew && p.id === row.who ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>
+          <div class="picked muted small" ${chosen ? "" : "hidden"}>${chosen ? `Last played off ${esc(fmtIndex(Number(chosen.hi)))}` : ""}</div>
           <button type="button" class="btn small rownew"><span class="plus">+</span> Someone new</button>
-          <div class="newp two" hidden><label style="margin-top:6px">Name<input class="nm" autocapitalize="words" value="${esc(row.name || "")}"></label>
-            <label style="margin-top:6px">Handicap index<input class="hi" inputmode="decimal" placeholder="18,4"></label></div>
+          <div class="newp" ${row.isNew ? "" : "hidden"}><label style="margin-top:6px">Name<input class="nm" autocapitalize="words" value="${esc(row.name || "")}"></label></div>
+          <div class="two rowhcp">
+            <label>Tee<select class="rowtee">${tees.map(t => `<option ${t === row.tee ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+            <label>Handicap index<input class="rowhi" inputmode="decimal" placeholder="18,4" value="${esc(row.hi || "")}"></label></div>
         </div>`;
       }).join("")}`;
   };
@@ -1937,35 +1965,45 @@ function scan() {
     scan();
   }));
   app.querySelectorAll(".scan-row").forEach(el => {
+    const row = st.cards[Number(el.dataset.card)].rows[Number(el.dataset.i)];
     const who = el.querySelector(".who"), np = el.querySelector(".newp"), picked = el.querySelector(".picked");
+    const teeSel = el.querySelector(".rowtee"), hiBox = el.querySelector(".rowhi");
+    const takeFrom = p => {  // whoever is chosen brings the index and the tee they last played
+      hiBox.value = fmtIndex(Number(p.hi));
+      teeSel.value = (course && S.lastTee(p.id, course.slug, tees)) || teeSel.value;
+      row.hi = hiBox.value; row.tee = teeSel.value; row.hiTyped = false;
+    };
     who.addEventListener("change", () => {
+      row.isNew = false; row.who = who.value;
       el.dataset.new = "";
       np.hidden = true;
-      const opt = who.selectedOptions[0];
       picked.hidden = !who.value;
-      // whoever is chosen brings the index they last played off along with them; the select shows their name
-      if (who.value) picked.textContent = `Last played off ${opt.dataset.hi}`;
+      const p = players.find(x => x.id === who.value);
+      if (p) { picked.textContent = `Last played off ${fmtIndex(Number(p.hi))}`; takeFrom(p); }
     });
     // Typing a name that is already on the roster: show their index rather than quietly rewriting it.
-    const nm = np.querySelector(".nm"), hi = np.querySelector(".hi");
-    let autofilled = true;
-    hi.addEventListener("input", () => { autofilled = false; });
+    const nm = np.querySelector(".nm");
+    hiBox.addEventListener("input", () => { row.hi = hiBox.value; row.hiTyped = true; });
+    teeSel.addEventListener("change", () => { row.tee = teeSel.value; });
     nm.addEventListener("input", () => {
+      row.name = nm.value;
       const p = S.findPlayer(nm.value);
       picked.hidden = !p;
       if (!p) return;
       picked.textContent = `Already on the roster, last played off ${fmtIndex(Number(p.hi))}`;
-      if (autofilled) hi.value = fmtIndex(Number(p.hi));
+      if (!row.hiTyped) takeFrom(p);
     });
     el.querySelector(".rownew").addEventListener("click", () => {
+      row.isNew = true; row.who = "";
       el.dataset.new = "1";
       who.value = "";
       picked.hidden = true;
       np.hidden = false;
-      np.querySelector(".nm").focus();
+      nm.focus();
     });
     const tally = el.querySelector(".row .muted");
     el.querySelectorAll(".cells input").forEach(inp => inp.addEventListener("input", () => {
+      row.scores[Number(inp.dataset.h)] = inp.value.trim() === "" ? null : Number(inp.value);
       const t = [...el.querySelectorAll(".cells input")].reduce((a, x) => a + (Number(x.value) || 0), 0);
       tally.textContent = tally.textContent.replace(/^\d+ entered/, `${t} entered`);
       inp.classList.toggle("unsure", inp.value.trim() === "");
@@ -1993,13 +2031,14 @@ function scan() {
       if (!isNew && !pid) return toast(`Card ${k + 1}, row ${nth}: choose who played it, add someone new, or untick it`);
       const known = isNew ? null : S.players().find(p => p.id === pid);
       const name = known ? known.name : el.querySelector(".nm").value.trim();
-      const hi = known ? Number(known.hi) : parseHI(el.querySelector(".hi").value);
+      const hi = parseHI(el.querySelector(".rowhi").value);
+      const tee = el.querySelector(".rowtee").value;
       if (!name) return toast(`Card ${k + 1}, row ${nth}: the new player needs a name`);
       if (!(hi >= -10 && hi <= 54)) return toast(`${name}: handicap index between +10 and 54`);
       const scores = [...el.querySelectorAll(".cells input")].map(i2 => i2.value.trim() === "" ? null : Number(i2.value));
       if (scores.some(v => v !== null && !(Number.isInteger(v) && v >= 0 && v <= 30))) return toast(`${name}: scores must be whole numbers 0 to 30`);
       const key = S.nameKey(name);
-      if (!byPlayer.has(key)) byPlayer.set(key, { name, hi, gender: known ? known.gender : "m", cards: new Set(), scores: new Array(course.n).fill(null) });
+      if (!byPlayer.has(key)) byPlayer.set(key, { name, hi, tee, gender: known ? known.gender : "m", cards: new Set(), scores: new Array(course.n).fill(null) });
       const e = byPlayer.get(key);
       if (e.cards.has(k)) return toast(`${name} is on card ${k + 1} twice; untick one of those rows`);
       e.cards.add(k);
@@ -2008,9 +2047,9 @@ function scan() {
     const short = [...byPlayer.values()].find(e => e.cards.size !== st.cards.length);
     if (short) return toast(`${short.name} is on ${plural(short.cards.size, "card")} of ${st.cards.length}. Pick them on the other one too, or untick them.`, 6000);
     const r = S.createRound({ course: course.slug, name: document.getElementById("sname").value.trim() || "Scanned round", date,
-      defaultTee: Object.keys(course.tees).includes("yellow") ? "yellow" : Object.keys(course.tees)[0], allowance: 100 });
+      defaultTee: [...byPlayer.values()][0].tee || dfltTee, allowance: 100 });
     for (const x of byPlayer.values()) {
-      const e = S.addEntry(r, course.n, { name: x.name, hi: x.hi, tee: r.defaultTee, gender: x.gender, courseHandicap: null });
+      const e = S.addEntry(r, course.n, { name: x.name, hi: x.hi, tee: x.tee, gender: x.gender, courseHandicap: null });
       x.scores.forEach((v, h) => { if (v !== null) S.setScore(r, e, h, v); });
     }
     r.status = "done";
@@ -2143,7 +2182,7 @@ document.addEventListener("click", ev => {
       allowance: document.getElementById("rallow") ? document.getElementById("rallow").value : 100 });
     document.querySelectorAll("input[name=lg]:checked").forEach(i => { S.setLeagueRound(i.value, r.id, true); S.state.settings.lastLeague = i.value; });
     const me = S.me();
-    if (me) S.addEntry(r, c.n, { name: me.name, hi: me.hi, tee: r.defaultTee, gender: me.gender || "m", courseHandicap: null });
+    if (me) S.addEntry(r, c.n, { name: me.name, hi: me.hi, tee: S.lastTee(me.id, r.course, tees) || r.defaultTee, gender: me.gender || "m", courseHandicap: null });
     S.save();
     go(`#players/${r.id}`);
   }
