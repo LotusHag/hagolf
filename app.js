@@ -192,6 +192,7 @@ function home() {
   if (window.__installPrompt) banners.push(`<div class="banner" data-act="install">Install Hagolf on this phone</div>`);
   else if (isIOS() && !isStandalone()) banners.push(`<div class="banner muted">To install: tap Share <span class="ios-share">⎋</span> in Safari, then “Add to Home Screen”.</div>`);
   if (!Y.enabled() && S.needsBackup()) banners.push(`<a class="banner muted" href="#settings">Solo phone: rounds since the last backup. Export a backup when you have a moment.</a>`);
+  if (Y.enabled() && Y.sync.status !== "error" && !rounds.length && !S.leagues().length) banners.push(`<button class="banner accent" data-act="resync" style="width:100%">Nothing here yet? Tap to fetch everything from ${esc(Y.config().label || "the database")}</button>`);
   const open = rounds.filter(r => r.status !== "done");
   const finished = rounds.filter(r => r.status === "done");
   const liveLine = r => {
@@ -215,9 +216,18 @@ function home() {
     ${me ? meCard(me) : `<a class="banner" href="#welcome">Say who you are to see your own results here ›</a>`}
     ${finished.length ? `<h2>Finished rounds</h2>` : ""}${list}`, { back: "", tabs: "home", brand: true });
   bind(async ev => {
-    const b = ev.target.closest("[data-act=my-card]");
-    if (b) await myCard(b.dataset.rid);
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    if (b.dataset.act === "my-card") await myCard(b.dataset.rid);
+    if (b.dataset.act === "resync") await resyncNow();
   });
+}
+
+async function resyncNow() {
+  toast("Fetching everything…", 4000);
+  const n = await Y.resync();
+  toast(Y.sync.status === "error" ? `Could not fetch: ${Y.sync.error}` : `Fetched ${plural(n.rounds, "round")}, ${plural(n.players, "player")}, ${plural(n.leagues, "league")}`, 5000);
+  route();
 }
 
 async function myCard(rid) {
@@ -1077,6 +1087,7 @@ function settings() {
         <label>Society key<input name="anonKey" value="${esc(cfg.anonKey)}" placeholder="…" autocapitalize="off" autocorrect="off"></label>
         <label>Name of the society<input name="label" value="${esc(cfg.label || "")}" placeholder="e.g. Apeliotes"></label>
         <div class="two"><button class="btn primary" type="submit">Test and save</button><button class="btn" type="button" data-act="sync-now">Sync now</button></div>
+        <button class="btn small" type="button" data-act="resync" style="margin-top:10px">Fetch everything again</button>
         ${DATA.sync && !Y.isDefault() ? `<button class="btn small" type="button" data-act="sync-default">Back to the built-in connection</button>` : ""}
       </form></details></div>
     <h2>Courses</h2>
@@ -1121,6 +1132,7 @@ function settings() {
       try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch (e) { prompt("Copy this link", link); }
     }
     if (b.dataset.act === "sync-now") { await Y.pushAndPull(); toast(Y.sync.status === "error" ? `Sync problem: ${Y.sync.error}` : "Synced"); settings(); }
+    if (b.dataset.act === "resync") { await resyncNow(); }
     if (b.dataset.act === "sync-default") { Y.setConfig(null); settings(); }
     if (b.dataset.act === "clear-q") { S.state.quarantine = []; S.save(); settings(); }
     if (b.dataset.act === "export") {

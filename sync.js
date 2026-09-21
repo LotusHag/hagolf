@@ -309,11 +309,20 @@ export async function pushAndPull() {
   return pull();
 }
 
+/** Forgets where the pulls left off and fetches the whole database again; harmless, every row is newest-wins. */
+export async function resync() {
+  localStorage.removeItem(CURSOR_KEY);
+  await pull();
+  return { players: S.players().length, rounds: S.rounds().length, leagues: S.leagues().length };
+}
+
 export function start() {
   sync.config = config();
   clearInterval(sync.timer);
   if (!sync.config) { sync.status = "off"; emit({ status: true }); return; }
   sync.status = "idle";
+  // an empty phone that still has pull bookmarks (the app was reinstalled, or the data was cleared) would otherwise never see anything
+  if (!S.state.players.length && !S.state.rounds.length && Object.keys(cursors()).length) { console.warn("sync: empty phone with old cursors, fetching everything again"); localStorage.removeItem(CURSOR_KEY); }
   pushAndPull();
   sync.timer = setInterval(() => { if (document.visibilityState === "visible") pushAndPull(); }, 20000);
 }
