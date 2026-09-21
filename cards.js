@@ -1,6 +1,6 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
 import { Fig, MARGIN, section, scoreGlyph, glyphLegend, outcomeBar, on } from "./draw.js";
-import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix } from "./model.js";
+import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, NO_SCORE } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
 const plural = (n, s = "s") => n === 1 ? "" : s;
@@ -19,9 +19,9 @@ export function story(M, p) {
   if (p.skipped.some(Boolean)) {
     out.push(`Joined at hole ${L[p.from_hole - 1]}: the holes before it were not played, score no points and are left out of the comparisons below, so there is no gross score for the round.`);
   }
-  if (p.picked.some(Boolean)) {
-    const picked = [...Array(n).keys()].filter(h => p.picked[h]).map(h => L[h]);
-    out.push(`Picked up on hole${plural(picked.length)} ${picked.join(", ")}, so no gross score for the round; those holes score no points and are left out of the comparisons below.`);
+  if (p.filled.some(Boolean)) {
+    const blank = [...Array(n).keys()].filter(h => p.filled[h]).map(h => L[h]);
+    out.push(`No score on hole${plural(blank.length)} ${blank.join(", ")}: ${NO_SCORE} strokes count there.`);
   }
   if (played.length) {
     const best = played.reduce((a, h) => vs[h] < vs[a] ? h : a);
@@ -63,7 +63,7 @@ export function story(M, p) {
     out.push(`No hole at par or better: every hole cost at least one shot, the most expensive ${Math.max(...over)} over.`);
   }
   const verdict = h => {
-    if (s[h] === null) return "picked up";
+    if (s[h] === null) return "not played";
     const v = vs[h];
     return `a ${s[h]}, ` + (Math.abs(v) < 0.1 ? "level with the rest of the field" : `${fix(Math.abs(v))} ${v < 0 ? "fewer" : "more"} than the rest of the field`);
   };
@@ -111,7 +111,7 @@ export function renderCard(M, p, T) {
   const vsTotal = sum(vsPlayed);
   let grossTile, netTile;
   if (p.nr) {
-    grossTile = ["Gross", "NR", `${p.skipped.some(Boolean) ? `from hole ${L[p.from_hole - 1]}, ` : "picked up, "}${p.holes_played} of ${n} holes`];
+    grossTile = ["Gross", "NR", `from hole ${L[p.from_hole - 1]}, ${p.holes_played} of ${n} holes`];
     netTile = ["Net", "NR", "no return"];
   } else {
     grossTile = ["Gross", String(p.gross), `${fmtToPar(p.topar)}  ·  ${p.gplace} of ${N}`];
@@ -194,7 +194,7 @@ export function renderCard(M, p, T) {
   glyphLegend(axs, LX + 0.3, 5.0, n <= 9 ? 0.4 : 0.5, 7.5);
   let note = "strokes = handicap strokes received on that hole";
   if (p.penalty_total) note = "amber +n = penalty strokes, counted in the score  ·  " + note;
-  if (p.picked.some(Boolean)) note = "– = picked up, no return  ·  " + note;
+  if (p.filled.some(Boolean)) note = `a hole with no score counts ${NO_SCORE}  ·  ` + note;
   if (p.skipped.some(Boolean)) note = "– = not played (joined late)  ·  " + note;
   axs.text(xmax, 5.0, note, { size: 7.5, color: T.INK_3, ha: "right", va: "center" });
 

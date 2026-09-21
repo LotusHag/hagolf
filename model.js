@@ -1,5 +1,9 @@
 // Port of golf/model.py and golf/handicap.py. Same rules, same numbers: see app/tests/model.test.mjs.
 
+// A hole with no score on a finished round counts as this many strokes, so one forgotten or picked-up
+// hole no longer keeps a whole card off the boards. Keep in step with NO_SCORE in golf/model.py.
+export const NO_SCORE = 10;
+
 export function roundHalfUp(x) {
   // 0.5 rounds up; the epsilon absorbs binary floating point (22.6*122/113-2.9 = 21.4999...).
   return Math.floor(x + 0.5 + 1e-9);
@@ -103,9 +107,10 @@ export function handicapFor(courseIn, entry, defaultTee, allowance = 100) {
 
 /**
  * Computes a round. `course` is a DATA.courses entry, `round` is
- * { name, date, defaultTee, allowance, entries: [{ name, hi, tee, gender, courseHandicap, scores, penalties }] }.
- * Entries without a full set of scores are listed in M.unfinished and left out of the boards, as in Python.
- * Throws an Error with a readable message on bad input.
+ * { name, date, defaultTee, allowance, final, entries: [{ name, hi, tee, gender, courseHandicap, scores, penalties }] }.
+ * On a final round (the default, and what Python always does) a hole with no score counts NO_SCORE strokes.
+ * While one is still being scored (`final: false`) a card with holes left is listed in M.unfinished and left
+ * off the boards instead, so the live view stays honest. Throws an Error with a readable message on bad input.
  */
 export function compute(courseIn, round) {
   const course = prepareCourse(courseIn);
@@ -135,11 +140,14 @@ export function compute(courseIn, round) {
     const fromHole = Number(p.fromHole || 1) || 1;
     if (!(fromHole >= 1 && fromHole <= n)) throw new Error(`${name}: from hole must be between 1 and ${n}`);
     const skipped = [...Array(n).keys()].map(h => h < fromHole - 1);  // joined late: these holes were not played at all
-    if (!scores || scores.length !== n || scores.some((s, h) => !skipped[h] && (s === null || s === undefined || s === ""))) {
+    const empty = s => s === null || s === undefined || s === "";
+    scores = !scores || scores.length !== n ? null : scores.map((s, h) => skipped[h] || empty(s) ? null : Number(s));
+    const missing = scores ? scores.some((s, h) => !skipped[h] && s === null) : true;
+    // A card with nothing on it at all is someone who did not play, not someone missing a hole.
+    if (!scores || scores.every(s => s === null) || (missing && round.final === false)) {
       M.unfinished.push(name);
       continue;
     }
-    scores = scores.map((s, h) => skipped[h] ? null : Number(s));
     if (scores.some(s => s !== null && !Number.isInteger(s))) throw new Error(`${name}: scores must be whole numbers`);
     if (scores.some(s => s !== null && (s < 0 || s > 30))) throw new Error(`${name}: a hole score outside 0 to 30 looks like a typo`);
     const tee = p.tee || defaultTee;
@@ -167,17 +175,19 @@ export function compute(courseIn, round) {
       pens.push({ hole: h, label: course.labels[h - 1], strokes: k, reason: String(x.reason || "") });
     }
     const picked = scores.map(s => s === 0);
-    const sc = scores.map((s, h) => picked[h] || skipped[h] ? null : s + pen[h]);
+    // Nothing entered, or picked up: the hole counts NO_SCORE strokes, plus any penalty, like every other hole.
+    const filled = scores.map((s, h) => !skipped[h] && (s === null || s === 0));
+    const sc = scores.map((s, h) => skipped[h] ? null : (filled[h] ? NO_SCORE : s) + pen[h]);
     const strokes = strokesPerHole(ph, si);
     const nets = sc.map((s, h) => s === null ? null : s - strokes[h]);
     const hpts = sc.map((s, h) => s === null ? 0 : stableford(s, par[h], strokes[h]));
     const deltas = sc.map((s, h) => s === null ? null : s - par[h]);
-    const nr = picked.some(Boolean) || skipped.some(Boolean);
+    const nr = skipped.some(Boolean);  // only a late start leaves a card without a gross now
     const played = sc.filter(x => x !== null).length;
     const counts = [0, 1, 2, 3].map(k => deltas.filter(d => d !== null && outcome(d) === k).length);
     players.push({
       name, hi, ch, ph, ch_override: override, tee, par, gender, id: p.id ?? null, from_hole: fromHole, skipped, group: p.group || 1,
-      raw_scores: scores, penalty: pen, penalties: pens, penalty_total: sum(pen), picked, nr,
+      raw_scores: scores, penalty: pen, penalties: pens, penalty_total: sum(pen), picked, filled, nr,
       holes_played: played, scores: sc, deltas,
       gross: nr ? null : sum(sc), topar: nr ? null : sum(sc) - sum(par),
       strokes, nets, net: nr ? null : sum(nets), hpts, pts: sum(hpts), counts,
@@ -255,6 +265,47 @@ export function fmtHcp(v) {
 
 export function fmtIndex(hi) {
   return hi < 0 ? `+${fix(-hi, 1)}` : fix(hi, 1);
+}
+
+// ---------------------------------------------------------------- nines: an 18-hole round split back into its loops
+/**
+ * The nines of a round exactly as they played that day: a slice of the finished round, nothing re-scored,
+ * so the strokes received are the ones the player actually had. This is what the round's own screens show.
+ * Returns one entry per nine (two for an 18, one for a nine), or null when the course does not declare nines.
+ */
+export function halves(M, p) {
+  const nines = (M.course && M.course.nines) || [];
+  if (nines.length < 1 || M.n !== nines.length * 9) return null;
+  return nines.map((slug, i) => {
+    const from = i * 9, sc = p.scores.slice(from, from + 9), par = p.par.slice(from, from + 9);
+    const whole = sc.every(x => x !== null);
+    return {
+      slug, from, holes: sc.filter(x => x !== null).length,
+      gross: whole ? sum(sc) : null,
+      topar: whole ? sum(sc) - sum(par) : null,
+      net: whole ? sum(p.nets.slice(from, from + 9)) : null,
+      pts: sum(p.hpts.slice(from, from + 9)),
+    };
+  });
+}
+
+/**
+ * Holes [from, from+9) lifted out and computed as a nine-hole round on `nineCourse`, which carries that
+ * loop's own stroke index and its own course rating and slope. Strokes received are worked out again from
+ * the nine's rating, so a loop walked inside an 18 is on the same footing as the same loop walked alone.
+ * That makes it the right basis for "how does this player do on Noord" and the wrong one for "what did
+ * they score that day" -- use halves() for the latter. Throws if the nine cannot rate the player's tee.
+ */
+export function computeNine(nineCourse, round, from) {
+  const shift = p => ({ ...p, hole: Number(p.hole) - from });
+  const entries = (round.entries || []).map(e => ({
+    ...e,
+    courseHandicap: null,  // an 18-hole course handicap means nothing here; the nine has its own rating
+    scores: (e.scores || []).slice(from, from + 9),
+    fromHole: Math.max(1, Math.min(9, (Number(e.fromHole || 1) || 1) - from)),
+    penalties: (e.penalties || []).filter(p => Number(p.hole) > from && Number(p.hole) <= from + 9).map(shift),
+  }));
+  return compute(nineCourse, { ...round, final: true, entries });
 }
 
 // ---------------------------------------------------------------- seasons: standings for a group across rounds

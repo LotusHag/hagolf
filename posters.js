@@ -1,6 +1,6 @@
 // Port of golf/posters.py: gross leaderboard, Stableford leaderboard, how the holes played; plus season standings.
 import { Fig, MARGIN, HEADER_IN, header, footer, section, posChip, outcomeBar, legend, on } from "./draw.js";
-import { fmtToPar, fmtSigned, fmtHcp, fix } from "./model.js";
+import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE } from "./model.js";
 
 const ROW_IN = 0.5;
 
@@ -99,7 +99,7 @@ const countbackText = n => n === 18 ? "last 9, 6 and 3 holes, then hole by hole 
 function notes(rows, key) {
   let out = "";
   if (rows.some(r => r.penalty_total)) out += " Pen badge: penalty strokes handed out after the round, counted on their hole.";
-  if (rows.some(r => r.picked && r.picked.some(Boolean))) out += " NR: no return, the player picked up on a hole; that hole scores no points.";
+  if (rows.some(r => r.filled && r.filled.some(Boolean))) out += ` A hole with no score, picked up or never entered, counts ${NO_SCORE} strokes.`;
   if (rows.some(r => r.skipped && r.skipped.some(Boolean))) out += " A player who joined late has no gross and scores points from the holes played.";
   if (rows.some(r => r.ph < 0)) out += " A plus handicap (+1) gives a stroke back, so net can be higher than gross.";
   return out;

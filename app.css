@@ -252,9 +252,19 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .rround .who span { background: var(--card2); border-radius: 999px; padding: 3px 10px; font-size: 13px; color: var(--ink2); }
 .rround .who span.me { background: var(--green-soft); color: var(--green); font-weight: 600; }
 .mecard .last { margin-top: 4px; }
-.mecard .res { display: flex; align-items: baseline; gap: 14px; margin-top: 6px; }
-.mecard .res .big { font-size: 44px; font-weight: 600; line-height: 1; }
-.mecard .res .big small { font-size: 15px; font-weight: 600; color: var(--ink3); margin-left: 4px; font-family: inherit; }
+.res { display: flex; align-items: baseline; gap: 14px; margin-top: 6px; flex-wrap: wrap; }
+.res .big { font-size: 44px; font-weight: 600; line-height: 1; }
+.res .big small { font-size: 15px; font-weight: 600; color: var(--ink3); margin-left: 4px; font-family: inherit; }
+
+/* the two nines of an 18, as they played that day */
+.nines { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nines span { background: var(--card2); border-radius: 999px; padding: 3px 10px; font-size: 13px; color: var(--ink2); }
+.nines b { color: var(--ink); font-weight: 600; }
+
+/* a round on a player's own page: the result, then a way to save that card */
+.rround.card { padding: 13px 16px; }
+.rround.card .res .big { font-size: 34px; }
+.rround.card .btn.small { margin-top: 10px; }
 .mecard .lg { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0 0; margin-top: 9px; border-top: 1px solid var(--line); font-size: 15px; color: var(--ink); }
 .mecard .lg b { color: var(--green); }
 
@@ -272,7 +282,11 @@ details > summary { list-style: none; } details > summary::-webkit-details-marke
 .foot { color: var(--ink3); font-size: 12px; text-align: center; margin: 24px 0 8px; }
 
 /* ---- scorecard scanning */
+/* [hidden] has to beat the display a class sets, or a hidden .two grid still shows */
+[hidden] { display: none !important; }
 .scan-row { margin: 10px 0; padding: 12px; border-radius: var(--r-s); background: var(--card); border: 1px solid var(--line); }
+.scan-row .row { align-items: baseline; }
+.scan-row .who { margin-top: 8px; }
 .scan-row .two select, .scan-row .two input { margin-top: 4px; }
 .cells { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 8px; }
 .cells input { padding: 6px 0; text-align: center; font-size: 15px; margin: 0; border-radius: 8px; }

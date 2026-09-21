@@ -350,6 +350,7 @@ export function removeEntry(r, i) {
 export function toModelRound(round) {
   return {
     name: round.name, date: round.date, defaultTee: round.defaultTee, allowance: round.allowance,
+    final: round.status === "done",
     entries: round.entries.map(e => ({ id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
       courseHandicap: e.courseHandicap ?? getPch(e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1 })),
   };
