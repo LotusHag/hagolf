@@ -209,7 +209,7 @@ function home() {
   }).join("")}</div>` : (open.length ? "" : `<p class="muted center">No rounds yet. Start your first one.</p>`);
   const hour = new Date().getHours(), greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   page("Hagolf", `
-    <div class="hero"><p class="hi">${greet}${me ? `, ${esc(me.name.split(" ")[0])}` : ""}</p><div class="muted small">${Y.enabled() ? `Synced with ${esc(Y.config().label || "your society")}` : "Solo phone"} · ${S.courses().length} courses</div></div>
+    <div class="hero"><p class="hi">${greet}${me ? `, ${esc(me.name.split(" ")[0])}` : ""}</p><div class="muted small">${Y.enabled() ? `Synced with ${esc(Y.config().label || "your society")}` : "Solo phone"} · ${S.courses().length} courses · v${DATA.version.slice(4, 8)}.${DATA.version.slice(9)}</div></div>
     ${banners.join("")}
     ${now}
     <a class="btn primary big" href="#new">+ Start a round</a>

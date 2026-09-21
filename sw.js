@@ -1,5 +1,5 @@
 // Offline cache. The version is stamped by app/build.py; a new version replaces the whole cache on next load.
-const VERSION = "20260921-130045";
+const VERSION = "20260921-130927";
 const CACHE = `hagolf-${VERSION}`;
 const SHELL = ["./", "./index.html", "./app.css", "./app.js", "./model.js", "./draw.js", "./posters.js", "./cards.js",
   "./store.js", "./sync.js", "./data.js", "./vendor/qrcode.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/apple-touch-icon.png",
@@ -8,7 +8,7 @@ const SHELL = ["./", "./index.html", "./app.css", "./app.js", "./model.js", "./d
   "./fonts/montserrat/Montserrat-Regular.ttf", "./fonts/montserrat/Montserrat-Bold.ttf"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));  // a new version takes over at once; the page reloads on controllerchange
 });
 
 self.addEventListener("activate", e => {
