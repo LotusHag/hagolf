@@ -1,15 +1,19 @@
-/* Hagolf design system: neutral white, one green accent, big numbers in Oswald, one primary action per screen.
-   Always light: `only light` also tells Chrome's and Samsung's auto-dark not to recolour the page. */
+/* Hagolf design system: one accent, big numbers in Oswald, one primary action per screen. Every colour is a
+   custom property that app.js overwrites from the chosen theme's `ui` palette (mixed by build.py); what is
+   written here is the hagolf theme, so the first paint is right before any of that runs.
+   `color-scheme` is set to the one the theme actually is, which also tells Chrome's and Samsung's auto-dark
+   not to recolour a page that has already done it properly. */
 @font-face { font-family: "Oswald"; src: url("fonts/oswald/Oswald-Variable.ttf") format("truetype"); font-weight: 200 700; font-display: swap; }
 
 :root {
   color-scheme: only light;
-  --bg: #F6F6F4; --card: #FFFFFF; --card2: #F0F0EE; --line: #E6E6E3; --line2: #CFCFCB;
-  --ink: #17181A; --ink2: #4B4E52; --ink3: #7E8287;
-  --green: #1E6B44; --green-dark: #155235; --green-soft: #E6F1EA; --green-ink: #FFFFFF;
-  --gold: #E5A80B; --gold-soft: #FBF1D3;
+  --bg: #F6F6F4; --card: #FFFFFF; --card2: #F0F0EE; --line: #E6E6E3; --line2: #C9C9C7;
+  --ink: #17181A; --ink2: #4B4E52; --ink3: #6E7378;
+  --green: #1E6B44; --green-dark: #185636; --green-soft: #D8E3DB; --green-ink: #FFFFFF;
+  --gold: #E5A80B; --gold-soft: #F4EBD3; --gold-ink: #674C05;
   --under: #1F8A5B; --par: #5B6A61; --bogey: #D9931A; --double: #C8433A; --pick: #8A6D3B;
-  --danger: #C8433A; --danger-soft: #FBE7E5; --ok: #2E8B57;
+  --danger: #C8433A; --danger-soft: #F0E1DE; --ok: #2E8B57;
+  --bronze: #D9A46A; --on-bronze: #17181A; --on-ink: #FFFFFF; --on-double: #FFFFFF; --on-gold: #17181A;
   /* six score buckets, eagle to blow-up, for the stats donut and the distribution bars */
   --sc-eagle: #073B26; --sc-birdie: #1F8A5B; --sc-par: #9AA1A5; --sc-bogey: #E0A020; --sc-double: #C4362C; --sc-triple: #78221C;
   --shadow: 0 1px 2px rgba(20,22,26,.05), 0 4px 14px rgba(20,22,26,.04);
@@ -83,14 +87,14 @@ button { font: inherit; color: inherit; }
 .list > *:first-child { border-top: 0; }
 .list > a:active, .list > button:active { background: var(--card2); }
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--card2); color: var(--ink2); white-space: nowrap; }
-.pill.scoring { background: var(--gold-soft); color: #7A5A00; }
+.pill.scoring { background: var(--gold-soft); color: var(--gold-ink); }
 .pill.done { background: var(--green-soft); color: var(--green); }
 .pill.setup { background: var(--card2); color: var(--ink2); }
 .status { font-size: 12px; color: var(--ink3); text-align: right; white-space: nowrap; }
 
 .banner { display: block; background: var(--card); border: 1px solid var(--line); color: var(--ink2); border-radius: var(--r-s); padding: 11px 14px; margin: 8px 0; font-size: 14px; cursor: pointer; box-shadow: var(--shadow); }
 .banner.accent { background: var(--green-soft); border-color: transparent; color: var(--green); font-weight: 600; }
-.banner.warn { background: var(--gold-soft); border-color: transparent; color: #7A5A00; }
+.banner.warn { background: var(--gold-soft); border-color: transparent; color: var(--gold-ink); }
 .banner.muted { color: var(--ink3); }
 .ios-share { display: inline-block; border: 1px solid var(--ink3); border-radius: 4px; padding: 0 5px; font-size: 12px; }
 
@@ -181,14 +185,14 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .sval.under { border-color: var(--under); color: var(--under); }
 .sval.par { border-color: var(--line2); }
 .sval.bogey { border-color: var(--bogey); color: var(--bogey); }
-.sval.double { border-color: var(--double); background: var(--double); color: #fff; }
+.sval.double { border-color: var(--double); background: var(--double); color: var(--on-double); }
 .sval.pick { border-color: var(--pick); color: var(--pick); font-size: 18px; }
 .hint { color: var(--ink3); font-size: 13px; text-align: center; margin: 12px 0 4px; }
 
 /* ---- review */
 .pl { padding: 12px 14px; }
 .pl .pos { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--card2); color: var(--ink2); font-weight: 700; font-size: 14px; margin-right: 10px; flex: none; }
-.pl .pos.p1 { background: var(--gold); color: #3A2A00; }
+.pl .pos.p1 { background: var(--gold); color: var(--on-gold); }
 .pl .who { display: flex; align-items: center; min-width: 0; }
 .pl .nums { display: flex; gap: 8px; }
 .pl .nums span { display: flex; flex-direction: column; align-items: center; min-width: 46px; }
@@ -198,14 +202,14 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .chip { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 48px; border-radius: 10px; border: 2px solid var(--line); background: var(--card); color: var(--ink); font-weight: 600; font-size: 16px; padding: 0; }
 .chip small { color: var(--ink3); font-size: 9px; font-weight: 500; line-height: 1; }
 .chip.under { border-color: var(--under); color: var(--under); } .chip.par { border-color: var(--line2); }
-.chip.bogey { border-color: var(--bogey); color: var(--bogey); } .chip.double { border-color: var(--double); background: var(--double); color: #fff; }
-.chip.double small { color: rgba(255,255,255,.8); }
+.chip.bogey { border-color: var(--bogey); color: var(--bogey); } .chip.double { border-color: var(--double); background: var(--double); color: var(--on-double); }
+.chip.double small { color: var(--on-double); opacity: .8; }
 .chip.pick { border-color: var(--pick); color: var(--pick); font-size: 11px; } .chip.empty { color: var(--ink3); }
 .chip.sel { outline: 3px solid var(--green); outline-offset: 1px; }
 .editor { margin-top: 10px; padding: 12px; background: var(--card2); border-radius: var(--r-s); font-size: 14px; color: var(--ink2); }
 .edrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .edrow .sbtn { width: 60px; }
-.pen { display: inline-flex; align-items: center; gap: 6px; background: var(--gold-soft); color: #7A5A00; border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin: 4px 4px 0 0; }
+.pen { display: inline-flex; align-items: center; gap: 6px; background: var(--gold-soft); color: var(--gold-ink); border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin: 4px 4px 0 0; }
 .pen button { border: 0; background: transparent; color: inherit; font-size: 16px; padding: 0; }
 .pens { margin-top: 8px; } .pens summary { cursor: pointer; margin-top: 6px; } .pens .btn { margin-top: 10px; }
 
@@ -244,8 +248,8 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .vsverdict { text-align: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .9px; color: var(--ink3); }
 .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: start; margin-top: 12px; }
 .vsside { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
-.vsdisc { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-family: "Oswald", sans-serif; font-size: 19px; font-weight: 600; letter-spacing: .5px; color: #fff; }
-.vsdisc.a { background: var(--green); } .vsdisc.b { background: var(--ink); }
+.vsdisc { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-family: "Oswald", sans-serif; font-size: 19px; font-weight: 600; letter-spacing: .5px; }
+.vsdisc.a { background: var(--green); color: var(--green-ink); } .vsdisc.b { background: var(--ink); color: var(--on-ink); }
 .vsname { font-size: 13px; font-weight: 600; text-align: center; line-height: 1.2; overflow-wrap: anywhere; }
 .vsnum { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 6px; padding: 0 4px; }
 .vsnum b { font-family: "Oswald", sans-serif; font-variant-numeric: tabular-nums; font-size: 46px; line-height: .95; font-weight: 600; }
@@ -262,7 +266,7 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 
 .vsform { display: flex; flex-wrap: wrap; gap: 5px; }
 .fdot { width: 34px; height: 34px; flex: none; border-radius: 10px; display: grid; place-items: center; font-size: 12px; font-weight: 700; letter-spacing: .3px; }
-.fdot.a { background: var(--green); color: #fff; } .fdot.b { background: var(--ink); color: #fff; }
+.fdot.a { background: var(--green); color: var(--green-ink); } .fdot.b { background: var(--ink); color: var(--on-ink); }
 .fdot.tie { background: var(--card2); color: var(--ink3); border: 1px solid var(--line); }
 
 /* one stat per row: the two readings at the ends, the bar underneath filled in their proportion */
@@ -346,9 +350,9 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .ptop { display: flex; align-items: center; gap: 10px; color: var(--ink); }
 .prank { flex: none; width: 30px; height: 30px; border-radius: 999px; background: var(--card2); color: var(--ink2);
   font-family: "Oswald", sans-serif; font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: center; }
-.prank.p1 { background: var(--gold); color: #2A1E00; }
+.prank.p1 { background: var(--gold); color: var(--on-gold); }
 .prank.p2 { background: var(--line2); color: var(--ink); }
-.prank.p3 { background: #E3C7A5; color: #3A2A14; }
+.prank.p3 { background: var(--bronze); color: var(--on-bronze); }
 .pmain { flex: 1; min-width: 0; }
 .pmain .name { font-size: 16px; font-weight: 600; }
 .pmain .name small { font-weight: 500; }
@@ -404,9 +408,10 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 /* ---- misc */
 #toast { position: fixed; left: 50%; bottom: calc(96px + var(--sab)); transform: translateX(-50%) translateY(12px); background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; opacity: 0; transition: all .2s; z-index: 20; max-width: 90vw; text-align: center; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 #toast.show { opacity: 1; transform: translateX(-50%); }
-.toastbtn { margin-left: 10px; background: var(--gold); color: #3A2A00; border: 0; border-radius: 999px; padding: 6px 12px; font-weight: 700; pointer-events: auto; }
+.toastbtn { margin-left: 10px; background: var(--gold); color: var(--on-gold); border: 0; border-radius: 999px; padding: 6px 12px; font-weight: 700; pointer-events: auto; }
 #toast.show.action { pointer-events: auto; }  /* only while visible: a hidden toast must never swallow taps */
 details > summary { list-style: none; } details > summary::-webkit-details-marker { display: none; }
+/* white and not the card: a QR needs its quiet zone white in every theme to scan */
 .qr { display: block; margin: 12px auto; background: #fff; padding: 10px; border-radius: 12px; width: 220px; height: 220px; }
 .linkbox { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; word-break: break-all; color: var(--ink3); }
 .kv { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }

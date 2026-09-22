@@ -36,14 +36,37 @@ const H2H_BASES = [["points", "Stableford", "the most Stableford points", "the h
   ["gross", "Gross score", "the lowest gross score", "the lower gross score"]];
 const basisRow = b => H2H_BASES.find(x => x[0] === b) || H2H_BASES[0];
 const basisUnit = b => b === "points" ? "points" : b === "gross" ? "gross strokes" : "net strokes";
-// The look posters and cards are made in. A league can carry its own, and that wins over the phone's setting
-// for everything the league renders; navy is the fallback for a phone that has never picked one.
+// The look: the app's own screen as well as the posters and cards it makes. A league can carry its own, and
+// that wins over the phone's setting wherever the league is on screen or being rendered. `hagolf` is the
+// fallback -- it is the design system app.css is written in, so an unset phone looks exactly as it always did.
 const themeNamed = n => DATA.themes.find(t => t.name === n) || null;
-const appTheme = () => themeNamed(S.state.settings.theme) || themeNamed("navy") || DATA.themes[0];
+const appTheme = () => themeNamed(S.state.settings.theme) || themeNamed("hagolf") || DATA.themes[0];
 const leagueTheme = g => (g && themeNamed(g.theme)) || null;
 const themeFor = g => leagueTheme(g) || appTheme();
 /** The theme of the first league a round counts for that has picked one, else the phone's. */
 const themeForRound = rid => S.leaguesOfRound(rid).map(leagueTheme).find(Boolean) || appTheme();
+// Screens that belong to one league or to one round wear that league's look; the rest wear the phone's.
+const LEAGUE_SCREENS = ["league", "leagueposter", "statsposter"];
+const ROUND_SCREENS = ["players", "score", "review", "attach", "graphics"];
+function themeHere() {
+  const [name, arg] = location.hash.replace(/^#/, "").split("/");
+  if (arg && LEAGUE_SCREENS.includes(name)) return themeFor(S.getLeague(arg));
+  if (arg && ROUND_SCREENS.includes(name)) return themeForRound(arg);
+  return appTheme();
+}
+
+/** Paints a theme onto the screen: build.py mixed the shades, so this only has to hand them to the page. */
+let painted = null;
+function paint(t) {
+  if (!t || !t.ui || t.name === painted) return;
+  painted = t.name;
+  const root = document.documentElement;
+  for (const [k, v] of Object.entries(t.ui)) if (k !== "scheme") root.style.setProperty(`--${k}`, v);
+  root.style.colorScheme = t.ui.scheme;      // so a select, a checkbox and the scrollbar follow the page
+  root.dataset.theme = t.name;
+  const meta = document.querySelector("meta[name=theme-color]");
+  if (meta) meta.content = t.ui.bg;          // the status bar and the task switcher
+}
 /** A row of pill tabs that may be wider than the phone: the wrapper carries the ‹ › cues. */
 const subtabs = (buttons, small = false) => `<div class="tabrow"><div class="subtabs${small ? " small" : ""}">${buttons}</div><span class="cue l">&#8249;</span><span class="cue r">&#8250;</span></div>`;
 /** The three currencies as a row of tabs, wherever two players are set against each other. */
@@ -1803,7 +1826,7 @@ function league(gid) {
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
       <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
-      <label>Theme <span class="muted">(the look this league's standings, stats and round graphics are made in)</span></label>
+      <label>Theme <span class="muted">(what this league wears on screen, and what its standings, stats and round graphics are made in)</span></label>
       <div class="themes" style="margin-top:8px">${themeRadios("ltheme", leagueTheme(g) ? g.theme : "", { theme: appTheme(), label: "App theme" })}</div>
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
       ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
@@ -1854,7 +1877,7 @@ function league(gid) {
     g.name = ev.target.name.value.trim() || g.name; g.bestN = Number(ev.target.bestN.value) || 0;
     g.formats = S.cleanFormats([...ev.target.querySelectorAll("input[name=fmt]:checked")].map(i => i.value));
     g.theme = ev.target.ltheme.value || null;
-    S.saveLeague(g); toast("Saved"); ui.leagueTab[gid] = "standings"; league(gid);
+    S.saveLeague(g); paint(themeHere()); toast("Saved"); ui.leagueTab[gid] = "standings"; league(gid);
   });
 }
 
@@ -2527,7 +2550,7 @@ function settings() {
         ${DATA.sync && !Y.isDefault() ? `<button class="btn small" type="button" data-act="sync-default">Back to the built-in connection</button>` : ""}
       </form></details></div>
     <h2>Theme</h2>
-    <div class="card"><p class="muted small" style="margin:0 0 10px">The look posters and player cards are made in. A league that has picked its own look uses that instead, for everything it renders.</p>
+    <div class="card"><p class="muted small" style="margin:0 0 10px">The look of the app itself, and of every poster and player card it makes. A league that has picked its own wears that instead, on its screens and on everything it renders.</p>
       <div class="themes">${themeRadios("apptheme", appTheme().name)}</div></div>
     <h2>Courses</h2>
     <div class="card"><div class="muted small">${S.courses().length} courses, ${plural(phoneCourses.length, "course")} added on phones.</div>
@@ -2551,7 +2574,7 @@ function settings() {
       for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (q.isDark(y, x)) ctx.fillRect(10 + x * cell, 10 + y * cell, cell + 0.5, cell + 0.5);
     } catch (e) { console.warn("qr", e); }
   }
-  bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); toast("Saved"); });
+  bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); paint(themeHere()); toast("Saved"); });
   document.getElementById("orgtoggle").addEventListener("change", ev => { S.setSetting("organiser", ev.target.checked); settings(); });
   document.getElementById("syncf").addEventListener("submit", async ev => {
     ev.preventDefault();
@@ -2655,6 +2678,7 @@ function route() {
   const t = document.getElementById("toast");
   if (t && !t.classList.contains("action")) t.classList.remove("show");
   const [name, ...args] = location.hash.replace(/^#/, "").split("/");
+  paint(themeHere());
   ui.expanded = name === "review" ? ui.expanded : null;
   if (name !== "review") ui.reviewOrder = {};
   (screens[name] || home)(...args.map(decodeURIComponent));

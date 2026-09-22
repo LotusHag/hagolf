@@ -28,8 +28,9 @@ function load() {
     settings: s.settings || {} };
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
   if (!st.settings.deviceId) st.settings.deviceId = uid();
-  // the look used to be whatever was last ticked on a graphics screen; it is a setting now, so the last tick becomes it
-  if (!st.settings.theme) st.settings.theme = (st.settings.themes || ["navy"])[0];
+  // `themes` was the last set ticked on a graphics screen. The setting that replaced it dresses the whole app,
+  // so a phone that never chose one starts on hagolf, the look it already had, rather than its last render.
+  if (!st.settings.theme) st.settings.theme = "hagolf";
   delete st.settings.themes;
   for (const r of st.rounds) {
     r.entries = r.entries || [];
