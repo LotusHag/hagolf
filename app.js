@@ -6,7 +6,7 @@ import * as S from "./store.js";
 import * as Y from "./sync.js";
 import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, coursesFromClub, validateCourse, slugify, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
-import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
+import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster } from "./statsposters.js";
 import { renderCards } from "./cards.js";
 
@@ -959,6 +959,7 @@ function graphics(rid) {
     <div class="card checks">
       <label><input type="checkbox" name="g" value="stbl" checked> Stableford leaderboard</label>
       <label><input type="checkbox" name="g" value="gross"> Gross leaderboard</label>
+      <label><input type="checkbox" name="g" value="both"> Both boards on one sheet</label>
       <label><input type="checkbox" name="g" value="holes"> How the holes played</label>
       <label><input type="checkbox" name="g" value="cards"> Player cards <span class="muted">&nbsp;(${M.field})</span></label>
       <details><summary class="muted small">Only some players' cards</summary>${M.players.map(p => `<label><input type="checkbox" name="card" value="${esc(p.name)}" checked> ${esc(p.name)}</label>`).join("")}</details>
@@ -991,6 +992,7 @@ function graphics(rid) {
       if (want.includes("gross")) jobs.push({ label: `${prefix}1_leaderboard_gross.png`, make: () => grossLeaderboard(M, T) });
       if (want.includes("stbl")) jobs.push({ label: `${prefix}2_leaderboard_stableford.png`, make: () => stablefordLeaderboard(M, T) });
       if (want.includes("holes")) jobs.push({ label: `${prefix}3_holes.png`, make: () => holesPoster(M, T) });
+      if (want.includes("both")) jobs.push({ label: `${prefix}4_leaderboard_both.png`, make: () => bothBoards(M, T) });
       if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) jobs.push({ label: `${prefix}${renderCards(M, T, [p.name])[0].file}`, make: () => renderCards(M, T, [p.name])[0].fig });
     }
     await runJobs(jobs, slugFile(r.name));

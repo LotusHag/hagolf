@@ -1,4 +1,4 @@
-// Port of golf/posters.py: gross leaderboard, Stableford leaderboard, how the holes played; plus season standings.
+// Port of golf/posters.py: gross leaderboard, Stableford leaderboard, both boards on one sheet, how the holes played; plus season standings.
 import { Fig, MARGIN, HEADER_IN, header, footer, section, posChip, outcomeBar, legend, on } from "./draw.js";
 import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE } from "./model.js";
 
@@ -56,6 +56,29 @@ function tablePoster(M, T, title, cols, rows, W, right, foot, width = 11.5, kick
   header(fig, title, kicker ?? M.name, sub ?? M.sub, right);
   const ax = fig.axes([MARGIN, footIn / H, 1 - 2 * MARGIN, axIn / H], [0, W], [-n, 1.25]);
   drawTable(ax, cols, rows, W);
+  footer(fig, foot);
+  return fig;
+}
+
+/** Two tables of the same field side by side under one header, each with its own section title. */
+function dualTablePoster(M, T, title, boards, W, right, foot, width = 18.0, gapIn = 0.6) {
+  foot += courseNote(M);
+  const n = Math.max(...boards.map(b => b.rows.length));
+  const axIn = (n + 2.1) * ROW_IN;
+  const probe = new Fig(width, 1, T, 20);
+  const lines = probe.wrap(foot, width * (1 - 2 * MARGIN), 9).length;
+  const footIn = 0.45 + 0.17 * (lines - 1);
+  const H = HEADER_IN + 0.15 + axIn + footIn;
+  const fig = new Fig(width, H, T);
+  header(fig, title, M.name, M.sub, right);
+  const gap = gapIn / width;
+  const half = (1 - 2 * MARGIN - gap) / 2;
+  boards.forEach((b, i) => {
+    const ax = fig.axes([MARGIN + i * (half + gap), footIn / H, half, axIn / H], [0, W], [-n, 2.1]);
+    section(ax, 0, 1.62, b.title);
+    if (b.note) ax.text(W, 1.62, b.note, { size: 9, color: T.INK_3, ha: "right", va: "center" });
+    drawTable(ax, b.cols, b.rows, W);
+  });
   footer(fig, foot);
   return fig;
 }
@@ -147,6 +170,45 @@ export function stablefordLeaderboard(M, T) {
     `Net, course handicap${allowance}${tees.length > 1 ? ", tees: " + tees.join(", ") : ""}\nField ${N}  ·  best ${best} pts  ·  average ${fix(avg)}`,
     `Most points wins. Equal points are separated on countback (${countbackText(n)}). ${level} points is playing to handicap: 2 points per hole for a net par, ` +
     "3 for a net birdie, 1 for a net bogey, nothing for worse." + notes(rows, "s"));
+}
+
+/** One sheet with both boards, for the clubhouse wall: gross on the left, Stableford on the right. */
+export function bothBoards(M, T) {
+  const gRows = M.gross_board, sRows = M.stbl_board, n = M.n, N = M.field;
+  const level = 2 * n;
+  const bestPts = Math.max(...sRows.map(p => p.pts));
+  const scaleMax = Math.max(level + 6, 3 * Math.ceil((bestPts + 2) / 3));
+  const hcpTitle = M.allowance === 100 ? "Hcp" : `Hcp (${M.allowance}%)`;
+  const W = 10;
+  const grossCols = [
+    col("Pos", 0.15, 0.95, dPos("g")),
+    col("Player", 1.15, 4.75, dName, "left"),
+    col("Gross", 4.85, 5.75, dVal(r => r.gross === null ? "NR" : String(r.gross), 20, (r, T) => T.INK, "display"), "center"),
+    col("To par", 5.85, 6.7, dVal(r => r.topar === null ? "–" : fmtToPar(r.topar), 14, (r, T) => toparColor(r.topar, T), "display"), "center"),
+    col(`The round: ${n} holes by result`, 6.95, 9.95, dOutcomes(n), "left", presentOutcomes(T, gRows)),
+  ];
+  const stblCols = [
+    col("Pos", 0.15, 0.95, dPos("s")),
+    col("Player", 1.15, 4.5, dName, "left"),
+    col(hcpTitle, 4.5, 5.15, dVal(r => fmtHcp(r.ph), 11, (r, T) => T.INK_3), "center"),
+    col("Net", 5.25, 6.0, dVal(r => r.net === null ? "NR" : String(r.net), 14, (r, T) => T.INK, "display"), "center"),
+    col("Points", 6.15, 7.05, dVal(r => String(r.pts), 22, (r, T) => T.ACCENT, "display"), "center"),
+    col(`Points, 0 to ${scaleMax}, line at ${level}`, 7.3, 9.95, pointsMeter(scaleMax, level), "left"),
+  ];
+  const finished = gRows.filter(p => p.gross !== null).map(p => p.gross);
+  const tees = [...new Set(sRows.map(p => p.tee))].sort();
+  const allowance = M.allowance === 100 ? "" : `, ${M.allowance}% allowance`;
+  const summary = `Field ${N}` + (finished.length ? `  ·  best gross ${Math.min(...finished)}` : "") + `  ·  best ${bestPts} pts`;
+  const boards = [
+    { title: "Gross", note: "stroke play, no handicap", cols: grossCols, rows: gRows },
+    { title: "Stableford", note: `net, course handicap${allowance}`, cols: stblCols, rows: sRows },
+  ];
+  return dualTablePoster(M, T, "Both boards", boards, W,
+    `Stroke play and net Stableford${tees.length > 1 ? ", tees: " + tees.join(", ") : ""}
+${summary}`,
+    `The same round finished two ways. Lowest gross wins on the left, most points wins on the right, and equal scores are ` +
+    `separated on countback (${countbackText(n)}). ${level} points is playing to handicap. The round bar has one block per hole, ` +
+    `grouped by result against par, best results first.` + notes(gRows, "g"));
 }
 
 export function holesPoster(M, T) {
@@ -311,5 +373,6 @@ export function renderPosters(M, T) {
     { file: "1_leaderboard_gross.png", fig: grossLeaderboard(M, T) },
     { file: "2_leaderboard_stableford.png", fig: stablefordLeaderboard(M, T) },
     { file: "3_holes.png", fig: holesPoster(M, T) },
+    { file: "4_leaderboard_both.png", fig: bothBoards(M, T) },
   ];
 }
