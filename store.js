@@ -28,6 +28,9 @@ function load() {
     settings: s.settings || {} };
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
   if (!st.settings.deviceId) st.settings.deviceId = uid();
+  // the look used to be whatever was last ticked on a graphics screen; it is a setting now, so the last tick becomes it
+  if (!st.settings.theme) st.settings.theme = (st.settings.themes || ["navy"])[0];
+  delete st.settings.themes;
   for (const r of st.rounds) {
     r.entries = r.entries || [];
     r.removed = r.removed || [];
@@ -388,7 +391,7 @@ export function setScore(r, e, h, v) {
 
 export function deleteRound(id) {
   const r = state.rounds.find(x => x.id === id);
-  if (r) { r.deleted = true; touch("rounds", r); save(); }
+  if (r) { r.deleted = true; delete state.settings.holes[id]; touch("rounds", r); save(); }
 }
 
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */
@@ -433,7 +436,7 @@ export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "
 export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
-  const g = { id: uid(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats) };
+  const g = { id: uid(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null };
   state.leagues.push(g);
   touch("leagues", g);
   save();

@@ -36,6 +36,14 @@ const H2H_BASES = [["points", "Stableford", "the most Stableford points", "the h
   ["gross", "Gross score", "the lowest gross score", "the lower gross score"]];
 const basisRow = b => H2H_BASES.find(x => x[0] === b) || H2H_BASES[0];
 const basisUnit = b => b === "points" ? "points" : b === "gross" ? "gross strokes" : "net strokes";
+// The look posters and cards are made in. A league can carry its own, and that wins over the phone's setting
+// for everything the league renders; navy is the fallback for a phone that has never picked one.
+const themeNamed = n => DATA.themes.find(t => t.name === n) || null;
+const appTheme = () => themeNamed(S.state.settings.theme) || themeNamed("navy") || DATA.themes[0];
+const leagueTheme = g => (g && themeNamed(g.theme)) || null;
+const themeFor = g => leagueTheme(g) || appTheme();
+/** The theme of the first league a round counts for that has picked one, else the phone's. */
+const themeForRound = rid => S.leaguesOfRound(rid).map(leagueTheme).find(Boolean) || appTheme();
 /** A row of pill tabs that may be wider than the phone: the wrapper carries the ‹ › cues. */
 const subtabs = (buttons, small = false) => `<div class="tabrow"><div class="subtabs${small ? " small" : ""}">${buttons}</div><span class="cue l">&#8249;</span><span class="cue r">&#8250;</span></div>`;
 /** The three currencies as a row of tabs, wherever two players are set against each other. */
@@ -166,6 +174,12 @@ function resumeHash(r) {
   if (r.status === "setup") return `#players/${r.id}`;
   if (r.status === "scoring") return `#score/${r.id}/${S.holeOf(r)}`;
   return `#graphics/${r.id}`;
+}
+
+/** Giving up on a round: it is thrown away everywhere. A finished one is the organiser's to delete, as in Settings. */
+function dropBtn(r) {
+  if (r.status === "done" && !organiser()) return "";
+  return `<p class="center"><button class="btn small danger" data-act="drop-round" data-rid="${r.id}">${r.status === "done" ? "Delete this round" : "Stop playing, throw this round away"}</button></p>`;
 }
 
 function noCourse(r, back = "#home") {
@@ -330,7 +344,7 @@ async function myCard(rid, pid = null) {
   if (!me || !M || !M.players.some(p => p.id === me.id)) return toast("No card to make");
   toast("Making your card…", 3000);
   await loadFonts(DATA.fonts);
-  const T = makeTheme(DATA.themes.find(t => t.name === (S.state.settings.themes || ["navy"])[0]) || DATA.themes[0]);
+  const T = makeTheme(themeForRound(rid));
   const fig = renderCards(M, T, [me.name])[0];
   const blob = await fig.fig.toBlob();
   await saveFiles([new File([blob], `${slugFile(r.name)}_${fig.file.split("/").pop()}`, { type: "image/png" })], r.name);
@@ -593,7 +607,8 @@ function players(rid) {
         <label>Course hcp override <span class="muted">(optional)</span><input id="pch" inputmode="numeric" placeholder="from club table"></label></div>
       <button class="btn primary" type="submit">Add player</button>
     </form>
-    <button class="btn addbtn ${roster.length || r.entries.length ? "" : "hidden"}" data-act="toggle-add"><span class="plus">+</span> Someone new</button>`;
+    <button class="btn addbtn ${roster.length || r.entries.length ? "" : "hidden"}" data-act="toggle-add"><span class="plus">+</span> Someone new</button>
+    ${dropBtn(r)}`;
   const bar = !r.entries.length ? `<button class="btn" disabled>Add players to start</button>`
     : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
     : `<button class="btn primary" data-act="start-scoring" data-rid="${rid}">${r.status === "setup" ? "Start scoring ›" : "Back to scoring ›"}</button>`;
@@ -703,7 +718,8 @@ function score(rid, hArg) {
     <div class="card" style="padding:4px 14px" id="rows">${shown.map(([e, i]) => scoreRow(r, c, e, i, h)).join("")}</div>
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}
     <p class="hint">The first tap on − or + puts par in. Tap the score itself if the hole was picked up, which counts ${NO_SCORE} strokes.</p>
-    <p class="center"><a class="btn small" href="#players/${rid}">Add or remove players</a></p>`;
+    <p class="center"><a class="btn small" href="#players/${rid}">Add or remove players</a></p>
+    ${dropBtn(r)}`;
   const bar = (h === 0 ? `<a class="btn" href="#players/${rid}">‹ Players</a>` : `<a class="btn" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`) +
     (h < n - 1 ? `<a class="btn primary" href="#score/${rid}/${h + 1}">Hole ${c.first_hole + h + 1} ›</a>` : `<a class="btn primary" href="#review/${rid}">Review ›</a>`);
   page(esc(r.name), body, { back: "#home", bar, sub: courseTitle(c) });
@@ -720,6 +736,7 @@ function score(rid, hArg) {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "gf") { ui.groupFilter = Number(b.dataset.g); return score(rid, h); }
+    if (!["inc", "dec", "pickup"].includes(b.dataset.act)) return;  // the screen's other buttons are handled elsewhere
     if (!S.roundOpen(r)) return toast("This round is frozen (entered more than 60 days ago)");
     const i = Number(b.dataset.i), e = r.entries[i];
     const par = c.par[h], v = e.scores[h];
@@ -805,7 +822,8 @@ function review(rid, keep = false) {
     <div class="card row"><div class="small">Tees and handicaps <span class="muted">· ${plural(r.entries.length, "player")}</span></div><a class="btn small" href="#players/${rid}">Change</a></div>
     <details class="card"><summary class="small">Name and date: ${esc(r.name)} · ${esc(r.date || "no date")}</summary>
       <form id="rdet"><label>Name<input name="name" value="${esc(r.name)}"></label><label>Played on<input name="date" type="date" value="${esc(r.date || "")}"></label>
-      <button class="btn small" type="submit">Save details</button></form></details>`;
+      <button class="btn small" type="submit">Save details</button></form></details>
+    ${dropBtn(r)}`;
   const bar = `<a class="btn" href="#score/${rid}/${n - 1}">‹ Scoring</a>
     <button class="btn primary" data-act="save-round" ${M.field ? "" : "disabled"}>All correct, save ›</button>`;
   page("Check the scores", body, { back: `#score/${rid}/${S.holeOf(r)}`, bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep });
@@ -872,9 +890,33 @@ function attach(rid) {
 }
 
 // ---------------------------------------------------------------- graphics
+/** One chip a look, its swatch drawn from that theme's own tokens, so the picker shows it rather than names it. */
+function tchip(input, t, label, on) {
+  return `<label class="tchip ${on ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK}">
+    ${input}<span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(label)}</label>`;
+}
+
+/** The generate screens, where several looks can be rendered at once. */
 function themeChips(selected) {
-  return DATA.themes.map(t => `<label class="tchip ${selected.includes(t.name) ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK}">
-    <input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}><span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(t.name)}</label>`).join("");
+  return DATA.themes.map(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name))).join("");
+}
+
+/** The settings screens, where one look is picked. `dflt` adds a first chip that defers to the theme above it. */
+function themeRadios(name, sel, dflt = null) {
+  const none = dflt ? tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel) : "";
+  return none + DATA.themes.map(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel)).join("");
+}
+
+/** Keeps the ticked chip lit: a radio puts the light out on the rest of its row, a checkbox only on itself. */
+function bindChips(el, onPick = null) {
+  if (!el) return;
+  el.addEventListener("change", ev => {
+    const l = ev.target.closest(".tchip");
+    if (!l) return;
+    if (ev.target.type === "radio") el.querySelectorAll(".tchip").forEach(x => x.classList.toggle("on", x === l));
+    else l.classList.toggle("on", ev.target.checked);
+    if (onPick) onPick(ev.target.value);
+  });
 }
 
 function graphics(rid) {
@@ -884,8 +926,9 @@ function graphics(rid) {
   if (!c) return noCourse(r);
   let M;
   try { M = compute(c, S.toModelRound(r)); } catch (err) { return page("Graphics", `<div class="banner warn">${esc(err.message)}</div>`, { back: `#review/${rid}` }); }
-  const themes = (S.state.settings.themes || ["navy"]).slice(0, 1);
   const leagues = S.leaguesOfRound(rid);
+  const themeLeague = leagues.find(leagueTheme);  // whose look this screen opens on, if it is not the phone's
+  const themes = [themeForRound(rid).name];
   const body = `
     <div class="list"><a href="#review/${rid}"><div><div class="name">Scores</div><div class="muted small">${plural(M.field, "player")} on the boards${M.unfinished.length ? ` · ${M.unfinished.length} with no scores left out` : ""}</div></div><span class="chev">›</span></a>
       <a href="#attach/${rid}"><div><div class="name">Leagues</div><div class="muted small">${leagues.length ? "counts for " + leagues.map(g => esc(g.name)).join(", ") : "not in a league yet"}</div></div><span class="chev">›</span></a></div>
@@ -899,6 +942,7 @@ function graphics(rid) {
       <button class="btn small" type="button" data-act="tick-all">Everything, every theme</button>
     </div>
     <h2>Theme</h2>
+    ${themeLeague ? `<p class="muted small" style="margin:-2px 4px 8px">${esc(themeLeague.name)} is set to ${esc(themeLeague.theme)}.</p>` : ""}
     <div class="themes">${themeChips(themes)}</div>
     <div id="out"></div>`;
   const bar = `<button class="btn primary" data-act="generate">Generate images</button>`;
@@ -917,10 +961,9 @@ function graphics(rid) {
     const cardNames = [...document.querySelectorAll("input[name=card]:checked")].map(i => i.value);
     if (!want.length) return toast("Tick at least one graphic");
     if (!chosen.length) return toast("Pick at least one theme");
-    S.setSetting("themes", chosen);
     const jobs = [];
     for (const tn of chosen) {
-      const T = makeTheme(DATA.themes.find(t => t.name === tn));
+      const T = makeTheme(themeNamed(tn));
       const prefix = chosen.length > 1 ? `${tn}/` : "";
       if (want.includes("gross")) jobs.push({ label: `${prefix}1_leaderboard_gross.png`, make: () => grossLeaderboard(M, T) });
       if (want.includes("stbl")) jobs.push({ label: `${prefix}2_leaderboard_stableford.png`, make: () => stablefordLeaderboard(M, T) });
@@ -929,7 +972,7 @@ function graphics(rid) {
     }
     await runJobs(jobs, slugFile(r.name));
   });
-  app.querySelector(".themes").addEventListener("change", ev => { const l = ev.target.closest(".tchip"); if (l) l.classList.toggle("on", ev.target.checked); });
+  bindChips(app.querySelector(".themes"));
 }
 
 function slugFile(s) {
@@ -1760,6 +1803,8 @@ function league(gid) {
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
       <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
+      <label>Theme <span class="muted">(the look this league's standings, stats and round graphics are made in)</span></label>
+      <div class="themes" style="margin-top:8px">${themeRadios("ltheme", leagueTheme(g) ? g.theme : "", { theme: appTheme(), label: "App theme" })}</div>
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
       ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
   }
@@ -1791,6 +1836,7 @@ function league(gid) {
     }
     if (b_.dataset.act === "del-league" && confirm(`Delete the league ${g.name} on every phone? Rounds and players stay.`)) { S.deleteLeague(gid); go("#leagues"); }
   });
+  bindChips(app.querySelector(".themes"));
   const rq = document.getElementById("rq");
   if (rq) rq.addEventListener("input", () => {
     const t = rq.value.toLowerCase().trim();
@@ -1807,6 +1853,7 @@ function league(gid) {
     ev.preventDefault();
     g.name = ev.target.name.value.trim() || g.name; g.bestN = Number(ev.target.bestN.value) || 0;
     g.formats = S.cleanFormats([...ev.target.querySelectorAll("input[name=fmt]:checked")].map(i => i.value));
+    g.theme = ev.target.ltheme.value || null;
     S.saveLeague(g); toast("Saved"); ui.leagueTab[gid] = "standings"; league(gid);
   });
 }
@@ -1815,23 +1862,22 @@ function leaguePoster(gid) {
   const g = S.getLeague(gid);
   if (!g) return go("#leagues");
   const formats = S.cleanFormats(g.formats);
-  const themes = (S.state.settings.themes || ["navy"]).slice(0, 1);
+  const themes = [themeFor(g).name];
   page("Standings poster", `
     ${formats.length > 1 ? `<h2>Which standings</h2><div class="card checks">${formats.map(f => `<label><input type="checkbox" name="sf" value="${f}" checked> ${FORMAT_NAMES[f]}</label>`).join("")}</div>` : ""}
     <h2>Theme</h2><div class="themes">${themeChips(themes)}</div><div id="out"></div>`,
     { back: `#league/${gid}`, bar: `<button class="btn primary" data-act="generate">Generate image${formats.length > 1 ? "s" : ""}</button>` });
-  app.querySelector(".themes").addEventListener("change", ev => { const l = ev.target.closest(".tchip"); if (l) l.classList.toggle("on", ev.target.checked); });
+  bindChips(app.querySelector(".themes"));
   document.querySelector(".bar [data-act=generate]").addEventListener("click", async () => {
     const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value);
     if (!chosen.length) return toast("Pick at least one theme");
     const want = formats.length > 1 ? [...document.querySelectorAll("input[name=sf]:checked")].map(i => i.value) : formats;
     if (!want.length) return toast("Pick at least one set of standings");
-    S.setSetting("themes", chosen);
     const { Ms, members } = leagueResults(g);
     const jobs = [];
     chosen.forEach(tn => want.forEach((f, k) => jobs.push({
       label: `${chosen.length > 1 ? tn + "/" : ""}${4 + k}_standings_${f}.png`,
-      make: () => standingsPoster(standingsFor(g, Ms, members, f), g, makeTheme(DATA.themes.find(t => t.name === tn)), f),
+      make: () => standingsPoster(standingsFor(g, Ms, members, f), g, makeTheme(themeNamed(tn)), f),
     })));
     await runJobs(jobs, slugFile(g.name));
   });
@@ -1846,7 +1892,7 @@ function statsPoster(gid) {
   if (!St.rounds.length) return page("Stats images", `<p class="muted center" style="margin:30px 0">No finished rounds in this league yet.</p>`, { back: `#league/${gid}` });
   const N = ninesForPoster(leagueRounds(gid), members);
   const who = St.players.some(p => p.id === ui.statsWho[gid]) ? ui.statsWho[gid] : "";
-  const themes = (S.state.settings.themes || ["navy"]).slice(0, 1);
+  const themes = [themeFor(g).name];
   page("Stats images", `
     <h2>Which images</h2>
     <div class="card checks">
@@ -1858,7 +1904,7 @@ function statsPoster(gid) {
     </div>
     <h2>Theme</h2><div class="themes">${themeChips(themes)}</div><div id="out"></div>`,
     { back: `#league/${gid}`, sub: g.name, bar: `<button class="btn primary" data-act="generate">Generate images</button>` });
-  app.querySelector(".themes").addEventListener("change", ev => { const l = ev.target.closest(".tchip"); if (l) l.classList.toggle("on", ev.target.checked); });
+  bindChips(app.querySelector(".themes"));
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
@@ -1873,10 +1919,9 @@ function statsPoster(gid) {
     const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value);
     if (!want.length && !pids.length) return toast("Tick at least one image");
     if (!chosen.length) return toast("Pick at least one theme");
-    S.setSetting("themes", chosen);
     const jobs = [];
     for (const tn of chosen) {
-      const T = makeTheme(DATA.themes.find(t => t.name === tn));
+      const T = makeTheme(themeNamed(tn));
       const prefix = chosen.length > 1 ? `${tn}/` : "";
       if (want.includes("field")) jobs.push({ label: `${prefix}6_stats_field.png`, make: () => statsFieldPoster(St, g, T) });
       if (want.includes("nines") && N.length) jobs.push({ label: `${prefix}7_stats_nines.png`, make: () => statsNinesPoster(N, g, T) });
@@ -2481,6 +2526,9 @@ function settings() {
         <button class="btn small" type="button" data-act="resync" style="margin-top:10px">Fetch everything again</button>
         ${DATA.sync && !Y.isDefault() ? `<button class="btn small" type="button" data-act="sync-default">Back to the built-in connection</button>` : ""}
       </form></details></div>
+    <h2>Theme</h2>
+    <div class="card"><p class="muted small" style="margin:0 0 10px">The look posters and player cards are made in. A league that has picked its own look uses that instead, for everything it renders.</p>
+      <div class="themes">${themeRadios("apptheme", appTheme().name)}</div></div>
     <h2>Courses</h2>
     <div class="card"><div class="muted small">${S.courses().length} courses, ${plural(phoneCourses.length, "course")} added on phones.</div>
       ${phoneCourses.map(c => `<div class="kv"><span>${esc(courseTitle(c.data))}</span>${organiser() ? `<button class="btn small danger" data-act="del-course" data-slug="${esc(c.slug)}">Remove</button>` : `<span class="muted small">added on a phone</span>`}</div>`).join("")}
@@ -2503,6 +2551,7 @@ function settings() {
       for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (q.isDark(y, x)) ctx.fillRect(10 + x * cell, 10 + y * cell, cell + 0.5, cell + 0.5);
     } catch (e) { console.warn("qr", e); }
   }
+  bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); toast("Saved"); });
   document.getElementById("orgtoggle").addEventListener("change", ev => { S.setSetting("organiser", ev.target.checked); settings(); });
   document.getElementById("syncf").addEventListener("submit", async ev => {
     ev.preventDefault();
@@ -2584,6 +2633,16 @@ document.addEventListener("click", ev => {
     if (e.scores.every(s => s === null) || confirm(`Remove ${e.name} and their scores from this round?`)) { S.removeEntry(r, i); players(rid); }
   }
   if (act === "start-scoring") { const r = S.getRound(b.dataset.rid); go(`#score/${r.id}/${S.holeOf(r)}`); }
+  if (act === "drop-round") {
+    const r = S.getRound(b.dataset.rid);
+    if (!r) return go("#home");
+    const scored = r.entries.reduce((n, e) => n + e.scores.filter(v => v !== null).length, 0);
+    const what = r.status === "done" ? `Delete ${r.name}` : `Stop playing ${r.name} and throw it away`;
+    if (!confirm(`${what} on every phone${scored ? `, with ${plural(scored, "score")} already in it` : ""}? This cannot be undone.`)) return;
+    S.deleteRound(r.id);
+    toast(`${r.name} thrown away`);
+    go("#home");
+  }
   if (act === "del-player") { if (confirm("Delete this player on every phone?")) { S.deletePlayer(b.dataset.id); roster(); } }
   if (act === "update") { if (window.__updateWorker) window.__updateWorker.postMessage("skipWaiting"); }
   if (act === "install" && window.__installPrompt) { window.__installPrompt.prompt(); window.__installPrompt = null; }

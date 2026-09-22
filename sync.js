@@ -102,8 +102,8 @@ const TABLES = {
   },
   leagues: {
     collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
-      created: g.created || null, formats: S.cleanFormats(g.formats), deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+      created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
+    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_rounds: {
     collect: keys => S.state.leagueRounds.filter(x => keys.has(`${x.league_id}|${x.round_id}`)).map(x => ({ league_id: x.league_id, round_id: x.round_id,
