@@ -1896,13 +1896,25 @@ function statsPoster(gid) {
 // from. A club that has more than one nine is saved as every way of walking it, exactly as the kit does.
 const nc = { step: "where", busy: false, q: "", found: null, left: null, draft: null, loop: 0 };
 
+/**
+ * A failed call to the society's backend, said in a way that names the cause. The Worker answers its own
+ * errors as {error}, but its "no such route" is the REST layer's {message, code}: a 404 here is almost
+ * always a backend still running a build from before the course lookup existed.
+ */
+function apiError(data, status, what) {
+  if (data && data.error) return data.error;
+  if (status === 404) return `${what} is not on this society's backend yet. On the PC: python app/build.py --deploy-worker (or --deploy-functions on Supabase).`;
+  if (data && data.message) return `${what} failed: ${data.message} (${status})`;
+  return `${what} failed (${status})`;
+}
+
 /** Clubs in the course database, by town or around the phone. Free-ish: a search costs a tenth of a call. */
 export async function courseSearchApi(cfg, params) {
   const u = new URL(`${cfg.url}/functions/v1/course-search`);
   for (const [k, v] of Object.entries(params)) if (v !== null && v !== undefined && v !== "") u.searchParams.set(k, v);
   const res = await fetch(u, { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `lookup failed (${res.status})`);
+  if (!res.ok) throw new Error(apiError(data, res.status, "Looking a club up"));
   return data;
 }
 
@@ -1912,7 +1924,7 @@ export async function courseDetailApi(cfg, club) {
   u.searchParams.set("club", club);
   const res = await fetch(u, { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `lookup failed (${res.status})`);
+  if (!res.ok) throw new Error(apiError(data, res.status, "Looking a club up"));
   return data;
 }
 
@@ -1921,7 +1933,7 @@ export async function scanCourseImage(cfg, b64, mime, kind, holes) {
   const res = await fetch(`${cfg.url}/functions/v1/scan-course`, { method: "POST", headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ image: b64, mime, kind, holes }) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `scan failed (${res.status})`);
+  if (!res.ok) throw new Error(apiError(data, res.status, "Reading a course off a photograph"));
   return data;
 }
 
@@ -2069,9 +2081,9 @@ function ncCheck() {
     ${gaps.length ? `<div class="banner warn">Still needed: ${esc(gaps.slice(0, 3).join("; "))}${gaps.length > 3 ? ` and ${gaps.length - 3} more` : ""}. Photograph the card, or fill the amber cells in.</div>`
       : `<div class="banner">Everything is here. Check it against the paper before saving.</div>`}
     <div class="card">
-      <div class="muted small">Reading a photograph fills what is missing. Where it disagrees with a number already here, you are shown both.</div>
-      <label class="btn primary big" style="display:flex;margin-top:8px">${nc.busy ? "Reading…" : "Photograph the scorecard"}<input class="ncphoto" data-kind="scorecard" type="file" accept="image/*" capture="environment" hidden ${cfg && !nc.busy ? "" : "disabled"}></label>
-      <label class="btn big" style="display:flex;margin-top:8px">${nc.busy ? "Reading…" : "Photograph the rating table"}<input class="ncphoto" data-kind="ratings" type="file" accept="image/*" capture="environment" hidden ${cfg && !nc.busy ? "" : "disabled"}></label>
+      <div class="muted small">Take a photo now or pick one you already have. Reading it fills what is missing; where it disagrees with a number already here, you are shown both.</div>
+      <label class="btn primary big" style="display:flex;margin-top:8px">${nc.busy ? "Reading…" : "Scorecard: photo or gallery"}<input class="ncphoto" data-kind="scorecard" type="file" accept="image/*" hidden ${cfg && !nc.busy ? "" : "disabled"}></label>
+      <label class="btn big" style="display:flex;margin-top:8px">${nc.busy ? "Reading…" : "Rating table: photo or gallery"}<input class="ncphoto" data-kind="ratings" type="file" accept="image/*" hidden ${cfg && !nc.busy ? "" : "disabled"}></label>
       ${d.loops.length > 1 ? `<label>The photograph is of<select id="ncloop">${d.loops.map((lp, i) => `<option value="${i}" ${i === nc.loop ? "selected" : ""}>${esc(lp.name || `Course ${i + 1}`)}</option>`).join("")}</select></label>` : ""}
     </div>
     ${d.loops.map(loopBlock).join("")}
@@ -2307,10 +2319,10 @@ function scan() {
     ${st.cards.map(cardBlock).join("")}` : "";
 
   const label = st.busy ? "Reading the card…" : !st.cards.length ? "Take or choose a photo"
-    : missing > 0 ? `Take card ${st.cards.length + 1}` : "Scan another photo";
+    : missing > 0 ? `Card ${st.cards.length + 1}: take or choose` : "Scan another photo";
   page("Scan a scorecard", `
-    <p class="muted small">Photograph an old paper scorecard, laid flat and in good light. Two cards of nine for one 18-hole round? Take them one after the other.</p>
-    <label class="btn primary big" style="display:flex">${label}<input id="photo" type="file" accept="image/*" capture="environment" hidden ${st.busy ? "disabled" : ""}></label>
+    <p class="muted small">An old paper scorecard, laid flat and in good light: photograph it now, or pick a photo you already have. Two cards of nine for one 18-hole round? One after the other.</p>
+    <label class="btn primary big" style="display:flex">${label}<input id="photo" type="file" accept="image/*" hidden ${st.busy ? "disabled" : ""}></label>
     ${st.cards.length ? `<button class="btn small" data-act="scan-reset" style="margin-top:8px">Start again</button>` : ""}
     ${body}`,
   { back: "#new", bar: st.cards.length ? `<button class="btn primary" data-act="scan-create" ${missing === 0 ? "" : "disabled"}>Create round ›</button>` : "" });
