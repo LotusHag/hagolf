@@ -579,14 +579,31 @@ export function toYAML(round) {
   return L.join("\n") + "\n";
 }
 
-/** A phone-made course as courses/<slug>.yaml for the desktop kit. */
+/**
+ * A phone-made course as courses/<slug>.yaml for the desktop kit. Everything that cannot be worked out again
+ * from par and ratings has to be written: `nines` is how a round is split back into its loops, `first_hole`
+ * is what a 10-18 loop numbers its holes from, and a tee with its own par list keeps it. Leaving any of them
+ * out quietly turns a club's loop into an unrelated nine the next time the file is read.
+ */
 export function courseToYAML(c) {
+  const w = c.where || null;
   const L = [`# ${c.name}${c.loop ? " " + c.loop : ""}. Added on a phone in Hagolf; check ratings against the club card.`,
-    `name: ${yamlStr(c.name)}`, `loop: ${yamlStr(c.loop || "")}`, `par: [${c.par.join(", ")}]`, `stroke_index: [${c.stroke_index.join(", ")}]`, "tees:"];
+    `name: ${yamlStr(c.name)}`, `loop: ${yamlStr(c.loop || "")}`];
+  if (w && (w.town || w.country)) {
+    const bits = ["town", "region", "country", "lat", "lng"].filter(k => w[k] !== undefined && w[k] !== null && w[k] !== "");
+    L.push(`where: {${bits.map(k => `${k}: ${typeof w[k] === "number" ? w[k] : yamlStr(String(w[k]))}`).join(", ")}}`);
+  }
+  if ((c.nines || []).length) L.push(`nines: [${c.nines.join(", ")}]`);
+  if (c.first_hole && c.first_hole !== 1) L.push(`first_hole: ${c.first_hole}`);
+  if (c.provenance && (c.provenance.ratings || c.provenance.stroke_index)) {
+    L.push(`source: {ratings: ${c.provenance.ratings || "unknown"}, stroke_index: ${c.provenance.stroke_index || "unknown"}}`);
+  }
+  L.push(`par: [${c.par.join(", ")}]`, `stroke_index: [${c.stroke_index.join(", ")}]`, "tees:");
   for (const [tee, t] of Object.entries(c.tees)) {
     L.push(`  ${tee}:`);
     if (t.ratings && t.ratings.m) { L.push(`    course_rating: ${t.ratings.m.cr}`); L.push(`    slope: ${t.ratings.m.slope}`); }
     if (t.ratings && t.ratings.f) L.push(`    women: {course_rating: ${t.ratings.f.cr}, slope: ${t.ratings.f.slope}}`);
+    if (t.par && String(t.par) !== String(c.par)) L.push(`    par: [${t.par.join(", ")}]`);
     if (t.metres) L.push(`    metres: [${t.metres.join(", ")}]`);
   }
   return L.join("\n") + "\n";

@@ -87,6 +87,169 @@ export function prepareCourse(c) {
   return { ...c, n, tees, course_par: sum(c.par), labels: c.par.map((_, h) => String(first + h)) };
 }
 
+/**
+ * The checks golf/model.py makes when it reads a course file, which nothing used to apply to a course typed
+ * or scanned on a phone: those reach every other phone through the courses table without passing the desktop
+ * kit at all. Throws an Error a person can act on. Takes a course in build.py's shape, before prepareCourse.
+ */
+export function validateCourse(c) {
+  const name = c.name || c.slug || "course";
+  const par = c.par, si = c.stroke_index;
+  if (!Array.isArray(par) || !par.length || !Array.isArray(si) || !si.length) throw new Error(`${name}: needs par and stroke_index lists`);
+  const n = par.length;
+  if (n !== 9 && n !== 18) throw new Error(`${name}: ${n} holes, the handicap maths only knows 9 and 18 hole rounds`);
+  if (par.some(p => !(p >= 3 && p <= 6))) throw new Error(`${name}: par needs a number between 3 and 6 for every hole`);
+  if (si.length !== n) throw new Error(`${name}: par has ${n} holes but stroke_index has ${si.length}`);
+  if (new Set(si).size !== n) throw new Error(`${name}: stroke_index has duplicates, every hole needs its own index`);
+  if (!c.tees || !Object.keys(c.tees).length) throw new Error(`${name}: needs at least one tee with a course rating and slope`);
+  for (const [tee, t] of Object.entries(c.tees)) {
+    const tp = Array.isArray(t.par) ? t.par : par;
+    if (tp.length !== n) throw new Error(`${name}: tee ${tee} par list has ${tp.length} holes for ${n}`);
+    const parTotal = sum(tp);
+    for (const [g, r] of Object.entries(t.ratings || {})) {
+      if (!(r.cr > 0) || !(r.slope >= 55 && r.slope <= 155)) throw new Error(`${name}: tee ${tee} ${g === "f" ? "women's" : "men's"} rating needs a course rating and a slope between 55 and 155`);
+      if (Math.abs(r.cr - parTotal) > 10) throw new Error(`${name}: tee ${tee} course rating ${r.cr} does not fit par ${parTotal} (an 18-hole rating on a 9-hole course?)`);
+    }
+    if (t.metres && t.metres.length !== n) throw new Error(`${name}: tee ${tee} has ${t.metres.length} lengths for ${n} holes`);
+  }
+  if ((c.nines || []).length && c.nines.length * 9 !== n) throw new Error(`${name}: nines lists ${c.nines.length} loops for ${n} holes`);
+  return c;
+}
+
+// ---------------------------------------------------------------- clubs: a course is one way of walking a club
+/**
+ * A club draft -- what the "add a course" wizard has after the course database answered and the card was
+ * photographed -- turned into one course per way of walking it: each nine on its own and, where the club has
+ * two or more, every ordered pair. The rules are the ones courses/source/build_courses.py applies on the PC,
+ * so a club added on a phone is put together the same way as one shipped with the kit:
+ *   - the club's own numbers win wherever it publishes them, and a pair reversed is the same 18 holes;
+ *   - otherwise an 18-hole rating is its two nines added with their slopes averaged, and its stroke index is
+ *     the nines' difficulty order interleaved, odd numbers out and even back.
+ * Every course says in `provenance` which of its numbers were published and which were worked out here.
+ *
+ * `club` is { name, slug, where, tees: [tee], loops: [{ key, name, short, family, alone, paired, par, rank,
+ * stroke_index, metres: {tee: []}, ratings: {tee: {m|f: [cr, slope]}} }], layouts: [{ nines, slug, name,
+ * stroke_index, ratings }] }.
+ */
+export function coursesFromClub(club) {
+  const loops = club.loops || [];
+  const nines = loops.filter(l => l.par.length === 9).map(l => l.key);
+  const composes = nines.length >= 2;
+  const keys = loops.map(l => [l.key]).concat(composes ? nines.flatMap(a => nines.filter(b => b !== a).map(b => [a, b])) : []);
+  return keys.map(k => courseFromClub(club, k, composes));
+}
+
+const loopOf = (club, key) => (club.loops || []).find(l => l.key === key);
+const layoutOf = (club, keys) => (club.layouts || []).find(l => String(l.nines) === String(keys));
+const round1 = x => Math.round(x * 10) / 10;
+
+/** The club's own ratings for these holes, and whether they are printed under the reverse order. */
+function publishedRatings(club, keys) {
+  const here = layoutOf(club, keys), back = layoutOf(club, [...keys].reverse());
+  if (here && here.ratings) return { ratings: here.ratings, reversed: false };
+  if (back && back.ratings) return { ratings: back.ratings, reversed: true };
+  return null;
+}
+
+/** A nine the club does not rate on its own: its 18-hole tables minus the other nine, averaged. */
+function nineRating(club, key) {
+  const out = {};
+  for (const tee of club.tees || []) {
+    for (const g of ["m", "f"]) {
+      const crs = [], srs = [];
+      for (const other of (club.loops || []).map(l => l.key)) {
+        if (other === key) continue;
+        const base = ((loopOf(club, other).ratings || {})[tee] || {})[g];
+        const pub = publishedRatings(club, [key, other]);
+        const got = pub && (pub.ratings[tee] || {})[g];
+        if (base && got) { crs.push(got[0] - base[0]); srs.push(2 * got[1] - base[1]); }
+      }
+      if (crs.length) (out[tee] = out[tee] || {})[g] = [round1(mean(crs)), Math.round(mean(srs))];
+    }
+  }
+  return out;
+}
+
+/** { ratings by tee and gender, published: did the club give these?, reversed: from the other order? } */
+function ratingsFor(club, keys) {
+  if (keys.length === 1) {
+    const lp = loopOf(club, keys[0]);
+    if (lp.ratings && Object.keys(lp.ratings).length) return { ratings: lp.ratings, published: true, reversed: false };
+    return { ratings: nineRating(club, keys[0]), published: false, reversed: false };
+  }
+  const pub = publishedRatings(club, keys);
+  if (pub) return { ratings: pub.ratings, published: true, reversed: pub.reversed };
+  const [a, b] = keys.map(k => ratingsFor(club, [k]).ratings);
+  const out = {};
+  for (const tee of club.tees || []) {
+    for (const g of ["m", "f"]) {
+      const x = (a[tee] || {})[g], y = (b[tee] || {})[g];
+      if (x && y) (out[tee] = out[tee] || {})[g] = [round1(x[0] + y[0]), Math.round((x[1] + y[1]) / 2)];
+    }
+  }
+  return { ratings: out, published: false, reversed: false };
+}
+
+/** { stroke index, published }. The order matters, so the reverse pair is no help here. */
+function siFor(club, keys) {
+  if (keys.length === 1) {
+    const lp = loopOf(club, keys[0]);
+    if (lp.stroke_index) return { si: lp.stroke_index, published: true };
+    if (!lp.rank) throw new Error(`${lp.name || lp.key}: needs a stroke index, or the order its holes rank in`);
+    return { si: lp.rank.map(r => 2 * r - 1), published: false };
+  }
+  const lay = layoutOf(club, keys);
+  if (lay && lay.stroke_index) return { si: lay.stroke_index, published: true };
+  const [a, b] = keys.map(k => loopOf(club, k));
+  if (!a.rank || !b.rank) throw new Error(`${a.name} then ${b.name}: needs a stroke index on both nines`);
+  return { si: a.rank.map(r => 2 * r - 1).concat(b.rank.map(r => 2 * r)), published: false };
+}
+
+function slugAndName(club, keys, composes) {
+  const lay = layoutOf(club, keys);
+  if (lay && lay.slug !== undefined && lay.slug !== null) return [lay.slug, lay.name];
+  const lps = keys.map(k => loopOf(club, k));
+  if (keys.length === 1) {
+    const only = lps[0];
+    const alone = only.alone === undefined ? only.key : only.alone;
+    // Only a loop that is itself a nine is "…, 9 holes": a club can have two nines and a separate 18.
+    return [alone, composes && only.par.length === 9 ? `${only.name}, 9 holes` : only.name];
+  }
+  const [a, b] = lps;
+  const slug = `${a.paired || a.key}-${b.paired || b.key}`;
+  if (a.family && a.family === b.family) return [slug, `${a.family} ${a.short} & ${b.short}`];
+  return [slug, `${a.name} & ${b.name}`];
+}
+
+function courseFromClub(club, keys, composes) {
+  const lps = keys.map(k => loopOf(club, k));
+  const [tail, loopName] = slugAndName(club, keys, composes);
+  const slug = [club.slug, tail].filter(Boolean).join("-");
+  const par = lps.flatMap(l => l.par);
+  const { ratings, published } = ratingsFor(club, keys);
+  const { si, published: carded } = siFor(club, keys);
+  const tees = {};
+  for (const tee of club.tees || []) {
+    const r = ratings[tee] || {};
+    const metres = lps.flatMap(l => (l.metres || {})[tee] || []);
+    const out = { ratings: {}, par, metres: metres.length === par.length ? metres : null };
+    if (r.m) out.ratings.m = { cr: r.m[0], slope: r.m[1] };
+    if (r.f) out.ratings.f = { cr: r.f[0], slope: r.f[1] };
+    if (out.ratings.m || out.ratings.f || out.metres) tees[tee] = out;
+  }
+  const notes = [];
+  if (!published) notes.push("ratings derived from the club's 18-hole tables, not published for this loop");
+  if (!carded) notes.push("stroke index derived, no club card for this order");
+  return {
+    slug, name: club.name, loop: loopName, par, stroke_index: si, first_hole: 1,
+    n: par.length, course_par: sum(par), tees,
+    nines: composes ? keys.map(k => [club.slug, slugAndName(club, [k], composes)[0]].filter(Boolean).join("-")) : [],
+    where: club.where || null,
+    provenance: { ratings: published ? "published" : "derived", stroke_index: carded ? "published" : "derived" },
+    source: club.source || "phone", notes,
+  };
+}
+
 /** Course handicap, playing handicap and strokes per hole for one entry, before any score is in. Throws on bad input. */
 export function handicapFor(courseIn, entry, defaultTee, allowance = 100) {
   const course = prepareCourse(courseIn);

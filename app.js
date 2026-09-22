@@ -1,10 +1,10 @@
 // Hagolf screens and navigation. Hash routes: #home #welcome #join/<payload> #new #players/<rid> #score/<rid>/<hole>
 // #review/<rid> #attach/<rid> #graphics/<rid> #roster #leagues #league/<gid> #leagueposter/<gid> #statsposter/<gid>
-// #settings #newcourse
+// #settings #newcourse #scan
 import { DATA } from "./data.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
-import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
+import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, coursesFromClub, validateCourse, slugify, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
 import { grossLeaderboard, stablefordLeaderboard, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster } from "./statsposters.js";
@@ -336,6 +336,46 @@ async function myCard(rid, pid = null) {
   await saveFiles([new File([blob], `${slugFile(r.name)}_${fig.file.split("/").pop()}`, { type: "image/png" })], r.name);
 }
 
+// ---------------------------------------------------------------- where the clubs are
+// A club is picked by place, not by scrolling: the phone's own position when it will give it, otherwise a
+// town or a country typed in. Every course of a club carries the same `where`, so any one of them answers.
+const REGION = (() => { try { return new Intl.DisplayNames(["en"], { type: "region" }); } catch { return null; } })();
+const countryName = code => { try { return (REGION && REGION.of(String(code).toUpperCase())) || code; } catch { return code; } };
+const placeOf = w => [w && w.town, w && w.country ? countryName(w.country) : ""].filter(Boolean).join(", ");
+
+/** Straight-line kilometres. Only ever used to order a list, so the earth being round enough is enough. */
+function kmApart(a, b) {
+  const r = Math.PI / 180, R = 6371;
+  const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** One row per club, with where it is and every way of walking it. */
+function clubList() {
+  const out = new Map();
+  for (const c of S.courses()) {
+    if (!out.has(c.name)) out.set(c.name, { name: c.name, where: null, courses: [] });
+    const club = out.get(c.name);
+    club.courses.push(c);
+    if (!club.where && c.where && (c.where.lat || c.where.town)) club.where = c.where;
+  }
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const here = { lat: null, lng: null, asked: false, denied: false };
+
+/** Asks the phone where it is, once, and redraws whatever screen asked when the answer arrives. */
+function askWhereIAm(then) {
+  if (!navigator.geolocation) { here.denied = true; return then(); }
+  here.asked = true;
+  then();
+  navigator.geolocation.getCurrentPosition(
+    p => { here.lat = p.coords.latitude; here.lng = p.coords.longitude; here.denied = false; then(); },
+    () => { here.denied = true; here.asked = false; then(); },
+    { timeout: 8000, maximumAge: 300000 });
+}
+
 // ---------------------------------------------------------------- nines: clubs that publish their loops separately
 /** The single nines a club has a course file for, in the order the kit lists them. */
 function ninesOf(club) {
@@ -347,16 +387,22 @@ function comboOf(club, a, b) {
   return S.courses().find(c => c.name === club && (c.nines || []).length === 2 && c.nines[0] === a && c.nines[1] === b) || null;
 }
 
-/** A club is picked by loops when it has at least two nines of its own; otherwise its courses just list. */
-const picksLoops = club => ninesOf(club).length >= 2;
-
 const nineName = slug => { const c = courseBy(slug); return c ? (c.loop || c.name).replace(/, 9 holes$/, "") : slug; };
 
 function loops(club) {
   const nines = ninesOf(club);
-  if (!nines.length) return go("#new");
+  // A club that does not publish its loops separately still gets a screen of its own, so every club is
+  // reached the same way: by place, then by what you actually walked.
+  if (!nines.length) return clubCourses(club);
   const st = ui.loops.club === club ? ui.loops : (ui.loops = { club, holes: 18, first: null });
   const chip = (c, on, act) => `<button class="pchip ${on ? "on" : ""}" data-act="${act}" data-slug="${esc(c.slug)}">${esc(nineName(c.slug))}<small>par ${c.course_par}</small></button>`;
+  // A combination the club never published is scored off numbers this kit worked out. Say so here, where
+  // the choice is still open, rather than only in the round's small print.
+  const derivedChip = (c, first) => {
+    const combo = comboOf(club, first, c.slug);
+    const why = combo && (combo.notes || []).length ? combo.notes.join("; ") : "";
+    return `<button class="pchip" data-act="pick-second" data-slug="${esc(c.slug)}">${esc(nineName(c.slug))}<small>par ${combo ? combo.course_par : c.course_par}${why ? " · worked out" : ""}</small></button>`;
+  };
   let body;
   if (st.holes === 9) {
     body = `<h2>Which nine did you walk?</h2><div class="chips-wrap">${nines.map(c => chip(c, false, "pick-nine")).join("")}</div>`;
@@ -368,7 +414,9 @@ function loops(club) {
     body = `<h2>Started on ${esc(nineName(st.first))}</h2>
       <div class="chips-wrap">${chip(courseBy(st.first), true, "clear-first")}</div>
       <h2>Then which nine?</h2>
-      <div class="chips-wrap">${rest.filter(c => comboOf(club, st.first, c.slug)).map(c => chip(c, false, "pick-second")).join("")}</div>
+      <div class="chips-wrap">${rest.filter(c => comboOf(club, st.first, c.slug)).map(c => derivedChip(c, st.first)).join("")}</div>
+      ${rest.some(c => { const x = comboOf(club, st.first, c.slug); return x && (x.notes || []).length; })
+        ? `<p class="muted small">"Worked out" means the club does not publish that order: its rating or its stroke index was derived here. Fine for a society round; check the card in the clubhouse before a competition.</p>` : ""}
       ${missing.length ? `<p class="muted small">No card for ${esc(nineName(st.first))} then ${missing.map(c => esc(nineName(c.slug))).join(" or ")}.</p>` : ""}`;
   }
   page(club, `
@@ -392,47 +440,96 @@ function loops(club) {
   });
 }
 
+
+/** A club that does not split into nines: its courses, or straight through when there is only the one. */
+function clubCourses(club) {
+  const cs = S.courses().filter(c => c.name === club);
+  if (!cs.length) return go("#new");
+  if (cs.length === 1) return go(`#new/${cs[0].slug}`);
+  const w = (cs.find(c => c.where) || {}).where;
+  page(club, `<div class="list">${cs.map(c => `<button class="course" data-act="pick-course" data-slug="${esc(c.slug)}">
+      <div><div class="name">${esc(c.loop || c.name)}</div><div class="muted small">${c.n} holes · par ${c.course_par} · ${Object.keys(c.tees).join(", ")} tees</div></div><span class="chev">›</span></button>`).join("")}</div>`,
+    { back: "#new", sub: w ? placeOf(w) : "" });
+  bind(ev => {
+    const b = ev.target.closest("[data-act]");
+    if (b && b.dataset.act === "pick-course") go(`#new/${b.dataset.slug}`);
+  });
+}
+
 // ---------------------------------------------------------------- new round
 function newRound(slug = null) {
   if (slug) return roundForm(slug);
   const all = S.courses();
   const recent = (S.state.settings.recentCourses || []).map(s => all.find(c => c.slug === s)).filter(Boolean);
-  const groups = new Map();
-  for (const c of all) { if (!groups.has(c.name)) groups.set(c.name, []); groups.get(c.name).push(c); }
+  const clubs = clubList();
+  const near = here.lat !== null;
   const row = c => `<button class="course" data-act="pick-course" data-slug="${esc(c.slug)}" data-q="${esc((c.name + " " + c.loop).toLowerCase())}">
     <div><div class="name">${esc(c.loop || c.name)}</div><div class="muted small">${c.n} holes · par ${c.course_par} · ${Object.keys(c.tees).join(", ")} tees${c.source === "phone" ? " · added on a phone" : ""}</div></div><span class="chev">›</span></button>`;
-  // A club that publishes its nines separately gets one entry: you say 9 or 18 and which loops, not which of 20 files.
-  const clubRow = (name, cs) => {
-    const k = ninesOf(name).length;
-    return `<button class="course" data-act="pick-club" data-club="${esc(name)}" data-q="${esc((name + " " + cs.map(c => c.loop).join(" ")).toLowerCase())}">
-      <div><div class="name">${esc(name)}</div><div class="muted small">${plural(k, "nine")} · 9 or 18 holes · ${k * (k - 1)} ways round</div></div><span class="chev">›</span></button>`;
+
+  // One row per club, never one per loop: which nine, and in which order, is the next screen's question.
+  const clubRow = club => {
+    const k = ninesOf(club.name).length;
+    const what = k >= 2 ? `${plural(k, "nine")} · 9 or 18 holes · ${k * (k - 1)} ways round`
+      : club.courses.length === 1 ? `${club.courses[0].n} holes · par ${club.courses[0].course_par}`
+        : plural(club.courses.length, "course");
+    const w = club.where, place = placeOf(w);
+    const away = near && w && w.lat ? `${Math.round(kmApart(here, w))} km · ` : "";
+    return `<button class="course" data-act="pick-club" data-club="${esc(club.name)}" data-q="${esc((club.name + " " + place + " " + club.courses.map(c => c.loop).join(" ")).toLowerCase())}">
+      <div><div class="name">${esc(club.name)}</div><div class="muted small">${esc(away)}${place ? esc(place) + " · " : ""}${what}</div></div><span class="chev">›</span></button>`;
   };
-  const group = (name, cs) => `<h2>${esc(name)}</h2><div class="list">${cs.map(row).join("")}</div>`;
-  // Browsing goes through the picker; typing in the search box reveals the individual loops, as before.
-  const clubs = [...groups].map(([name, cs]) => picksLoops(name)
-    ? `<div class="list clubrow">${clubRow(name, cs)}</div><div class="loopsonly" hidden>${group(name, cs)}</div>`
-    : group(name, cs)).join("");
-  const body = `
-    <input id="q" class="search" placeholder="Search course or loop" autocomplete="off">
-    <div id="courses">${recent.length ? group("Recent", recent) : ""}
-    ${clubs}</div>
-    <p class="center"><a class="muted small" href="#newcourse">Course not here? Add one</a></p>`;
-  page("Where are you playing?", body + `<div class="list" style="margin-top:20px"><a href="#scan"><div><div class="name">Scan an old scorecard</div><div class="muted small">Photograph a paper card; the scores are read for you to check</div></div><span class="chev">›</span></a></div>`);
+  const list = cs => `<div class="list">${cs.map(clubRow).join("")}</div>`;
+
+  let body;
+  if (near) {
+    const sorted = [...clubs].sort((a, b) => {
+      const da = a.where && a.where.lat ? kmApart(here, a.where) : Infinity;
+      const db = b.where && b.where.lat ? kmApart(here, b.where) : Infinity;
+      return da - db || a.name.localeCompare(b.name);
+    });
+    body = `<h2>Nearest first</h2>${list(sorted)}`;
+  } else {
+    // By country, then by town inside it. A club with no place of its own still has to be reachable.
+    const byCountry = new Map();
+    for (const c of clubs) {
+      const key = (c.where && c.where.country) || "";
+      if (!byCountry.has(key)) byCountry.set(key, []);
+      byCountry.get(key).push(c);
+    }
+    body = [...byCountry].sort((a, b) => (a[0] ? countryName(a[0]) : "zz").localeCompare(b[0] ? countryName(b[0]) : "zz"))
+      .map(([code, cs]) => `<h2>${esc(code ? countryName(code) : "Somewhere else")}</h2>` +
+        list(cs.sort((a, b) => ((a.where || {}).town || "").localeCompare(((b.where || {}).town) || "") || a.name.localeCompare(b.name))))
+      .join("");
+  }
+
+  const nearBtn = near ? `<button class="btn small on" data-act="clear-near">Nearest first ✓</button>`
+    : here.asked ? `<button class="btn small" disabled>Finding you…</button>`
+      : `<button class="btn small" data-act="near">Near me</button>`;
+  page("Where are you playing?", `
+    <input id="q" class="search" placeholder="Search club, town or country" autocomplete="off">
+    <p class="center" style="margin:-4px 0 10px">${nearBtn}${here.denied ? ` <span class="muted small">location off; search instead</span>` : ""}</p>
+    <div id="courses">${recent.length ? `<h2>Recent</h2><div class="list">${recent.map(row).join("")}</div>` : ""}${body}</div>
+    <p class="center"><a class="muted small" href="#newcourse">Club not here? Add it</a></p>
+    <div class="list" style="margin-top:20px"><a href="#scan"><div><div class="name">Scan an old scorecard</div><div class="muted small">Photograph a paper card; the scores are read for you to check</div></div><span class="chev">›</span></a></div>`);
   const q = document.getElementById("q");
   q.addEventListener("input", () => {
-    const s = q.value.toLowerCase().trim();
-    document.querySelectorAll("#courses .clubrow").forEach(el => { el.hidden = !!s; });
-    document.querySelectorAll("#courses .loopsonly").forEach(el => { el.hidden = !s; });
-    document.querySelectorAll("#courses .course").forEach(b => { b.style.display = !s || b.dataset.q.includes(s) ? "" : "none"; });
+    const t = q.value.toLowerCase().trim();
+    document.querySelectorAll("#courses .course").forEach(b => { b.style.display = !t || (b.dataset.q || "").includes(t) ? "" : "none"; });
     document.querySelectorAll("#courses h2").forEach(h => {
-      const list = h.nextElementSibling, any = list && [...list.children].some(el => el.style.display !== "none");
-      h.style.display = any ? "" : "none"; if (list) list.style.display = any ? "" : "none";
+      const l = h.nextElementSibling, any = l && [...l.children].some(el => el.style.display !== "none");
+      h.style.display = any ? "" : "none"; if (l) l.style.display = any ? "" : "none";
     });
+  });
+  bind(ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    if (b.dataset.act === "near") return askWhereIAm(() => { if (location.hash === "#new") newRound(); });
+    if (b.dataset.act === "clear-near") { here.lat = here.lng = null; here.asked = false; return newRound(); }
   });
 }
 
 function roundForm(slug) {
   const c = courseBy(slug);
+  if (!c) { toast("That course is not on this phone any more"); return go("#new"); }
   const tees = Object.keys(c.tees);
   const dflt = tees.includes("yellow") ? "yellow" : tees[0];
   const date = S.today();
@@ -1792,47 +1889,330 @@ function statsPoster(gid) {
   });
 }
 
-// ---------------------------------------------------------------- a course typed on the phone
-function newCourse() {
-  page("New course", `
-    ${tip(`<p>For a course the app does not carry yet. You need two things from the clubhouse: the scorecard, which gives the par and the stroke index of every hole, and the club's handicap table, which gives the course rating and the slope for the tee you are playing.</p>
-      <p>Course rating is the score a scratch golfer is expected to shoot; slope is how much harder the course gets for everybody else. Together they turn a handicap index into the course handicap the app gives each player.</p>
-      <p>The course is sent to every phone in the society straight away.</p>`, "What the club's card and table give you")}
-    <form id="cf" class="card form open">
-      <label>Club<input name="name" placeholder="e.g. Golfclub De Hoge Kleij" required></label>
-      <label>Loop or course name <span class="muted">(optional)</span><input name="loop" placeholder="e.g. Championship course"></label>
-      <label>Holes<select name="n"><option value="18">18</option><option value="9">9</option></select></label>
-      <label>Par per hole, separated by spaces or commas<input name="par" inputmode="numeric" placeholder="4 3 5 4 3 5 5 4 4 4 4 3 4 5 4 5 3 4" required></label>
-      <label>Stroke index per hole<input name="si" inputmode="numeric" placeholder="1 17 5 10 3 7 18 9 11 8 2 15 13 12 4 16 14 6" required></label>
-      <label>Tee name<input name="tee" value="yellow" required></label>
-      <div class="two"><label>Men's course rating<input name="cr" inputmode="decimal" placeholder="70.5"></label><label>Men's slope<input name="slope" inputmode="numeric" placeholder="128"></label></div>
-      <div class="two"><label>Women's course rating<input name="wcr" inputmode="decimal" placeholder="76.2"></label><label>Women's slope<input name="wslope" inputmode="numeric" placeholder="135"></label></div>
-      <label>Lengths in metres <span class="muted">(optional)</span><input name="metres" inputmode="numeric" placeholder="355 123 454 …"></label>
-      <button class="btn primary" type="submit">Save course</button></form>`, { back: "#new" });
-  document.getElementById("cf").addEventListener("submit", ev => {
-    ev.preventDefault();
-    const f = ev.target, nums = s => s.trim() ? s.trim().split(/[\s,;]+/).map(Number) : [];
-    const n = Number(f.n.value), par = nums(f.par.value), si = nums(f.si.value), metres = nums(f.metres.value);
-    if (par.length !== n || par.some(p => !(p >= 3 && p <= 6))) return toast(`Par needs ${n} numbers between 3 and 6`);
-    if (si.length !== n || new Set(si).size !== n || si.some(x => !(x >= 1 && x <= n))) return toast(`Stroke index needs ${n} different numbers from 1 to ${n}`);
-    if (metres.length && (metres.length !== n || metres.some(x => !(x > 50)))) return toast(`Lengths need ${n} numbers or none`);
-    const ratings = {};
-    const cr = Number(f.cr.value.replace(",", ".")), slope = Number(f.slope.value), wcr = Number(f.wcr.value.replace(",", ".")), wslope = Number(f.wslope.value);
-    if (f.cr.value && f.slope.value) ratings.m = { cr, slope };
-    if (f.wcr.value && f.wslope.value) ratings.f = { cr: wcr, slope: wslope };
-    if (!Object.keys(ratings).length) return toast("At least one course rating and slope is needed");
-    const total = sum(par);
-    for (const r_ of Object.values(ratings)) if (!(r_.cr > total - 10 && r_.cr < total + 10) || !(r_.slope >= 55 && r_.slope <= 155)) return toast("Rating or slope does not look right for this par");
-    const name = f.name.value.trim(), loop = f.loop.value.trim();
-    const slug = slugFile(`${name} ${loop}`).toLowerCase().replace(/_/g, "-");
-    if (S.courseBy(slug)) return toast("A course with that name exists already");
-    const data = { slug, name, loop, par, stroke_index: si, first_hole: 1, n, course_par: total, source: "phone", notes: ["added on a phone; ratings not checked against the club card"],
-      tees: { [f.tee.value.trim() || "yellow"]: { ratings, par, metres: metres.length ? metres : null } } };
-    try { prepareCourse(data); } catch (err) { return toast(err.message); }
-    S.addCourse(slug, data);
-    toast("Course saved on every phone");
-    go("#new");
+// ---------------------------------------------------------------- adding a club: look it up, photograph it, check it
+// Three ways in, one check. The course database fills a draft; a photograph of the card fills what it left
+// out, or everything when the club is not in the database; typing is the last resort rather than the only
+// way. Nothing is saved until the numbers have been looked at, and every course says where its numbers came
+// from. A club that has more than one nine is saved as every way of walking it, exactly as the kit does.
+const nc = { step: "where", busy: false, q: "", found: null, left: null, draft: null, loop: 0 };
+
+/** Clubs in the course database, by town or around the phone. Free-ish: a search costs a tenth of a call. */
+export async function courseSearchApi(cfg, params) {
+  const u = new URL(`${cfg.url}/functions/v1/course-search`);
+  for (const [k, v] of Object.entries(params)) if (v !== null && v !== undefined && v !== "") u.searchParams.set(k, v);
+  const res = await fetch(u, { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `lookup failed (${res.status})`);
+  return data;
+}
+
+/** One club's courses in full: par, stroke index, and the lengths and ratings of every tee. */
+export async function courseDetailApi(cfg, club) {
+  const u = new URL(`${cfg.url}/functions/v1/course-detail`);
+  u.searchParams.set("club", club);
+  const res = await fetch(u, { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `lookup failed (${res.status})`);
+  return data;
+}
+
+/** A photographed scorecard or rating table, read into the same shape the database answers in. */
+export async function scanCourseImage(cfg, b64, mime, kind, holes) {
+  const res = await fetch(`${cfg.url}/functions/v1/scan-course`, { method: "POST", headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ image: b64, mime, kind, holes }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `scan failed (${res.status})`);
+  return data;
+}
+
+const ncLoop = (name, holes) => ({ key: slugify(name) || "loop", name, short: name, family: "",
+  alone: slugify(name), paired: slugify(name), par: Array(holes).fill(null), stroke_index: null,
+  rank: null, metres: {}, ratings: {}, alt: { par: {}, stroke_index: {} } });
+
+function ncBlankDraft() {
+  return { name: "", slug: "", where: null, tees: ["yellow"], loops: [ncLoop("", 18)], layouts: [], source: "phone" };
+}
+
+/** What the course database answered, as a club record the wizard can edit and model.js can compose. */
+function ncDraftFrom(detail) {
+  const tees = [...new Set(detail.loops.flatMap(l => Object.keys(l.tees)))];
+  const loops = detail.loops.map((l, i) => {
+    const lp = ncLoop(l.name || `Course ${i + 1}`, l.holes || 18);
+    lp.par = l.par ? [...l.par] : Array(l.holes || 18).fill(null);
+    lp.stroke_index = l.stroke_index ? [...l.stroke_index] : null;
+    for (const [tee, t] of Object.entries(l.tees)) {
+      if (t.metres) lp.metres[tee] = t.metres;
+      const r = {};
+      if (t.ratings.m) r.m = t.ratings.m;
+      if (t.ratings.f) r.f = t.ratings.f;
+      if (r.m || r.f) lp.ratings[tee] = r;
+    }
+    return lp;
   });
+  const w = detail.club.where || {};
+  return { name: detail.club.name || "", slug: slugify(detail.club.name || ""), where: w.town || w.lat ? w : null,
+    tees, loops, layouts: [], source: "phone" };
+}
+
+function newCourse() {
+  const cfg = Y.config();
+  if (nc.step === "check" && nc.draft) return ncCheck();
+  const rows = (nc.found || []).map(c => `<button class="course" data-act="nc-pick" data-id="${esc(c.id)}">
+      <div><div class="name">${esc(c.name)}</div><div class="muted small">${c.km !== null && c.km !== undefined ? `${c.km} km · ` : ""}${esc([c.town, c.country ? countryName(c.country) : ""].filter(Boolean).join(", "))}${c.courses.length ? ` · ${plural(c.courses.length, "course")}` : ""}</div></div><span class="chev">›</span></button>`).join("");
+  page("Add a club", `
+    ${tip(`<p>A club's numbers live in two places: the scorecard, which gives the par and the stroke index of every hole and the length of each tee, and the club's rating or baanhandicap table, which gives the course rating and the slope per tee and, separately, for women. Those turn a handicap index into the course handicap each player gets.</p>
+      <p>Look the club up first. Whatever the database does not have, photograph: the card, and the rating table if the card does not print the ratings. You check everything before it is saved, and each course records which of its numbers were published and which were worked out here.</p>`, "Where a course's numbers come from")}
+    ${cfg ? "" : `<div class="banner warn">Looking a club up and reading a photograph both run on the shared database. Connect in Settings, or type the course in below.</div>`}
+    <div class="card">
+      <label style="margin-top:0">Club or town<input id="ncq" value="${esc(nc.q)}" placeholder="e.g. Nijmegen" autocomplete="off"></label>
+      <div class="two"><button class="btn primary" data-act="nc-search" ${cfg && !nc.busy ? "" : "disabled"}>${nc.busy ? "Looking…" : "Search"}</button>
+      <button class="btn" data-act="nc-near" ${cfg && !nc.busy ? "" : "disabled"}>Clubs near me</button></div>
+      ${nc.left !== null && nc.left !== undefined ? `<p class="muted small">${nc.left} lookups left this month.</p>` : ""}
+    </div>
+    ${nc.found ? (rows ? `<h2>${plural(nc.found.length, "club")} found</h2><div class="list">${rows}</div>` : `<p class="muted small">Nothing found. Try the town, or the club's first word.</p>`) : ""}
+    <p class="center" style="margin-top:18px"><button class="btn" data-act="nc-blank">Not in the database: photograph or type it</button></p>`,
+  { back: "#new" });
+  const q = document.getElementById("ncq");
+  q.addEventListener("input", () => { nc.q = q.value; });
+  bind(async ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b || nc.busy) return;
+    const act = b.dataset.act;
+    if (act === "nc-blank") { nc.draft = ncBlankDraft(); nc.step = "check"; nc.loop = 0; return newCourse(); }
+    if (act === "nc-search" || act === "nc-near") {
+      if (act === "nc-near" && here.lat === null) {
+        // Ask the phone where it is and search when it answers, rather than making the organiser tap twice.
+        return askWhereIAm(() => { if (location.hash === "#newcourse") { if (here.lat !== null) ncSearch(cfg, true); else newCourse(); } });
+      }
+      return ncSearch(cfg, act === "nc-near");
+    }
+    if (act === "nc-pick") {
+      nc.busy = true; newCourse();
+      try {
+        nc.draft = ncDraftFrom(await courseDetailApi(cfg, b.dataset.id));
+        nc.step = "check"; nc.loop = 0;
+      } catch (e) { toast(e.message, 6000); }
+      nc.busy = false; return newCourse();
+    }
+  });
+}
+
+async function ncSearch(cfg, near) {
+  nc.busy = true;
+  newCourse();
+  try {
+    const data = await courseSearchApi(cfg, near ? { lat: here.lat, lng: here.lng } : { name: nc.q, town: nc.q });
+    nc.found = data.clubs || [];
+    nc.left = data.left;
+  } catch (e) { toast(e.message, 6000); }
+  nc.busy = false;
+  newCourse();
+}
+
+/** Everything the draft still lacks, in the order the wizard asks for it. */
+function ncGaps(d) {
+  const gaps = [];
+  if (!d.name.trim()) gaps.push("the club's name");
+  for (const lp of d.loops) {
+    if (lp.par.some(p => !p)) gaps.push(`par on ${lp.name || "the course"}`);
+    if (!lp.stroke_index || lp.stroke_index.some(x => !x)) gaps.push(`stroke index on ${lp.name || "the course"}`);
+    if (!Object.keys(lp.ratings).length) gaps.push(`a course rating on ${lp.name || "the course"}`);
+  }
+  return gaps;
+}
+
+function ncCheck() {
+  const d = nc.draft, cfg = Y.config();
+  const gaps = ncGaps(d);
+  const cells = (lp, i, kind) => {
+    const n = lp.par.length;
+    const vals = kind === "par" ? lp.par : (lp.stroke_index || Array(n).fill(null));
+    return `<div class="cells">${vals.map((v, h) => {
+      const alt = lp.alt[kind][h];
+      return `<div><small>${h + 1}</small><input inputmode="numeric" class="${v === null || v === undefined || alt !== undefined ? "unsure" : ""}" data-nc="${kind}" data-loop="${i}" data-h="${h}" value="${v ?? ""}"></div>`;
+    }).join("")}</div>`;
+  };
+  const altLine = (lp, i, kind, label) => {
+    const hs = Object.keys(lp.alt[kind]);
+    if (!hs.length) return "";
+    return `<div class="warn small" style="margin-top:6px">The photo reads ${label} ${hs.map(h => `hole ${Number(h) + 1}: ${lp.alt[kind][h]}`).join(", ")}.
+      <button class="btn small" data-act="nc-takealt" data-loop="${i}" data-kind="${kind}">Take the photo's numbers</button>
+      <button class="btn small" data-act="nc-keep" data-loop="${i}" data-kind="${kind}">Keep these</button></div>`;
+  };
+  const teeRow = (lp, i, tee) => {
+    const r = lp.ratings[tee] || {};
+    const m = r.m || [], f = r.f || [];
+    return `<div class="card" style="margin:8px 0">
+      <div class="row"><b>${esc(tee)}</b><span class="muted small">${lp.metres[tee] ? `${sum(lp.metres[tee])} m read` : "no lengths"}</span></div>
+      <div class="two"><label>Men's rating<input inputmode="decimal" data-nc="cr" data-g="m" data-loop="${i}" data-tee="${esc(tee)}" value="${m[0] ?? ""}"></label>
+      <label>Men's slope<input inputmode="numeric" data-nc="slope" data-g="m" data-loop="${i}" data-tee="${esc(tee)}" value="${m[1] ?? ""}"></label></div>
+      <div class="two"><label>Women's rating<input inputmode="decimal" data-nc="cr" data-g="f" data-loop="${i}" data-tee="${esc(tee)}" value="${f[0] ?? ""}"></label>
+      <label>Women's slope<input inputmode="numeric" data-nc="slope" data-g="f" data-loop="${i}" data-tee="${esc(tee)}" value="${f[1] ?? ""}"></label></div></div>`;
+  };
+  const loopBlock = (lp, i) => `
+    <h2>${esc(lp.name || `Course ${i + 1}`)}</h2>
+    <div class="two"><label>Name<input data-nc="name" data-loop="${i}" value="${esc(lp.name || "")}"></label>
+    <label>Holes<select data-nc="holes" data-loop="${i}"><option value="9" ${lp.par.length === 9 ? "selected" : ""}>9</option><option value="18" ${lp.par.length === 18 ? "selected" : ""}>18</option></select></label></div>
+    <div class="muted small" style="margin-top:8px">Par</div>${cells(lp, i, "par")}${altLine(lp, i, "par", "par")}
+    <div class="muted small" style="margin-top:8px">Stroke index</div>${cells(lp, i, "stroke_index")}${altLine(lp, i, "stroke_index", "stroke index")}
+    ${d.tees.map(t => teeRow(lp, i, t)).join("")}
+    <div class="row"><input id="nctee${i}" placeholder="another tee, e.g. blue" style="flex:1">
+      <button class="btn small" data-act="nc-addtee" data-loop="${i}">Add tee</button></div>
+    ${d.loops.length > 1 ? `<p class="center"><button class="btn small" data-act="nc-delloop" data-loop="${i}">Remove this course</button></p>` : ""}`;
+
+  page("Check the club", `
+    <div class="card">
+      <label style="margin-top:0">Club<input id="ncname" value="${esc(d.name)}" placeholder="e.g. Golfclub De Hoge Kleij"></label>
+      <div class="two"><label>Town<input id="nctown" value="${esc((d.where || {}).town || "")}"></label>
+      <label>Country<input id="nccountry" value="${esc((d.where || {}).country || "")}" placeholder="NL"></label></div>
+    </div>
+    ${gaps.length ? `<div class="banner warn">Still needed: ${esc(gaps.slice(0, 3).join("; "))}${gaps.length > 3 ? ` and ${gaps.length - 3} more` : ""}. Photograph the card, or fill the amber cells in.</div>`
+      : `<div class="banner">Everything is here. Check it against the paper before saving.</div>`}
+    <div class="card">
+      <div class="muted small">Reading a photograph fills what is missing. Where it disagrees with a number already here, you are shown both.</div>
+      <label class="btn primary big" style="display:flex;margin-top:8px">${nc.busy ? "Reading…" : "Photograph the scorecard"}<input class="ncphoto" data-kind="scorecard" type="file" accept="image/*" capture="environment" hidden ${cfg && !nc.busy ? "" : "disabled"}></label>
+      <label class="btn big" style="display:flex;margin-top:8px">${nc.busy ? "Reading…" : "Photograph the rating table"}<input class="ncphoto" data-kind="ratings" type="file" accept="image/*" capture="environment" hidden ${cfg && !nc.busy ? "" : "disabled"}></label>
+      ${d.loops.length > 1 ? `<label>The photograph is of<select id="ncloop">${d.loops.map((lp, i) => `<option value="${i}" ${i === nc.loop ? "selected" : ""}>${esc(lp.name || `Course ${i + 1}`)}</option>`).join("")}</select></label>` : ""}
+    </div>
+    ${d.loops.map(loopBlock).join("")}
+    <p class="center"><button class="btn small" data-act="nc-addloop">This club has another nine</button>
+      <button class="btn small" data-act="nc-restart">Start again</button></p>
+    ${d.loops.filter(l => l.par.length === 9).length >= 2 ? tip(`<p>This club has ${plural(d.loops.filter(l => l.par.length === 9).length, "loop")} of nine, so it is saved as every way of walking them: each nine on its own and every ordered pair, because the order changes the stroke index and the rating.</p>
+      <p>Where you have not given the club's own numbers for a pair, they are worked out the way the kit works them out: the two nines' ratings added with their slopes averaged, and the stroke index interleaved, odd numbers out and even back. Every such course says so on the round screen.</p>`, "What gets saved") : ""}`,
+  { back: "#new", bar: `<button class="btn primary" data-act="nc-save">Save ${esc(d.name || "this club")} ›</button>` });
+
+  const nameBox = document.getElementById("ncname");
+  nameBox.addEventListener("input", () => { d.name = nameBox.value; d.slug = slugify(d.name); });
+  const town = document.getElementById("nctown"), country = document.getElementById("nccountry");
+  const place = () => { d.where = { ...(d.where || {}), town: town.value.trim(), country: country.value.trim().toUpperCase() }; };
+  town.addEventListener("input", place);
+  country.addEventListener("input", place);
+  const loopSel = document.getElementById("ncloop");
+  if (loopSel) loopSel.addEventListener("change", () => { nc.loop = Number(loopSel.value); });
+
+  app.querySelectorAll("[data-nc]").forEach(el => el.addEventListener("input", () => {
+    const lp = d.loops[Number(el.dataset.loop)], kind = el.dataset.nc;
+    if (kind === "name") { lp.name = el.value; lp.key = lp.alone = lp.paired = slugify(el.value); lp.short = el.value; return; }
+    if (kind === "holes") { ncResize(lp, Number(el.value)); return ncCheck(); }
+    const v = el.value.trim() === "" ? null : Number(el.value.replace(",", "."));
+    if (kind === "par") lp.par[Number(el.dataset.h)] = v;
+    else if (kind === "stroke_index") {
+      if (!lp.stroke_index) lp.stroke_index = Array(lp.par.length).fill(null);
+      lp.stroke_index[Number(el.dataset.h)] = v;
+    } else {
+      const tee = el.dataset.tee, g = el.dataset.g;
+      const r = (lp.ratings[tee] = lp.ratings[tee] || {});
+      const pair = r[g] || [null, null];
+      pair[kind === "cr" ? 0 : 1] = v;
+      if (pair[0] === null && pair[1] === null) delete r[g]; else r[g] = pair;
+      if (!Object.keys(r).length) delete lp.ratings[tee];
+    }
+  }));
+
+  app.querySelectorAll(".ncphoto").forEach(el => el.addEventListener("change", async ev => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    nc.busy = true; ncCheck();
+    try {
+      const { b64 } = await downscale(file);
+      const lp = d.loops[nc.loop] || d.loops[0];
+      const got = await scanCourseImage(cfg, b64, "image/jpeg", el.dataset.kind, lp.par.length || null);
+      if (el.dataset.kind === "ratings") ncApplyRatings(d, lp, got);
+      else ncApplyCard(d, lp, got);
+      if (!d.name && got.club) { d.name = got.club; d.slug = slugify(got.club); }
+    } catch (e) { toast(`Scan failed: ${e.message}`, 6000); }
+    nc.busy = false; ncCheck();
+  }));
+
+  bind(ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    const act = b.dataset.act, lp = d.loops[Number(b.dataset.loop)];
+    if (act === "nc-addtee") {
+      const box = document.getElementById(`nctee${b.dataset.loop}`);
+      const name = (box.value || "").trim().toLowerCase();
+      if (!name) return;
+      if (!d.tees.includes(name)) d.tees.push(name);
+      return ncCheck();
+    }
+    if (act === "nc-addloop") { d.loops.push(ncLoop("", 9)); return ncCheck(); }
+    if (act === "nc-delloop") { d.loops.splice(Number(b.dataset.loop), 1); nc.loop = 0; return ncCheck(); }
+    if (act === "nc-takealt") {
+      const kind = b.dataset.kind;
+      if (kind === "stroke_index" && !lp.stroke_index) lp.stroke_index = Array(lp.par.length).fill(null);
+      for (const [h, v] of Object.entries(lp.alt[kind])) (kind === "par" ? lp.par : lp.stroke_index)[Number(h)] = v;
+      lp.alt[kind] = {};
+      return ncCheck();
+    }
+    if (act === "nc-keep") { lp.alt[b.dataset.kind] = {}; return ncCheck(); }
+    if (act === "nc-restart") { nc.draft = null; nc.found = null; nc.step = "where"; return newCourse(); }
+    if (act === "nc-save") return ncSave();
+  });
+}
+
+function ncResize(lp, n) {
+  lp.par = Array.from({ length: n }, (_, h) => lp.par[h] ?? null);
+  if (lp.stroke_index) lp.stroke_index = Array.from({ length: n }, (_, h) => lp.stroke_index[h] ?? null);
+  for (const tee of Object.keys(lp.metres)) if (lp.metres[tee].length !== n) delete lp.metres[tee];
+  lp.alt = { par: {}, stroke_index: {} };
+}
+
+/** A photographed scorecard: it fills what is empty, and where it disagrees both numbers are kept for a person. */
+function ncApplyCard(d, lp, got) {
+  if (got.holes && got.holes !== lp.par.length) ncResize(lp, got.holes);
+  const n = lp.par.length;
+  for (let h = 0; h < n; h++) {
+    const p = (got.par || [])[h];
+    if (p) { if (lp.par[h] === null || lp.par[h] === undefined) lp.par[h] = p; else if (lp.par[h] !== p) lp.alt.par[h] = p; }
+    const x = (got.stroke_index || [])[h];
+    if (x) {
+      if (!lp.stroke_index) lp.stroke_index = Array(n).fill(null);
+      if (lp.stroke_index[h] === null || lp.stroke_index[h] === undefined) lp.stroke_index[h] = x;
+      else if (lp.stroke_index[h] !== x) lp.alt.stroke_index[h] = x;
+    }
+  }
+  for (const t of got.tees || []) {
+    if (!t.name) continue;
+    if (!d.tees.includes(t.name)) d.tees.push(t.name);
+    if (t.metres && t.metres.length === n) lp.metres[t.name] = t.metres;
+  }
+}
+
+/** A photographed rating table: course rating and slope per tee and gender. */
+function ncApplyRatings(d, lp, got) {
+  for (const t of got.tees || []) {
+    if (!t.name || t.course_rating === null || t.slope === null) continue;
+    if (!d.tees.includes(t.name)) d.tees.push(t.name);
+    const r = (lp.ratings[t.name] = lp.ratings[t.name] || {});
+    r[t.gender === "f" ? "f" : "m"] = [t.course_rating, t.slope];
+  }
+}
+
+function ncSave() {
+  const d = nc.draft;
+  if (!d.name.trim()) return toast("The club needs a name");
+  for (const lp of d.loops) {
+    if (!lp.name.trim()) return toast("Every course at this club needs a name");
+    if (lp.par.some(p => !p)) return toast(`${lp.name}: every hole needs a par`);
+    if (!lp.stroke_index || lp.stroke_index.some(x => !x)) return toast(`${lp.name}: every hole needs a stroke index`);
+    // The difficulty order inside a loop is what an unpublished pair's stroke index is interleaved from.
+    const sorted = [...lp.stroke_index].sort((a, b) => a - b);
+    lp.rank = lp.stroke_index.map(x => sorted.indexOf(x) + 1);
+  }
+  d.slug = d.slug || slugify(d.name);
+  // One course at the club and it is the club: its slug is the club's, not "the-hoge-kleij-the-hoge-kleij".
+  if (d.loops.length === 1 && d.loops[0].par.length === 18) d.loops[0].alone = "";
+  let made;
+  try {
+    made = coursesFromClub(d);
+    made.forEach(validateCourse);
+  } catch (e) { return toast(e.message, 6000); }
+  const clash = made.find(c => S.courseBy(c.slug));
+  if (clash) return toast(`A course called ${clash.slug} is on this phone already`);
+  made.forEach(c => S.addCourse(c.slug, c));
+  toast(`${plural(made.length, "course")} saved on every phone`);
+  nc.draft = null; nc.found = null; nc.step = "where"; nc.q = "";
+  go("#new");
 }
 
 // ---------------------------------------------------------------- scan an old scorecard
