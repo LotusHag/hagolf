@@ -1,6 +1,6 @@
 // Posters for a league's statistics: the field, the nines, one player. App-only, so there is no Python
 // twin; the drawing helpers and the four-outcome poster palette are the same ones the round posters use.
-import { Fig, MARGIN, HEADER_IN, header, footer, section, outcomeBar, legend } from "./draw.js";
+import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, section, outcomeBar, legend } from "./draw.js";
 import { fmtToPar, fmtSigned, fix } from "./model.js";
 
 /** The screen's six buckets folded onto the four the poster palette names. */
@@ -28,7 +28,7 @@ const dateSpan = rounds => {
 /** How tall a footer of this text will be, so the figure can be sized before it is drawn. */
 function footHeight(T, widthIn, text) {
   const probe = new Fig(widthIn, 1, T, 20);
-  return 0.45 + 0.17 * (probe.wrap(text, widthIn * (1 - 2 * MARGIN), 9).length - 1);
+  return 0.45 + 0.17 * (probe.wrap(text, footerWidth(probe), 9).length - 1);
 }
 
 /** A row of big numbers under the header: the readings a poster should be legible from across the room. */

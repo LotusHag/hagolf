@@ -1,5 +1,5 @@
 // Port of golf/posters.py: gross leaderboard, Stableford leaderboard, both boards on one sheet, how the holes played; plus season standings.
-import { Fig, MARGIN, HEADER_IN, header, footer, section, posChip, outcomeBar, legend, on } from "./draw.js";
+import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, section, posChip, outcomeBar, legend, on } from "./draw.js";
 import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE } from "./model.js";
 
 const ROW_IN = 0.5;
@@ -49,7 +49,7 @@ function tablePoster(M, T, title, cols, rows, W, right, foot, width = 11.5, kick
   const n = rows.length;
   const axIn = (n + 1.25) * ROW_IN;
   const probe = new Fig(width, 1, T, 20);
-  const lines = probe.wrap(foot, width * (1 - 2 * MARGIN), 9).length;
+  const lines = probe.wrap(foot, footerWidth(probe), 9).length;
   const footIn = 0.45 + 0.17 * (lines - 1);
   const H = HEADER_IN + 0.15 + axIn + footIn;
   const fig = new Fig(width, H, T);
@@ -66,7 +66,7 @@ function dualTablePoster(M, T, title, boards, W, right, foot, width = 18.0, gapI
   const n = Math.max(...boards.map(b => b.rows.length));
   const axIn = (n + 2.1) * ROW_IN;
   const probe = new Fig(width, 1, T, 20);
-  const lines = probe.wrap(foot, width * (1 - 2 * MARGIN), 9).length;
+  const lines = probe.wrap(foot, footerWidth(probe), 9).length;
   const footIn = 0.45 + 0.17 * (lines - 1);
   const H = HEADER_IN + 0.15 + axIn + footIn;
   const fig = new Fig(width, H, T);
@@ -129,8 +129,29 @@ function notes(rows, key) {
 }
 
 // ---------------------------------------------------------------- posters
-export function grossLeaderboard(M, T) {
+/**
+ * A board comes in two tiers. `basic` is what the free app renders: position, name, score, on a narrower sheet
+ * with the number set large, so it reads as a deliberately plain poster rather than a full one with columns
+ * missing. `full` adds what the round was actually like -- to par, the result bar, the handicap, the meter.
+ * Both go through the same tablePoster, so a tier is a column set and a width, never a second renderer.
+ */
+export const TIERS = ["basic", "full"];
+const BASIC_IN = 8.0;      // narrower sheet: three columns across 11.5in would read as an empty table
+const BASIC_W = 6.4;
+
+export function grossLeaderboard(M, T, tier = "full") {
   const rows = M.gross_board, n = M.n, N = M.field;
+  const finishedAll = rows.filter(p => p.gross !== null).map(p => p.gross);
+  if (tier === "basic") {
+    const cols = [
+      col("Pos", 0.15, 0.95, dPos("g")),
+      col("Player", 1.15, 4.9, dName, "left"),
+      col("Gross", 5.0, 6.25, dVal(r => r.gross === null ? "NR" : String(r.gross), 26, (r, T) => T.INK, "display"), "center"),
+    ];
+    return tablePoster(M, T, "Gross leaderboard", cols, rows, BASIC_W,
+      `Stroke play, no handicap\nField ${N}${finishedAll.length ? `  ·  best ${Math.min(...finishedAll)}` : ""}`,
+      `Lowest gross wins. Equal scores are separated on countback (${countbackText(n)}).` + notes(rows, "g"), BASIC_IN);
+  }
   const W = 10;
   const cols = [
     col("Pos", 0.15, 0.95, dPos("g")),
@@ -147,11 +168,22 @@ export function grossLeaderboard(M, T) {
     "grouped by result against par, best results first." + notes(rows, "g"));
 }
 
-export function stablefordLeaderboard(M, T) {
+export function stablefordLeaderboard(M, T, tier = "full") {
   const rows = M.stbl_board, n = M.n, N = M.field;
   const level = 2 * n;
   const best = Math.max(...rows.map(p => p.pts));
   const scaleMax = Math.max(level + 6, 3 * Math.ceil((best + 2) / 3));
+  if (tier === "basic") {
+    const cols = [
+      col("Pos", 0.15, 0.95, dPos("s")),
+      col("Player", 1.15, 4.9, dName, "left"),
+      col("Points", 5.0, 6.25, dVal(r => String(r.pts), 26, (r, T) => T.ACCENT, "display"), "center"),
+    ];
+    return tablePoster(M, T, "Stableford leaderboard", cols, rows, BASIC_W,
+      `Net, course handicap\nField ${N}  ·  best ${best} pts`,
+      `Most points wins. Equal points are separated on countback (${countbackText(n)}). ${level} points is playing to handicap.`
+      + notes(rows, "s"), BASIC_IN);
+  }
   const hcpTitle = M.allowance === 100 ? "Hcp" : `Hcp (${M.allowance}%)`;
   const W = 10;
   const cols = [
@@ -368,11 +400,14 @@ Leader ${maxPts} pts  ·  ${rows.length} player${rows.length === 1 ? "" : "s"}`;
     rows.map(r => ({ ...r, penalty_total: 0 })), W, right, foot, 11.5, group.name, sub);
 }
 
-export function renderPosters(M, T) {
-  return [
-    { file: "1_leaderboard_gross.png", fig: grossLeaderboard(M, T) },
-    { file: "2_leaderboard_stableford.png", fig: stablefordLeaderboard(M, T) },
-    { file: "3_holes.png", fig: holesPoster(M, T) },
-    { file: "4_leaderboard_both.png", fig: bothBoards(M, T) },
+export function renderPosters(M, T, tier = "full") {
+  const out = [
+    { file: "1_leaderboard_gross.png", fig: grossLeaderboard(M, T, tier) },
+    { file: "2_leaderboard_stableford.png", fig: stablefordLeaderboard(M, T, tier) },
   ];
+  if (tier !== "basic") {  // how the holes played and the two-up sheet are what the full tier adds
+    out.push({ file: "3_holes.png", fig: holesPoster(M, T) });
+    out.push({ file: "4_leaderboard_both.png", fig: bothBoards(M, T) });
+  }
+  return out;
 }

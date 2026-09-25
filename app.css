@@ -209,6 +209,47 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .editor { margin-top: 10px; padding: 12px; background: var(--card2); border-radius: var(--r-s); font-size: 14px; color: var(--ink2); }
 .edrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .edrow .sbtn { width: 60px; }
+
+/* The extras under a score row. Quiet on purpose: the score is still the thing you came to this screen for,
+   so these sit smaller, lower contrast, and span the row's grid rather than squeezing into its columns. */
+.sstrip { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding: 8px 0 2px; }
+.sstrip.off { opacity: .4; }
+.srow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.slab { font-size: 12px; color: var(--ink3); flex: none; width: 42px; }
+.schip { flex: 1 1 0; min-width: 0; height: 38px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+  color: var(--ink2); font-size: 14px; font-weight: 600; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Named chips go two to a row and wrap rather than squeezing: "Green auto" must never read as "Green aut…". */
+.schip.wide { flex: 1 1 42%; font-size: 13px; }
+.schip:active { background: var(--card2); }
+.schip.on, .schip.yes { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.schip.no { border-color: var(--bogey); color: var(--bogey); }
+/* A penalty is never the colour of a good outcome: bronze here, as on the posters and the scorecard. */
+.schip.pen { border-color: var(--pick); background: transparent; color: var(--pick); }
+.schip .auto { font-style: normal; font-size: 10px; font-weight: 500; opacity: .6; margin-left: 4px; }
+
+/* Which extras a round keeps, on the players screen and in settings */
+.statpick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.statpick button { flex: 1 1 108px; height: 38px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+  color: var(--ink2); font-size: 13px; font-weight: 600; }
+.statpick button.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+
+/* A read-out of the extras, wherever they are shown */
+.statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; margin-top: 10px; }
+.stattile { background: var(--card2); border-radius: 12px; padding: 8px 10px; }
+.stattile b { display: block; font-size: 20px; line-height: 1.1; }
+/* Strokes gained reads like a leaderboard: plus is fewer strokes than the field, and gets the accent. */
+.stattile b.sgup, b.sgup { color: var(--under); }
+.stattile b.sgdown, b.sgdown { color: var(--bogey); }
+.sgline { margin-top: 10px; font-size: 13px; color: var(--ink2); line-height: 1.45; }
+
+/* What was changed on a card. Each correction is one block: who it was about, what moved, who moved it. */
+.chglist { margin-top: 4px; }
+.chgrow { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.chgrow:last-child { border-bottom: 0; }
+.chg { display: inline-block; margin: 3px 8px 0 0; font-size: 13px; color: var(--ink2); }
+.chg i { font-style: normal; color: var(--ink3); }
+.chg b { color: var(--ink); }
+.stattile small { display: block; font-size: 11px; color: var(--ink3); margin-top: 2px; }
 .pen { display: inline-flex; align-items: center; gap: 6px; background: var(--gold-soft); color: var(--gold-ink); border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin: 4px 4px 0 0; }
 .pen button { border: 0; background: transparent; color: inherit; font-size: 16px; padding: 0; }
 .pens { margin-top: 8px; } .pens summary { cursor: pointer; margin-top: 6px; } .pens .btn { margin-top: 10px; }

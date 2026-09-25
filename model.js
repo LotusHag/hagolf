@@ -367,16 +367,22 @@ export function compute(courseIn, round) {
     const nr = skipped.some(Boolean);  // only a late start leaves a card without a gross now
     const played = sc.filter(x => x !== null).length;
     const counts = [0, 1, 2, 3].map(k => deltas.filter(d => d !== null && outcome(d) === k).length);
+    // The extras hang off the strokes actually played, which is the raw score: a hole picked up or never
+    // entered was not holed out, and the penalty strokes added on top of a card were never struck at all.
+    const rawStats = Array.isArray(p.stats) ? p.stats : [];
+    const holeStats = sc.map((_, h) => holeStat(rawStats[h], { strokes: skipped[h] || filled[h] ? null : scores[h], par: par[h] }));
     players.push({
       name, hi, ch, ph, ch_override: override, tee, par, gender, id: p.id ?? null, from_hole: fromHole, skipped, group: p.group || 1,
       raw_scores: scores, penalty: pen, penalties: pens, penalty_total: sum(pen), picked, filled, nr,
       holes_played: played, scores: sc, deltas,
       gross: nr ? null : sum(sc), topar: nr ? null : sum(sc) - sum(par),
       strokes, nets, net: nr ? null : sum(nets), hpts, pts: sum(hpts), counts,
+      stats: holeStats, statline: statSummary(holeStats),
     });
   }
   M.players = players;
   M.field = players.length;
+  M.stats_on = players.some(p => p.statline.any);   // nothing about the extras is drawn when nobody kept any
 
   for (let h = 0; h < n; h++) {
     const col = players.map(p => p.scores[h]);
@@ -435,6 +441,204 @@ export function fmtHcp(v) {
 
 export function fmtIndex(hi) {
   return hi < 0 ? `+${fix(-hi, 1)}` : fix(hi, 1);
+}
+
+// ---------------------------------------------------------------- the extras: putts, fairways and the rest
+/**
+ * What a card can record beyond the number of strokes. Each is its own switch: a phone that wants putts and
+ * nothing else keeps putts and nothing else, and a card with every switch off is exactly the card the app
+ * kept before any of this existed.
+ *
+ * `derived` marks the two that the app can work out for itself once putts are being kept, so their chip
+ * arrives already answered and a tap only ever *corrects* it. `perHole` is what the scoring strip draws.
+ */
+export const STAT_KINDS = [
+  { key: "putts", col: "putts", label: "Putts", short: "Putts", word: "putts", perHole: "count", derived: false,
+    blurb: "How many of your strokes were putts. On its own this also gives greens in regulation, scrambling and putts per green." },
+  { key: "fairway", col: "fairway", label: "Fairways hit", short: "Fairway", word: "fairways", perHole: "fairway", derived: false,
+    blurb: "Whether the tee shot finished on the fairway. Not asked on a par 3, which has none." },
+  { key: "gir", col: "gir", label: "Greens in regulation", short: "GIR", word: "greens", perHole: "bit", derived: true,
+    blurb: "Whether the green was reached with two strokes left for par. Worked out from your putts where you keep them; tap only to correct it." },
+  { key: "penaltyShots", col: "penalty_shots", label: "Penalty shots", short: "Penalties", word: "penalty shots", perHole: "count", derived: false,
+    blurb: "How many of the strokes you took were penalties — water, out of bounds, an unplayable lie. These are already inside your score and are never added to it again." },
+  { key: "bunker", col: "bunker", label: "Greenside bunkers", short: "Sand", word: "bunkers", perHole: "bit", derived: false,
+    blurb: "Whether you played from a bunker by the green. Whether you saved par from it comes from your score." },
+];
+export const STAT_KEYS = STAT_KINDS.map(k => k.key);
+export const statKind = key => STAT_KINDS.find(k => k.key === key) || null;
+
+/** The ways a fairway can be missed. The app writes `hit` or `miss`; the rest are for a card read off paper. */
+export const FAIRWAY_MISSES = ["left", "right", "short", "long"];
+const isMiss = f => f !== null && f !== undefined && f !== "hit";
+
+/** A par 3 has no fairway, so asking about one is asking a question with no answer. */
+export const hasFairway = par => par >= 4;
+
+/**
+ * Greens in regulation, from strokes and putts alone: the ball was on the green after `strokes - putts`,
+ * and regulation is two strokes fewer than par. This is why putts are the one extra worth having -- they
+ * carry GIR, scrambling and putts per green with them.
+ */
+export function girFrom(strokes, putts, par) {
+  if (strokes === null || putts === null) return null;
+  return strokes - putts <= par - 2;
+}
+
+/** An empty per-hole record, which is what every hole starts as. */
+export const blankStat = () => ({ putts: null, fairway: null, gir: null, penaltyShots: null, bunker: null });
+
+/** True when a per-hole record says nothing at all, and so need not be stored or synced. */
+export const emptyStat = x => !x || STAT_KEYS.every(k => x[k] === null || x[k] === undefined);
+
+/**
+ * One hole's extras, resolved: what was recorded, with GIR filled in from the putts when it was not answered
+ * by hand. `strokes` is what was actually played -- null on a hole picked up or never entered, because a hole
+ * that was not holed out has no meaningful putt count and must not be averaged as though it had.
+ */
+export function holeStat(raw, { strokes, par }) {
+  const x = { ...blankStat(), ...(raw || {}) };
+  const played = strokes !== null && strokes !== undefined;
+  const putts = played ? x.putts : null;
+  const gir = x.gir === null || x.gir === undefined ? girFrom(played ? strokes : null, putts, par) : !!x.gir;
+  return {
+    par, strokes: played ? strokes : null,
+    putts,
+    fairway: hasFairway(par) ? (x.fairway ?? null) : null,
+    gir,
+    penaltyShots: x.penaltyShots ?? null,
+    bunker: x.bunker === null || x.bunker === undefined ? null : !!x.bunker,
+    topar: played ? strokes - par : null,
+  };
+}
+
+const ratio = (hit, of) => of ? hit / of : null;
+
+/**
+ * The extras over any set of holes -- one round, one season, one player, a whole league. Every section counts
+ * only the holes that answered it, so turning a switch on halfway through a season skews nothing: a putting
+ * average over nine holes says nine holes.
+ *
+ * Scrambling and sand saves are not asked for anywhere. They fall out: a scramble is a green missed and par
+ * still made, a sand save is a bunker visited and par still made.
+ */
+export function statSummary(holes) {
+  const hs = holes.filter(Boolean);
+  const withPutts = hs.filter(h => h.putts !== null);
+  const girHoles = hs.filter(h => h.gir !== null);
+  const greens = girHoles.filter(h => h.gir);
+  const missed = girHoles.filter(h => !h.gir && h.topar !== null);
+  const fw = hs.filter(h => hasFairway(h.par) && h.fairway !== null);
+  const sand = hs.filter(h => h.bunker !== null && h.bunker);
+  const pen = hs.filter(h => h.penaltyShots !== null);
+  const puttsOnGreens = withPutts.filter(h => h.gir);
+  const total = xs => xs.reduce((a, h) => a + h.putts, 0);
+  // Holes that actually answered something, not holes on the card. Every hole carries a record once anything
+  // is switched on, so counting those would tell somebody who marked one green that it was "over 18 holes".
+  const said = h => STAT_KEYS.some(k => h[k] !== null && h[k] !== undefined);
+  return {
+    holes: hs.filter(said).length,
+    any: withPutts.length + fw.length + girHoles.length + sand.length + pen.length > 0,
+    putts: !withPutts.length ? null : {
+      holes: withPutts.length, total: total(withPutts), avg: mean(withPutts.map(h => h.putts)),
+      per18: mean(withPutts.map(h => h.putts)) * 18,
+      one: withPutts.filter(h => h.putts === 1).length,
+      none: withPutts.filter(h => h.putts === 0).length,
+      three: withPutts.filter(h => h.putts >= 3).length,
+      onGir: puttsOnGreens.length ? mean(puttsOnGreens.map(h => h.putts)) : null,
+      onGirHoles: puttsOnGreens.length,
+    },
+    fairway: !fw.length ? null : {
+      holes: fw.length, hit: fw.filter(h => h.fairway === "hit").length,
+      pct: ratio(fw.filter(h => h.fairway === "hit").length, fw.length),
+      misses: Object.fromEntries(FAIRWAY_MISSES.map(m => [m, fw.filter(h => h.fairway === m).length])),
+      vague: fw.filter(h => isMiss(h.fairway) && !FAIRWAY_MISSES.includes(h.fairway)).length,
+    },
+    gir: !girHoles.length ? null : { holes: girHoles.length, hit: greens.length, pct: ratio(greens.length, girHoles.length) },
+    scramble: !missed.length ? null : {
+      holes: missed.length, saved: missed.filter(h => h.topar <= 0).length,
+      pct: ratio(missed.filter(h => h.topar <= 0).length, missed.length),
+    },
+    sand: !sand.length ? null : {
+      holes: sand.length, saved: sand.filter(h => h.topar !== null && h.topar <= 0).length,
+      pct: ratio(sand.filter(h => h.topar !== null && h.topar <= 0).length, sand.length),
+    },
+    penalty: !pen.length ? null : { holes: pen.length, total: pen.reduce((a, h) => a + h.penaltyShots, 0) },
+  };
+}
+
+/** Which switches a set of holes actually answered, so a table only ever shows columns with something in them. */
+export function statKindsPresent(summary) {
+  if (!summary) return [];
+  return STAT_KINDS.filter(k => k.key === "putts" ? summary.putts : k.key === "fairway" ? summary.fairway
+    : k.key === "gir" ? summary.gir : k.key === "penaltyShots" ? summary.penalty : summary.sand);
+}
+
+/** A ratio as a percentage, for display. Named apart from the app's own `pct`, which takes a part and a whole. */
+export const fmtPct = v => v === null || v === undefined ? "–" : `${Math.round(v * 100)}%`;
+
+// ---------------------------------------------------------------- strokes gained, against the people who were there
+/**
+ * Strokes gained, with the field as the baseline instead of a tour.
+ *
+ * The published version of this statistic needs the distance and lie of every shot and a tour benchmark to
+ * subtract from. Neither exists on a scorecard, so this does the thing a scorecard *can* support honestly:
+ * it compares you with the people who played the same holes on the same day. Positive means you took fewer
+ * strokes than they did.
+ *
+ *     total       = what they averaged on the hole  −  what you took
+ *     putting     = what they averaged in putts     −  what you putted
+ *     tee to green = total − putting
+ *
+ * The three are additive because an average is linear, so the split always adds back up to the whole. Off
+ * the tee and approach are NOT separated: knowing the fairway was missed says nothing about how far away
+ * the next shot was, and inventing that split is where this would stop being true.
+ *
+ * Two hole sets, kept apart on purpose. `total` runs over every hole you and somebody else both holed out.
+ * The split runs only over the holes where putts were written down on *both* cards -- in a fourball where
+ * only you count putts there is no putting baseline, and the honest answer is to say so rather than to
+ * compare your putts against a number nobody recorded.
+ *
+ * A hole picked up or never finished is left out of all of it: there is no stroke count to gain against.
+ *
+ * `cards` are computed rounds (use `leagueCards` first for a league, so every group that walked the same
+ * loop that day is one field). `against` names one opponent for a head-to-head, or is null for the field.
+ */
+export function strokesGained(cards, pid, { basis = "gross", against = null } = {}) {
+  const value = (p, h) => basis === "net" ? p.nets[h] : p.scores[h];
+  const holed = (p, h) => p.scores[h] !== null && !p.skipped[h] && !p.filled[h];
+  const puttsOf = (p, h) => (p.stats && p.stats[h] && p.stats[h].putts !== null && p.stats[h].putts !== undefined) ? p.stats[h].putts : null;
+  let holes = 0, total = 0, splitHoles = 0, splitTotal = 0, putting = 0, rounds = 0, opponents = new Set();
+  for (const card of cards) {
+    const me = card.players.find(p => p.id !== null && p.id === pid);
+    if (!me) continue;
+    const others = card.players.filter(p => p !== me && (against === null ? true : p.id === against));
+    if (!others.length) continue;
+    let counted = 0;
+    for (let h = 0; h < card.n; h++) {
+      if (!holed(me, h)) continue;
+      const pool = others.filter(o => holed(o, h));
+      if (!pool.length) continue;
+      holes++; counted++;
+      total += mean(pool.map(o => value(o, h))) - value(me, h);
+      const myPutts = puttsOf(me, h);
+      if (myPutts === null) continue;
+      const poolP = pool.filter(o => puttsOf(o, h) !== null);
+      if (!poolP.length) continue;
+      splitHoles++;
+      splitTotal += mean(poolP.map(o => value(o, h))) - value(me, h);
+      putting += mean(poolP.map(o => puttsOf(o, h))) - myPutts;
+    }
+    if (counted) { rounds++; for (const o of others) if (o.id) opponents.add(o.id); }
+  }
+  const per18 = v => holes ? (v / holes) * 18 : null;
+  return {
+    basis, holes, rounds, opponents: opponents.size, total: holes ? total : null, per18: per18(total),
+    // The split only speaks where both cards kept putts; `holes` above is the wider set.
+    split: !splitHoles ? null : {
+      holes: splitHoles, total: splitTotal, putting, teeToGreen: splitTotal - putting,
+      per18: { total: (splitTotal / splitHoles) * 18, putting: (putting / splitHoles) * 18, teeToGreen: ((splitTotal - putting) / splitHoles) * 18 },
+    },
+  };
 }
 
 // ---------------------------------------------------------------- nines: an 18-hole round split back into its loops
@@ -813,6 +1017,7 @@ export function statHoles(results, memberIds) {
           pid: p.id, card: M.key ?? M.id, round: p.roundId ?? M.id, where, hole: h, label: M.labels[h], si: M.si[h],
           band: rank[h] <= M.n / 3 ? 0 : rank[h] > (2 * M.n) / 3 ? 2 : 1,  // hardest third, middle, easiest third
           par: p.par[h], score: p.scores[h], delta: p.deltas[h], pts: p.hpts[h], bucket: scoreBucket(p.deltas[h]),
+          stat: p.stats ? p.stats[h] : null,   // so any split of these holes can be summarised the same way
         });
       }
     }
@@ -830,7 +1035,9 @@ function tally(hs) {
   });
   const byPar = {};
   for (const par of [...new Set(hs.map(h => h.par))].sort((a, b) => a - b)) byPar[par] = part(hs.filter(h => h.par === par));
-  return { ...part(hs), counts, byPar, bands: [0, 1, 2].map(b => part(hs.filter(h => h.band === b))) };
+  // One line covers both the player and the field, since both come through here.
+  return { ...part(hs), counts, byPar, bands: [0, 1, 2].map(b => part(hs.filter(h => h.band === b))),
+    statline: statSummary(hs.map(h => h.stat)) };
 }
 
 /**

@@ -1,5 +1,6 @@
-// Sync with a Supabase project over its REST API (PostgREST), no SDK. Local first: the phone keeps working
-// offline, every change is queued, pushed when there is a connection, and other phones' changes are pulled by
+// Sync with the Hagolf backend over its REST API, no SDK. The shapes follow PostgREST, which is what the
+// Worker answers. Local first: the phone keeps working offline, every change is queued, pushed when there is
+// a connection, and other phones' changes are pulled by
 // the server's own clock. Rows carry updated_at from the phone that wrote them; the newest write wins.
 import { DATA } from "./data.js";
 import * as S from "./store.js";
@@ -27,10 +28,12 @@ const holesOf = c => c ? (c.par || []).length : 18;
 /** Each table: rows to push for a set of keys, and how to apply an incoming row. */
 const TABLES = {
   players: {
-    collect: keys => S.state.players.filter(p => keys.has(p.id)).map(p => ({ id: p.id, name: p.name, hi: p.hi, gender: p.gender || "m",
+    collect: keys => S.state.players.filter(p => keys.has(p.id)).map(p => ({ id: p.id, owner_account: p.owner || null,
+      linked_account: p.linkedAccount || null, name: p.name, hi: p.hi, gender: p.gender || "m",
       hi_updated: p.hiUpdated || null, aliases: p.aliases || [], created: p.created || null, deleted: !!p.deleted, updated_at: p.updated_at, device_id: dev() })),
     apply(r) {
-      const rec = { id: r.id, name: r.name, hi: r.hi === null ? null : Number(r.hi), gender: r.gender || "m", hiUpdated: iso(r.hi_updated),
+      const rec = { id: r.id, owner: r.owner_account || null, linkedAccount: r.linked_account || null,
+        name: r.name, hi: r.hi === null ? null : Number(r.hi), gender: r.gender || "m", hiUpdated: iso(r.hi_updated),
         aliases: r.aliases || [], created: r.created, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id };
       return lww(S.state.players, p => p.id === r.id, rec, r);
     },
@@ -41,13 +44,13 @@ const TABLES = {
     apply: r => lww(S.state.courses, c => c.slug === r.slug, { slug: r.slug, data: r.data, source: r.source, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   rounds: {
-    collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, name: r.name, date: r.date || null, course: r.course,
+    collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, owner_account: r.owner || null, name: r.name, date: r.date || null, course: r.course,
       default_tee: r.defaultTee, allowance: r.allowance || 100, status: r.status, hole: r.hole || 0, created: r.created || null,
       deleted: !!r.deleted, updated_at: r.updated_at, device_id: dev() })),
     apply(r) {
       const mine = roundFor(r.id);
       if (mine.updated_at && !newer(r, mine)) return false;
-      Object.assign(mine, { name: r.name, date: r.date, course: r.course, defaultTee: r.default_tee, allowance: r.allowance || 100,
+      Object.assign(mine, { owner: r.owner_account || null, name: r.name, date: r.date, course: r.course, defaultTee: r.default_tee, allowance: r.allowance || 100,
         status: r.status, hole: r.hole || 0, created: iso(r.created), deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
       const n = holesOf(S.courseBy(mine.course));
       for (const e of [...mine.entries, ...mine.removed]) {  // entries that arrived before the header were sized at 18
@@ -62,7 +65,7 @@ const TABLES = {
       for (const r of S.state.rounds) for (const e of [...r.entries, ...r.removed]) {
         if (!keys.has(`${r.id}|${e.playerId}`)) continue;
         rows.push({ round_id: r.id, player_id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", course_handicap: e.courseHandicap ?? null,
-          grp: e.group || 1, from_hole: e.fromHole || 1, penalties: e.penalties || [], deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() });
+          grp: e.group || 1, from_hole: e.fromHole || 1, penalties: e.penalties || [], track_stats: !!e.trackStats, deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() });
       }
       return rows;
     },
@@ -72,8 +75,9 @@ const TABLES = {
       if (e && !newer(row, e)) return false;
       const n = holesOf(S.courseBy(r.course));
       const rec = { playerId: row.player_id, name: row.name, hi: row.hi === null ? null : Number(row.hi), tee: row.tee, gender: row.gender || "m",
-        courseHandicap: row.course_handicap, group: row.grp || 1, fromHole: row.from_hole || 1, penalties: row.penalties || [],
-        deleted: !!row.deleted, updated_at: iso(row.updated_at), dev: row.device_id, scores: e ? e.scores : new Array(n).fill(null), scoreTs: e ? e.scoreTs : new Array(n).fill(null) };
+        courseHandicap: row.course_handicap, group: row.grp || 1, fromHole: row.from_hole || 1, penalties: row.penalties || [], trackStats: !!row.track_stats,
+        deleted: !!row.deleted, updated_at: iso(row.updated_at), dev: row.device_id, scores: e ? e.scores : new Array(n).fill(null), scoreTs: e ? e.scoreTs : new Array(n).fill(null),
+        stats: e ? e.stats : new Array(n).fill(null), statsTs: e ? e.statsTs : new Array(n).fill(null) };
       if (i >= 0) r.entries.splice(i, 1);
       if (j >= 0) r.removed.splice(j, 1);
       (rec.deleted ? r.removed : r.entries).push(rec);
@@ -100,15 +104,51 @@ const TABLES = {
       return true;
     },
   },
+  // The extras. Deliberately a twin of `scores` rather than a widening of it: same key, own clock, so the
+  // phone keeping the card and the phone adding its owner's putts write the same hole without colliding.
+  hole_stats: {
+    collect(keys) {
+      const rows = [];
+      for (const r of S.state.rounds) for (const e of [...r.entries, ...r.removed]) (e.stats || []).forEach((v, h) => {
+        const k = `${r.id}|${e.playerId}|${h}`;
+        if (!keys.has(k)) return;
+        rows.push({ round_id: r.id, player_id: e.playerId, hole: h, putts: v ? v.putts : null, fairway: v ? v.fairway : null,
+          gir: v && v.gir !== null && v.gir !== undefined ? !!v.gir : null, penalty_shots: v ? v.penaltyShots : null,
+          bunker: v && v.bunker !== null && v.bunker !== undefined ? !!v.bunker : null,
+          deleted: !v, updated_at: e.statsTs[h] || e.updated_at, device_id: dev() });
+      });
+      return rows;
+    },
+    apply(row) {
+      const r = S.state.rounds.find(x => x.id === row.round_id);
+      const e = r ? findEntry(r, row.player_id).e : null;
+      if (!e) { S.state.orphanStats.push(row); return false; }   // entry not here yet; retried after every pull
+      if (row.hole >= e.stats.length) return false;
+      if (ts(e.statsTs[row.hole]) >= ts(row.updated_at)) return false;
+      e.stats[row.hole] = row.deleted ? null : { putts: row.putts, fairway: row.fairway,
+        gir: row.gir === null || row.gir === undefined ? null : !!row.gir, penaltyShots: row.penalty_shots,
+        bunker: row.bunker === null || row.bunker === undefined ? null : !!row.bunker };
+      e.statsTs[row.hole] = iso(row.updated_at);
+      return true;
+    },
+  },
   leagues: {
-    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
+    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
       created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_rounds: {
     collect: keys => S.state.leagueRounds.filter(x => keys.has(`${x.league_id}|${x.round_id}`)).map(x => ({ league_id: x.league_id, round_id: x.round_id,
       deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
     apply: r => lww(S.state.leagueRounds, x => x.league_id === r.league_id && x.round_id === r.round_id, { league_id: r.league_id, round_id: r.round_id, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+  },
+  league_members: {
+    collect: keys => S.state.leagueMembers.filter(x => keys.has(`${x.league_id}|${x.account_id}`)).map(x => ({ league_id: x.league_id,
+      account_id: x.account_id, role: x.role || "player", claimed_player: x.claimed_player || null, claim_state: x.claim_state || "none",
+      joined: x.joined || null, deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
+    apply: r => lww(S.state.leagueMembers, x => x.league_id === r.league_id && x.account_id === r.account_id,
+      { league_id: r.league_id, account_id: r.account_id, role: r.role, claimed_player: r.claimed_player, claim_state: r.claim_state,
+        joined: r.joined, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   player_course_handicap: {
     collect: keys => S.state.pch.filter(x => keys.has(`${x.player_id}|${x.course}|${x.tee}`)).map(x => ({ player_id: x.player_id, course: x.course, tee: x.tee, ch: x.ch ?? 0,
@@ -116,7 +156,7 @@ const TABLES = {
     apply: r => lww(S.state.pch, x => x.player_id === r.player_id && x.course === r.course && x.tee === r.tee, { player_id: r.player_id, course: r.course, tee: r.tee, ch: r.ch, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
 };
-const CONFLICT = { league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
+const CONFLICT = { league_members: "league_id,account_id", league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", hole_stats: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
 
 function lww(list, match, rec, row) {
   const i = list.findIndex(match);
@@ -140,8 +180,9 @@ function drainHeld() {
 
 function keyOf(table, row) {
   if (table === "league_rounds") return `${row.league_id}|${row.round_id}`;
+  if (table === "league_members") return `${row.league_id}|${row.account_id}`;
   if (table === "round_entries") return `${row.round_id}|${row.player_id}`;
-  if (table === "scores") return `${row.round_id}|${row.player_id}|${row.hole}`;
+  if (table === "scores" || table === "hole_stats") return `${row.round_id}|${row.player_id}|${row.hole}`;
   if (table === "courses") return row.slug;
   if (table === "player_course_handicap") return `${row.player_id}|${row.course}|${row.tee}`;
   return row.id;
@@ -259,11 +300,28 @@ export function pull() {
   return pullPromise;
 }
 
-async function doPull() {
+/**
+ * Joining a league makes rows visible that are OLDER than the cursor, so an ordinary pull would never fetch them
+ * and the league would appear with no history and no error.
+ *
+ * COMMERCIAL-PLAN.md proposed a cursor per scope -- `me` plus one per league -- which is the general answer and
+ * threads a scope dimension through the whole pull loop, the held rows and the orphan retry. This does the same
+ * job by noticing that membership changed and simply reading everything again from 1970. Joining a league is
+ * rare, a phone's own visible data is a few hundred kilobytes, and one extra full pull on a rare event is a far
+ * better trade than a permanent second dimension in the sync engine.
+ */
+function newLeaguesSince(before) {
+  const now = S.myLeagueIds();
+  for (const id of now) if (!before.has(id)) return true;
+  return false;
+}
+
+async function doPull(again = false) {
   sync.pulling = true;
   sync.status = "syncing";
   emit({ status: true });
   const cur = cursors();  // one cursor per table: a row landing in an already-read table during the pull is not skipped
+  const leaguesBefore = S.myLeagueIds();
   let changed = drainHeld();
   try {
     for (const [table, t] of Object.entries(TABLES)) {
@@ -282,7 +340,15 @@ async function doPull() {
     }
     const orphans = S.state.orphanScores.splice(0);  // scores that arrived before their entry
     for (const row of orphans) { if (TABLES.scores.apply(row)) changed = true; }
+    const orphanStats = S.state.orphanStats.splice(0);
+    for (const row of orphanStats) { if (TABLES.hole_stats.apply(row)) changed = true; }
     if (changed || orphans.length || S.state.orphanScores.length) S.afterPull();
+    if (!again && newLeaguesSince(leaguesBefore)) {   // a league just became visible: its history predates the cursor
+      localStorage.removeItem(CURSOR_KEY);
+      sync.pulling = false;
+      console.info("sync: joined a league, reading its history from the start");
+      return await doPull(true);
+    }
     sync.status = "idle";
     sync.error = null;
     sync.lastPull = new Date().toISOString();
@@ -336,6 +402,20 @@ export async function test(c) {
 }
 
 /** The join link an organiser hands out: everything a phone needs to connect, in the URL fragment. */
+/**
+ * One round's history, newest first: every write the server actually applied, with what the value was, what
+ * it became, and whose account did it. Fetched on demand and never stored -- the log is the server's record,
+ * not a copy each phone keeps, and a phone that has been offline for a month has no business guessing at it.
+ *
+ * Only rows with a `before` come back. A row without one is the first time a value was written, which on a
+ * scoring screen is every tap of every hole; what anyone opening this wants is what was *changed*.
+ */
+export async function roundHistory(roundId, limit = 500) {
+  if (!sync.config) throw new Error("This phone is not connected to a shared database, so there is no history to read.");
+  const rows = await rest(`change_log?round_id=eq.${encodeURIComponent(roundId)}&order=at.desc&limit=${limit}`);
+  return (rows || []).filter(r => r.before && Object.keys(r.before).length);
+}
+
 export function joinLink(base, organiser = false) {
   const c = config();
   if (!c) return null;

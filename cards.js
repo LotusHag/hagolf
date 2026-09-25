@@ -1,5 +1,5 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
-import { Fig, MARGIN, section, scoreGlyph, glyphLegend, outcomeBar, on } from "./draw.js";
+import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on } from "./draw.js";
 import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, NO_SCORE } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -35,6 +35,26 @@ export function story(M, p) {
       line += ` Toughest hole ${L[worst]}, ${fix(vs[worst])} strokes more than the rest.`;
     }
     out.push(line);
+  }
+  // The extras, where this card kept any. One sentence inside the story rather than a block of its own: the
+  // card's layout is fixed by hole count, and a card that kept nothing must look exactly as it did before.
+  // High up, because the story is cut to seven lines and this is worth more than the flourishes below it.
+  if (p.statline && p.statline.any) {
+    const x = p.statline, said = [];
+    // Three short sentences rather than one chain of semicolons: putting, then ball striking, then the
+    // penalty. A card that kept only some of it drops the sentences it cannot fill.
+    if (x.putts) {
+      const kinds = [x.putts.one ? `${x.putts.one} one-putt${plural(x.putts.one)}` : "",
+        x.putts.three ? `${x.putts.three} three-putt${plural(x.putts.three)}` : ""].filter(Boolean);
+      said.push(`${x.putts.total} putts${kinds.length ? `, ${kinds.join(" and ")}` : ` over ${x.putts.holes} hole${plural(x.putts.holes)}`}.`);
+    }
+    const struck = [x.fairway ? `${x.fairway.hit} of ${x.fairway.holes} fairways` : "",
+      x.gir ? `${x.gir.hit} of ${x.gir.holes} greens in regulation` : ""].filter(Boolean).join(" and ");
+    const saved = [x.scramble ? `${x.scramble.saved} of the ${x.scramble.holes} green${plural(x.scramble.holes)} missed` : "",
+      x.sand ? `${x.sand.saved} of ${x.sand.holes} bunker${plural(x.sand.holes)}` : ""].filter(Boolean).join(" and ");
+    if (struck || saved) said.push([struck, saved ? `par or better from ${saved}` : ""].filter(Boolean).join("; ") + ".");
+    if (x.penalty) said.push(`${x.penalty.total} penalty shot${plural(x.penalty.total)}, already in the scores above.`);
+    out.push(said.join(" "));
   }
   const outright = played.filter(h => p.rank[h] === 1 && rank1[h] === 1).map(h => L[h]);
   const shared = played.filter(h => p.rank[h] === 1 && rank1[h] > 1).map(h => L[h]);
@@ -82,14 +102,20 @@ export function story(M, p) {
   }
   if (p.penalties.length) {
     const bits = p.penalties.map(x => `${x.strokes} on hole ${x.label}` + (x.reason ? ` (${x.reason})` : ""));
-    out.push(`Penalty strokes after the round: ${bits.join("; ")}. Counted in every score above.`);
+    out.push(`Penalty strokes added after the round: ${bits.join("; ")}. Counted in every score above.`);
   }
   return out;
 }
 
-export function renderCard(M, p, T) {
+/**
+ * `basic` is the free card: who, what they went round in, and the scorecard with its notation. `full` adds what
+ * the round was like -- against the field per hole, where the strokes went, and the story. The basic card stops
+ * after the scorecard, so the sheet itself is shorter rather than a full card with holes in it.
+ */
+export function renderCard(M, p, T, tier = "full") {
   const n = M.n, SI = M.si, N = M.field, L = M.labels, PAR = p.par;
-  const W_IN = n <= 9 ? 12 : 15, H_IN = 10.9;
+  const basic = tier === "basic";
+  const W_IN = n <= 9 ? 12 : 15, H_IN = basic ? 5.25 : 10.9;
   const fig = new Fig(W_IN, H_IN, T, 150);
   const rect = (topIn, hIn, x0 = MARGIN, x1 = 1 - MARGIN) => [x0, 1 - (topIn + hIn) / H_IN, x1 - x0, hIn / H_IN];
   const Mx = MARGIN * W_IN;
@@ -118,9 +144,9 @@ export function renderCard(M, p, T) {
     netTile = ["Net", String(p.net), `${fmtToPar(p.net - sum(PAR))} to par`];
   }
   const tiles = [grossTile, netTile,
-    ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}`],
-    ["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"} than the rest`]];
-  const axt = fig.axes(rect(0.28, 1.0, 0.50), [0, 4], [0, 1]);
+    ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}`]];
+  if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"} than the rest`]);
+  const axt = fig.axes(rect(0.28, 1.0, basic ? 0.62 : 0.50), [0, tiles.length], [0, 1]);
   tiles.forEach(([lab, big, small], k) => {
     axt.rbox(k + 0.05, 0.0, 0.9, 1.0, T.PANEL, 0.06);
     axt.text(k + 0.5, 0.8, lab.toUpperCase(), { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center" });
@@ -198,6 +224,12 @@ export function renderCard(M, p, T) {
   if (p.skipped.some(Boolean)) note = "– = not played (joined late)  ·  " + note;
   axs.text(xmax, 5.0, note, { size: 7.5, color: T.INK_3, ha: "right", va: "center" });
 
+  if (basic) {
+    drawMark(fig, 0.06);
+    const prefix0 = p.gplace !== null ? String(p.gplace).padStart(2, "0") : "NR";
+    return { file: `players/${prefix0}_${fileSlug(p.name)}.png`, fig };
+  }
+
   // against the field
   const vs = p.vsrest;
   const lo = Math.min(0, ...vsPlayed), hi = Math.max(0, ...vsPlayed);
@@ -267,10 +299,12 @@ export function renderCard(M, p, T) {
     y -= 0.13 + (lines.length - 1) * 0.05;
   }
 
+  drawMark(fig, 0.06);  // the card has no footer; the story block ends 0.2in above the edge, so the mark sits under it
+
   const prefix = p.gplace !== null ? String(p.gplace).padStart(2, "0") : "NR";
   return { file: `players/${prefix}_${fileSlug(p.name)}.png`, fig };
 }
 
-export function renderCards(M, T, names = null) {
-  return M.players.filter(p => !names || names.includes(p.name)).map(p => renderCard(M, p, T));
+export function renderCards(M, T, names = null, tier = "full") {
+  return M.players.filter(p => !names || names.includes(p.name)).map(p => renderCard(M, p, T, tier));
 }

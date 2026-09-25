@@ -4,7 +4,8 @@
 import { DATA } from "./data.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
-import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, coursesFromClub, validateCourse, slugify, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE } from "./model.js";
+import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, coursesFromClub, validateCourse, slugify, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE,
+  STAT_KINDS, STAT_KEYS, hasFairway, girFrom, statSummary, fmtPct, strokesGained, leagueCards } from "./model.js";
 import { loadFonts, makeTheme } from "./draw.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster } from "./statsposters.js";
@@ -17,6 +18,7 @@ const courseTitle = c => c.loop ? `${c.name} · ${c.loop}` : c.name;
 const sum = xs => xs.reduce((a, b) => a + b, 0);
 const go = hash => { location.hash = hash; };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const andList = xs => xs.length < 2 ? (xs[0] || "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 const firstName = n => String(n || "").trim().split(/\s+/)[0];
 const inits = n => String(n || "").trim().split(/\s+/).slice(0, 2).map(w => [...w][0].toUpperCase()).join("");
 const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
@@ -209,10 +211,10 @@ function noCourse(r, back = "#home") {
   page(esc(r.name || "Round"), `<div class="banner warn">This round's course (${esc(r.course)}) is not on this phone yet. It arrives with the next sync, or the organiser pushes the course files.</div>`, { back });
 }
 
-function safeCompute(r) {
+function safeCompute(r, collapse = false) {
   const c = courseBy(r.course);
   if (!c) return null;
-  try { return Object.assign(compute(c, S.toModelRound(r)), { id: r.id }); } catch (e) { return null; }
+  try { return Object.assign(compute(c, S.toModelRound(r, collapse)), { id: r.id }); } catch (e) { return null; }
 }
 
 /** Points so far for a round in progress, by entered holes: the live board. */
@@ -587,7 +589,7 @@ function roundForm(slug) {
 }
 
 // ---------------------------------------------------------------- players in a round
-function players(rid) {
+function players(rid, keep = false) {
   const r = S.getRound(rid);
   if (!r) return go("#home");
   const c = courseBy(r.course);
@@ -597,6 +599,7 @@ function players(rid) {
   const roster = S.players().filter(p => !inRound.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
   const me = S.me();
   const showGroups = r.entries.length > 4 || r.entries.some(e => (e.group || 1) > 1);
+  const kinds = S.statsFor(rid), statsOn = S.anyStatsOn(rid);
   const rows = r.entries.map((e, i) => {
     let hc = "", missing = false;
     const ov = e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee);  // a course handicap read off the club's table
@@ -611,6 +614,7 @@ function players(rid) {
         ${showGroups ? `<span class="tool"><span class="seg-label">group</span><span class="seg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</span></span>` : ""}
         <select data-act="from" data-i="${i}" title="Joins at hole"><option value="1" ${(e.fromHole || 1) === 1 ? "selected" : ""}>from hole 1</option>${c.par.slice(1).map((_, k) => `<option value="${k + 2}" ${(e.fromHole || 1) === k + 2 ? "selected" : ""}>joins at hole ${c.first_hole + k + 1}</option>`).join("")}</select>
         ${missing || hasOv ? `<input data-act="pch" data-i="${i}" inputmode="numeric" value="${hasOv ? ov : ""}" placeholder="course hcp (club table)" aria-label="Course handicap from the club table">` : ""}
+        ${statsOn ? `<span class="tool"><span class="seg-label">extras</span><span class="seg"><button data-act="trk" data-i="${i}" class="${e.trackStats ? "on" : ""}">${e.trackStats ? "keeping" : "not kept"}</button></span></span>` : ""}
       </div></div>`;
   }).join("");
   const body = `
@@ -618,6 +622,7 @@ function players(rid) {
       <p>Index and tee are asked again every round, filled in with what that player last used, because both change. Type over either one and the course handicap follows.</p>
       <p>Those strokes are then spread over the holes by stroke index, hardest hole first. If the club's own table gives a different number, put it in the course handicap box and that is what counts; it is remembered for this course and tee.</p>`)}
     ${rows || `<p class="muted small">Nobody yet. Tap names below to add them.</p>`}
+    ${statsPicker(rid, kinds, r)}
     ${roster.length ? `<h2>Tap to add</h2><div class="chips-wrap">${roster.map(p => `<button class="pchip ${me && p.id === me.id ? "on" : ""}" data-act="add-roster" data-id="${p.id}"><span><span class="plus">+</span>${esc(p.name)}</span><small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
     <form id="addf" class="card form ${roster.length || r.entries.length ? "" : "open"}">
       <h2>Someone new</h2>
@@ -635,7 +640,7 @@ function players(rid) {
   const bar = !r.entries.length ? `<button class="btn" disabled>Add players to start</button>`
     : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
     : `<button class="btn primary" data-act="start-scoring" data-rid="${rid}">${r.status === "setup" ? "Start scoring ›" : "Back to scoring ›"}</button>`;
-  page("Who is playing?", body, { back: r.status === "done" ? `#review/${rid}` : "#home", bar, sub: `${r.name} · ${courseTitle(c)}` });
+  page("Who is playing?", body, { back: r.status === "done" ? `#review/${rid}` : "#home", bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep });
   bind(ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
@@ -645,6 +650,23 @@ function players(rid) {
       return players(rid);
     }
     if (b.dataset.act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid); }
+    if (b.dataset.act === "trk") { const e = r.entries[Number(b.dataset.i)]; S.setTrackStats(r, e, !e.trackStats); return players(rid, true); }
+    if (b.dataset.act === "trk-all") {
+      const all = b.dataset.who === "all";
+      const mine = r.entries.find(e => e.playerId === S.state.settings.meId);
+      for (const e of r.entries) S.setTrackStats(r, e, all || e === mine);
+      return players(rid, true);
+    }
+    if (b.dataset.act === "stat-kind") {
+      const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
+      S.setStatsFor(rid, next);
+      // Turning the first one on with nobody marked would leave a switch that does nothing: take the obvious meaning.
+      if (Object.values(next).some(Boolean) && !r.entries.some(e => e.trackStats)) {
+        const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
+        if (mine) S.setTrackStats(r, mine, true);
+      }
+      return players(rid, true);
+    }
   });
   app.querySelector("main").addEventListener("change", ev => {
     const el = ev.target.closest("[data-act]");
@@ -688,8 +710,202 @@ function players(rid) {
   if (f.classList.contains("open")) nameEl.focus();
 }
 
+// ---------------------------------------------------------------- the extras: putts, fairways and the rest
+/**
+ * Which extras this round keeps, and whose card keeps them. Folded away by default and summarised in its own
+ * summary line, so a round that keeps nothing costs one line of text and a round that keeps everything still
+ * only costs one until you open it. What is ticked here is remembered as this phone's habit for the next round.
+ */
+function statsPicker(rid, kinds, r) {
+  const on = STAT_KINDS.filter(k => kinds[k.key]);
+  const who = r.entries.filter(e => e.trackStats);
+  const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
+  const line = !on.length ? "Putts, fairways and the rest: not kept"
+    : `Keeping ${andList(on.map(k => k.word))}${who.length ? ` for ${andList(who.map(e => firstName(e.name)))}` : " — for nobody yet"}`;
+  return `<details class="card" id="statpick"><summary class="small">${esc(line)}</summary>
+    <p class="muted small" style="margin:8px 0 0">Tick what you want to tap in beside each score. Each one is a single tap on the hole, and anything you leave off never appears on the scoring screen at all.</p>
+    <div class="statpick">${STAT_KINDS.map(k => `<button data-act="stat-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
+    ${on.length ? `<p class="muted small" style="margin:10px 0 0">${on.map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>
+      <p class="pickline" style="margin:12px 0 0">Keep them for</p>
+      <div class="statpick">
+        <button data-act="trk-all" data-who="me" class="${who.length === 1 && mine && who[0] === mine ? "on" : ""}">Just me</button>
+        <button data-act="trk-all" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">If you are keeping the card for the group you can tap their putts in as well as your own. Any one player can be switched on or off by the <b>extras</b> button on their row above.</p>` : ""}</details>`;
+}
+
+
+// One quiet strip under the score row, and only for a player whose card is keeping them. Everything is a
+// single tap: putts are picked straight off a row of numbers rather than counted up with - and +, because a
+// putt count is nearly always 1, 2 or 3 and two taps to say "2" is one tap too many with a bag on your back.
+const PUTT_CHIPS = [0, 1, 2, 3];
+const MARK = { yes: "✓", no: "✗" };
+
+/**
+ * The extras read back, as tiles. Only what was actually recorded appears: a card that kept putts and nothing
+ * else shows putting and nothing else, so a half-used feature never leaves a row of dashes behind.
+ *
+ * `per18` switches the putting headline from a total (one round: "31 putts") to a rate (a season, where
+ * totals across nines and eighteens mean nothing: "30.2 per 18").
+ */
+function statTiles(x, { per18 = false } = {}) {
+  if (!x || !x.any) return "";
+  const t = (v, label) => `<div class="stattile"><b>${v}</b><small>${esc(label)}</small></div>`;
+  const tiles = [];
+  if (x.putts) {
+    tiles.push(per18 ? t(fix(x.putts.per18, 1), "putts per 18") : t(x.putts.total, `putts in ${plural(x.putts.holes, "hole")}`));
+    if (x.putts.one) tiles.push(t(x.putts.one, x.putts.one === 1 ? "one-putt" : "one-putts"));
+    if (x.putts.three) tiles.push(t(x.putts.three, x.putts.three === 1 ? "three-putt" : "three-putts"));
+    if (x.putts.onGir !== null) tiles.push(t(fix(x.putts.onGir, 2), "putts per green"));
+  }
+  if (x.fairway) {
+    tiles.push(t(fmtPct(x.fairway.pct), `fairways · ${x.fairway.hit} of ${x.fairway.holes}`));
+    const L = x.fairway.misses.left, R = x.fairway.misses.right;
+    if (L || R) tiles.push(t(`${L}← ${R}→`, L === R ? "missed both ways" : `misses mostly ${L > R ? "left" : "right"}`));
+  }
+  if (x.gir) tiles.push(t(fmtPct(x.gir.pct), `greens · ${x.gir.hit} of ${x.gir.holes}`));
+  if (x.scramble) tiles.push(t(fmtPct(x.scramble.pct), `scrambling · ${x.scramble.saved} of ${x.scramble.holes}`));
+  if (x.sand) tiles.push(t(`${x.sand.saved}/${x.sand.holes}`, "sand saves"));
+  if (x.penalty) tiles.push(t(x.penalty.total, x.penalty.total === 1 ? "penalty shot" : "penalty shots"));
+  return `<div class="statgrid">${tiles.join("")}</div>`;
+}
+
+/** The same numbers on one line, for a row in a list where a grid of tiles would be too much. */
+function statLine(x) {
+  const bits = [];
+  if (x.putts) bits.push(`${x.putts.total} putts`);
+  if (x.fairway) bits.push(`${x.fairway.hit}/${x.fairway.holes} fairways`);
+  if (x.gir) bits.push(`${x.gir.hit}/${x.gir.holes} greens`);
+  if (x.scramble && x.scramble.saved) bits.push(`${x.scramble.saved} scrambled`);
+  if (x.sand) bits.push(`${x.sand.saved}/${x.sand.holes} sand`);
+  if (x.penalty) bits.push(plural(x.penalty.total, "penalty shot"));
+  return bits.join(" · ");
+}
+
+/**
+ * Strokes gained, drawn. `who` is the baseline in words -- "the rest of the league", "Joris" -- because the
+ * number means nothing without it, and a block that said only "+2.4" would be read as an absolute.
+ */
+function sgBlock(sg, who) {
+  if (!sg || sg.total === null || !sg.holes) return "";
+  const t = (v, label) => `<div class="stattile"><b class="${v > 0.05 ? "sgup" : v < -0.05 ? "sgdown" : ""}">${fmtSigned(v, 2)}</b><small>${esc(label)}</small></div>`;
+  const per = sg.split ? sg.split.per18 : null;
+  return `<div class="card">
+    <div class="muted small">Against ${esc(who)}, over the ${plural(sg.holes, "hole")} both cards finished${sg.rounds > 1 ? ` in ${plural(sg.rounds, "round")}` : ""}. Per 18 holes.</div>
+    <div class="statgrid">
+      ${t(sg.per18, "strokes gained")}
+      ${per ? t(per.teeToGreen, "tee to green") : ""}
+      ${per ? t(per.putting, "putting") : ""}
+    </div>
+    ${per
+      ? `<p class="muted small" style="margin:10px 0 0">The split covers the ${plural(sg.split.holes, "hole")} where putts were written down on both cards. Tee to green is what is left of the total once putting is taken out; off the tee and the approach are not split apart, because a fairway missed says nothing about how far the next shot was.</p>`
+      : `<p class="muted small" style="margin:10px 0 0">Nobody they played against wrote their putts down, so there is no putting baseline and the total cannot be split. It splits itself as soon as one other card keeps putts.</p>`}</div>`;
+}
+
+/** Strokes gained over a whole league, where a card is the day and every group that walked it is one field. */
+function sgLeague(gid, pid) {
+  const g = S.leagues().find(x => x.id === gid);
+  if (!g) return "";
+  const sg = strokesGained(leagueCards(leagueResults(g).Ms), pid);
+  if (sg.total === null || !sg.holes) return "";
+  return `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sg, "the rest of this league")}`;
+}
+
+/** The head-to-head version in one sentence, because a rival card is already a wall of numbers. */
+function sgWords(sg, them) {
+  const v = sg.per18;
+  const head = Math.abs(v) < 0.05
+    ? `Nothing between them: level with ${esc(them)} over the ${plural(sg.holes, "hole")} they both finished.`
+    : `<b class="sg${v > 0 ? "up" : "down"}">${fmtSigned(v, 2)}</b> strokes a round ${v > 0 ? "on" : "behind"} ${esc(them)}, over the ${plural(sg.holes, "hole")} they both finished.`;
+  if (!sg.split) return head;
+  const p = sg.split.per18;
+  return `${head} ${fmtSigned(p.teeToGreen, 2)} of it tee to green and ${fmtSigned(p.putting, 2)} on the greens, over the ${plural(sg.split.holes, "hole")} where both kept putts.`;
+}
+
+const SG_TIP = `<p>The published version of this compares every shot with what a tour player would do from the same distance and lie. A scorecard has neither, so this compares you with the people who actually played the same holes on the same day.</p>
+<p><b>Strokes gained</b> is what they averaged on a hole less what you took: plus means you took fewer. <b>Putting</b> is the same sum on putts alone, and <b>tee to green</b> is whatever is left over, so the two always add back up to the total.</p>
+<p>Off the tee and approach are deliberately not separated: knowing a fairway was missed says nothing about how far away the next shot was, and splitting them anyway would be a guess wearing a precise name.</p>
+<p>A hole picked up is left out — there is no stroke count to gain against — and the putting split only counts holes where both cards wrote putts down.</p>`;
+
+const STATS_TIP = `<p>These come off your own card, and only the ones you switched on. Nothing here is guessed at except where it says <b>auto</b>.</p>
+<p><b>Greens in regulation</b> is the green reached with two strokes still left for par. Once you count putts the app knows it: the ball was on the green after your strokes less your putts.</p>
+<p><b>Scrambling</b> is the holes where you missed the green and still made par or better. <b>Sand saves</b> are the same thing out of a bunker. Neither is ever asked for — both fall out of what you already entered.</p>
+<p>Every figure counts only the holes that answered it, so switching something on halfway through a season skews nothing.</p>`;
+
+/** Every hole of these rounds for one player, as the flat records `statSummary` takes. */
+function statHolesOf(rounds, pid) {
+  const out = [];
+  for (const { M } of rounds) {
+    const p = M.players.find(x => x.id === pid);
+    if (p) out.push(...p.stats);
+  }
+  return out;
+}
+
+/** A hole that was picked up or never holed out has no putts to count, so the strip sits disabled until it does. */
+const holedOut = (e, h) => e.scores[h] !== null && e.scores[h] !== 0;
+
+function bitChip(i, kind, label, state, extra = "") {
+  const mark = state === "yes" ? ` ${MARK.yes}` : state === "no" ? ` ${MARK.no}` : "";
+  return `<button class="schip wide ${state}" data-act="st-bit" data-i="${i}" data-k="${kind}">${label}${extra}${mark}</button>`;
+}
+
+function statStrip(r, c, e, i, h, kinds) {
+  if (!e.trackStats) return "";
+  const on = STAT_KINDS.filter(k => kinds[k.key]);
+  if (!on.length) return "";
+  const v = e.stats[h] || {};
+  const par = c.par[h], live = holedOut(e, h);
+  const lines = [];
+  if (kinds.putts) {
+    const p = v.putts ?? null, over = p !== null && p > 3 ? p : null;
+    lines.push(`<div class="srow"><span class="slab">Putts</span>${PUTT_CHIPS.map(n =>
+      `<button class="schip ${p === n ? "on" : ""}" data-act="st-putt" data-i="${i}" data-v="${n}">${n}</button>`).join("")}<button class="schip ${over !== null ? "on" : ""}" data-act="st-putt" data-i="${i}" data-v="4">${over !== null ? over : "4+"}</button></div>`);
+  }
+  // A par 3 has no fairway. Not greyed out, not answered "no" -- simply not asked, which is one fewer thing
+  // to read. Missed left and missed right are picked straight off the row, like the putts above: a miss
+  // pattern is worth having and it must not cost three taps to say which way it went.
+  if (kinds.fairway && hasFairway(par)) {
+    const f = v.fairway ?? null;
+    const opt = (val, label) => `<button class="schip ${f === val ? (val === "hit" ? "on" : "no") : ""}" data-act="st-fw" data-i="${i}" data-v="${val}">${label}</button>`;
+    lines.push(`<div class="srow"><span class="slab">Fairway</span>${opt("left", "← left")}${opt("hit", "hit ✓")}${opt("right", "right →")}</div>`);
+  }
+  const bits = [];
+  if (kinds.gir) {
+    const auto = girFrom(live ? e.scores[h] : null, v.putts ?? null, par);
+    const eff = v.gir === null || v.gir === undefined ? auto : !!v.gir;
+    const guessed = (v.gir === null || v.gir === undefined) && auto !== null;
+    bits.push(bitChip(i, "gir", "Green", eff === null ? "off" : eff ? "yes" : "no", guessed ? `<i class="auto">auto</i>` : ""));
+  }
+  if (kinds.penaltyShots) {
+    const n = v.penaltyShots ?? null;
+    bits.push(`<button class="schip wide ${n ? "pen" : "off"}" data-act="st-bit" data-i="${i}" data-k="penaltyShots">Penalty${n ? ` +${n}` : ""}</button>`);
+  }
+  if (kinds.bunker) bits.push(bitChip(i, "bunker", "Sand", v.bunker ? "yes" : "off"));
+  if (bits.length) lines.push(`<div class="srow">${bits.join("")}</div>`);
+  return `<div class="sstrip ${live ? "" : "off"}" data-strip="${i}">${lines.join("")}</div>`;
+}
+
+/**
+ * What one tap does. Putts are picked, so tapping the chip already chosen clears it; everything else cycles,
+ * and every cycle comes back round to unanswered so a mis-tap is never a thing you are stuck with.
+ */
+function statTap(r, e, h, act, b) {
+  const v = e.stats[h] || {};
+  if (act === "st-putt") {
+    const want = Number(b.dataset.v), cur = v.putts ?? null;
+    if (want === 4) return S.setStat(r, e, h, { putts: cur !== null && cur >= 4 ? (cur >= 9 ? null : cur + 1) : 4 });
+    return S.setStat(r, e, h, { putts: cur === want ? null : want });
+  }
+  if (act === "st-fw") { const want = b.dataset.v; return S.setStat(r, e, h, { fairway: v.fairway === want ? null : want }); }
+  const k = b.dataset.k;
+  if (k === "gir") return S.setStat(r, e, h, { gir: v.gir === null || v.gir === undefined ? true : v.gir ? false : null });
+  if (k === "penaltyShots") { const n = v.penaltyShots ?? 0; return S.setStat(r, e, h, { penaltyShots: n >= 3 ? null : n + 1 }); }
+  if (k === "bunker") return S.setStat(r, e, h, { bunker: v.bunker ? null : true });
+}
+
 // ---------------------------------------------------------------- scoring
-function scoreRow(r, c, e, i, h) {
+function scoreRow(r, c, e, i, h, kinds = null) {
   let info = null;
   try { info = handicapFor(c, { ...e, courseHandicap: e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee) }, r.defaultTee, r.allowance); } catch (err) { info = null; }
   const par = info ? info.par[h] : c.par[h];
@@ -706,7 +922,8 @@ function scoreRow(r, c, e, i, h) {
     <div class="pinfo"><div class="name">${esc(e.name)}</div><div class="muted small">${detail}</div>${badge}</div>
     <button class="sbtn" data-act="dec" data-i="${i}" aria-label="minus">−</button>
     <button class="sval ${cls}" data-act="pickup" data-i="${i}" title="Tap to mark picked up">${v === null ? "–" : v === 0 ? String(NO_SCORE) : v}</button>
-    <button class="sbtn" data-act="inc" data-i="${i}" aria-label="plus">+</button></div>`;
+    <button class="sbtn" data-act="inc" data-i="${i}" aria-label="plus">+</button>
+    ${kinds ? statStrip(r, c, e, i, h, kinds) : ""}</div>`;
 }
 
 function stripHtml(r, c, rid, h) {
@@ -727,20 +944,22 @@ function score(rid, hArg) {
   const h = Math.max(0, Math.min(n - 1, Number(hArg) || 0));
   if (r.status === "setup") { r.status = "scoring"; S.saveRound(r); }
   if (S.holeOf(r) !== h) S.setHole(r, h);  // this phone's place in the round, not shared
-  if (!S.roundOpen(r)) toast("This round was entered more than 60 days ago and is frozen; changes will not sync.", 5000);
   const groups = [...new Set(r.entries.map(e => e.group || 1))].sort();
   const gf = groups.includes(ui.groupFilter) ? ui.groupFilter : 0;
   const shown = r.entries.map((e, i) => [e, i]).filter(([e]) => !gf || (e.group || 1) === gf);
   const metres = c.tees[r.defaultTee] && c.tees[r.defaultTee].metres;
+  const kinds = S.statsFor(rid);
+  const tracking = r.entries.filter(e => e.trackStats).length;
   const body = `
     <div class="strip">${stripHtml(r, c, rid, h)}</div>
     ${groups.length > 1 ? `<div class="filter"><button data-act="gf" data-g="0" class="${gf === 0 ? "on" : ""}">All</button>${groups.map(g => `<button data-act="gf" data-g="${g}" class="${gf === g ? "on" : ""}">Group ${g}</button>`).join("")}</div>` : ""}
     <div class="holehead"><div class="hnum num">${c.first_hole + h}</div>
       <div><div class="name">Par ${c.par[h]}${metres ? ` · ${metres[h]} m` : ""}</div>
       <div class="muted small">Stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${n}</div></div></div>
-    <div class="card" style="padding:4px 14px" id="rows">${shown.map(([e, i]) => scoreRow(r, c, e, i, h)).join("")}</div>
+    <div class="card" style="padding:4px 14px" id="rows">${shown.map(([e, i]) => scoreRow(r, c, e, i, h, kinds)).join("")}</div>
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}
-    <p class="hint">The first tap on − or + puts par in. Tap the score itself if the hole was picked up, which counts ${NO_SCORE} strokes.</p>
+    <p class="hint">The first tap on − or + puts par in. Tap the score itself if the hole was picked up, which counts ${NO_SCORE} strokes.${
+      tracking && S.anyStatsOn(rid) ? ` Putts and the rest go in under the score, one tap each, and a chip tapped again clears it.` : ""}</p>
     <p class="center"><a class="btn small" href="#players/${rid}">Add or remove players</a></p>
     ${dropBtn(r)}`;
   const bar = (h === 0 ? `<a class="btn" href="#players/${rid}">‹ Players</a>` : `<a class="btn" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`) +
@@ -750,7 +969,7 @@ function score(rid, hArg) {
   if (stripEl && cur) stripEl.scrollLeft = cur.offsetLeft - stripEl.clientWidth / 2 + cur.clientWidth / 2;
   const refresh = i => {  // one row and the strip, not the whole screen: the thumb stays where it was
     const row = document.querySelector(`.prow[data-i="${i}"]`);
-    if (row) row.outerHTML = scoreRow(r, c, r.entries[i], i, h);
+    if (row) row.outerHTML = scoreRow(r, c, r.entries[i], i, h, kinds);
     const keep = stripEl.scrollLeft;
     stripEl.innerHTML = stripHtml(r, c, rid, h);
     stripEl.scrollLeft = keep;
@@ -759,8 +978,13 @@ function score(rid, hArg) {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "gf") { ui.groupFilter = Number(b.dataset.g); return score(rid, h); }
+    if (["st-putt", "st-bit", "st-fw"].includes(b.dataset.act)) {
+      const i = Number(b.dataset.i);
+      if (!holedOut(r.entries[i], h)) return toast("Put the score in first");
+      statTap(r, r.entries[i], h, b.dataset.act, b);
+      return refresh(i);
+    }
     if (!["inc", "dec", "pickup"].includes(b.dataset.act)) return;  // the screen's other buttons are handled elsewhere
-    if (!S.roundOpen(r)) return toast("This round is frozen (entered more than 60 days ago)");
     const i = Number(b.dataset.i), e = r.entries[i];
     const par = c.par[h], v = e.scores[h];
     if (b.dataset.act === "inc") S.setScore(r, e, h, (v === null || v === 0) ? par : Math.min(30, v + 1));
@@ -772,6 +996,75 @@ function score(rid, hArg) {
     }
     refresh(i);
   });
+}
+
+// ---------------------------------------------------------------- what changed on a card, and who changed it
+// A card is never locked, so anyone who played a round can correct it years later. That is only safe if the
+// corrections are visible: this reads the server's own log and says, in words, what moved.
+const FIELD_WORDS = {
+  strokes: "score", putts: "putts", fairway: "fairway", gir: "green in regulation", penalty_shots: "penalty shots",
+  bunker: "bunker", hi: "handicap index", tee: "tee", course_handicap: "course handicap", grp: "group",
+  from_hole: "joins at hole", penalties: "penalty strokes", name: "name", date: "date", status: "status",
+  default_tee: "default tee", allowance: "allowance", track_stats: "keeping extras",
+};
+const showVal = v => v === null || v === undefined || v === "" ? "nothing"
+  : v === true ? "yes" : v === false ? "no"
+  : Array.isArray(v) ? (v.length ? `${v.length} ${v.length === 1 ? "entry" : "entries"}` : "nothing")
+  : String(v);
+
+/** Who a row is attributed to, from this phone's point of view. */
+function changeWho(row) {
+  if (row.device_id && row.device_id === S.state.settings.deviceId) return "this phone";
+  if (row.account_id && row.account_id === S.myAccount()) return "you, on another phone";
+  return row.author ? esc(row.author) : "another phone";
+}
+
+/** What a log row is about: which hole or which player, in the round's own numbering. */
+function changeSubject(row, r, c) {
+  const parts = String(row.key || "").split("|");
+  const nameOf = pid => { const e = [...r.entries, ...r.removed].find(x => x.playerId === pid); return e ? e.name : "somebody"; };
+  if (row.tbl === "scores" || row.tbl === "hole_stats") {
+    const hole = Number(parts[2]);
+    return `${esc(nameOf(parts[1]))} · hole ${Number.isFinite(hole) ? c.first_hole + hole : "?"}`;
+  }
+  if (row.tbl === "round_entries") return esc(nameOf(parts[1]));
+  return "the round";
+}
+
+function changeRow(row, r, c) {
+  const keys = Object.keys(row.before || {});
+  const bits = keys.map(k => {
+    const was = showVal(row.before[k]), now = showVal((row.after || {})[k]);
+    return `<span class="chg"><i>${esc(FIELD_WORDS[k] || k)}</i> ${esc(was)} → <b>${esc(now)}</b></span>`;
+  }).join("");
+  if (!bits) return "";
+  // When it was changed on the phone, not when the server first saw it: a correction made on the course with
+  // no signal and pushed in the car park that evening happened on the course.
+  const when = String(row.updated_at || row.at || "").replace("T", " ").slice(0, 16);
+  return `<div class="chgrow"><div class="small">${changeSubject(row, r, c)}</div><div>${bits}</div>
+    <div class="muted small">changed by ${changeWho(row)} · ${esc(when)}</div></div>`;
+}
+
+/** The panel itself. Loads only when opened: it needs the network, and most cards are never asked about. */
+function historyPanel() {
+  return `<details class="card" id="hist"><summary class="small">What was changed on this card</summary>
+    <div id="histbody"><p class="muted small" style="margin:8px 0 0">Reading the history…</p></div></details>`;
+}
+
+async function loadHistory(rid, r, c) {
+  const box = document.getElementById("histbody");
+  if (!box || box.dataset.done) return;
+  box.dataset.done = "1";
+  try {
+    const rows = await Y.roundHistory(rid);
+    box.innerHTML = rows.length
+      ? `<p class="muted small" style="margin:8px 0 6px">${plural(rows.length, "correction")} since this card was first written, newest first. Entering a score for the first time is not a correction and is not listed.</p>
+         <div class="chglist">${rows.map(x => changeRow(x, r, c)).join("")}</div>`
+      : `<p class="muted small" style="margin:8px 0 0">Nothing on this card has been changed since it was first written.</p>`;
+  } catch (err) {
+    box.dataset.done = "";   // a failed read must be retryable, not a permanent empty panel
+    box.innerHTML = `<p class="muted small" style="margin:8px 0 0">Could not read the history: ${esc(err.message)}</p>`;
+  }
 }
 
 // ---------------------------------------------------------------- review
@@ -800,6 +1093,7 @@ function review(rid, keep = false) {
   const rank = p => { const k = order.indexOf(key(p)); return k < 0 ? 1e9 : k; };
   const done = M.stbl_board.map(p => [p, r.entries.find(e => e.playerId === p.id)]).sort((a, b) => rank(a[0]) - rank(b[0]));
   const unfinished = r.entries.filter(e => M.unfinished.includes(e.name));
+  const kinds = S.statsFor(rid);
   const chips = (e) => c.par.map((par, i) => {
     const v = e.scores[i];
     const skip = (e.fromHole || 1) - 1 > i;
@@ -810,11 +1104,13 @@ function review(rid, keep = false) {
   const editor = (e) => {
     if (ui.expanded !== e.playerId || ui.selHole === null) return "";
     const i = ui.selHole, v = e.scores[i], par = c.par[i];
+    const ei = r.entries.indexOf(e);
     return `<div class="editor"><div>Hole ${c.first_hole + i} · par ${par} · SI ${c.stroke_index[i]}</div>
       <div class="edrow"><button class="sbtn" data-act="ed" data-d="-1" data-pid="${e.playerId}">−</button>
       <span class="sval big">${v === null ? "–" : v === 0 ? String(NO_SCORE) : v}</span>
       <button class="sbtn" data-act="ed" data-d="1" data-pid="${e.playerId}">+</button>
-      <button class="btn small" data-act="ed-pick" data-pid="${e.playerId}">${v === 0 ? "Un-pick" : "Picked up"}</button></div></div>`;
+      <button class="btn small" data-act="ed-pick" data-pid="${e.playerId}">${v === 0 ? "Un-pick" : "Picked up"}</button></div>
+      ${statStrip(r, c, e, ei, i, kinds)}</div>`;
   };
   const penalties = (e) => `<div class="pens">${(e.penalties || []).map((p, k) => `<span class="pen">+${p.strokes} on hole ${p.hole}${p.reason ? ` (${esc(p.reason)})` : ""} <button data-act="del-pen" data-pid="${e.playerId}" data-k="${k}" aria-label="remove">×</button></span>`).join("")}
     <details><summary class="muted small">Add penalty strokes</summary>
@@ -826,7 +1122,8 @@ function review(rid, keep = false) {
     <div class="card pl ${ui.expanded === e.playerId ? "open" : ""}">
       <button class="row plain" data-act="expand" data-pid="${e.playerId}">
         <div class="who"><span class="pos ${p.splace === 1 ? "p1" : ""}">${p.splace}</span><div><div class="name">${esc(p.name)}${p.penalty_total ? ` <span class="pen">pen +${p.penalty_total}</span>` : ""}</div>
-          <div class="muted small">hcp ${fmtHcp(p.ph)} · ${esc(p.tee)}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.filled.some(Boolean) ? ` · ${plural(p.filled.filter(Boolean).length, "hole")} counted ${NO_SCORE}` : ""}</div>${nineLine(M, p)}</div></div>
+          <div class="muted small">hcp ${fmtHcp(p.ph)} · ${esc(p.tee)}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.filled.some(Boolean) ? ` · ${plural(p.filled.filter(Boolean).length, "hole")} counted ${NO_SCORE}` : ""}</div>${nineLine(M, p)}${
+          p.statline.any ? `<div class="muted small">${esc(statLine(p.statline))}</div>` : ""}</div></div>
         <div class="nums"><span><b class="num">${p.gross === null ? "NR" : p.gross}</b><small>gross${p.topar !== null ? " " + fmtToPar(p.topar) : ""}</small></span>
           <span><b class="num">${p.net === null ? "NR" : p.net}</b><small>net</small></span><span class="acc"><b class="num">${p.pts}</b><small>pts</small></span></div></button>
       ${ui.expanded === e.playerId ? `<div class="chips">${chips(e)}</div>${editor(e)}${penalties(e)}` : ""}</div>`).join("");
@@ -846,10 +1143,13 @@ function review(rid, keep = false) {
     <details class="card"><summary class="small">Name and date: ${esc(r.name)} · ${esc(r.date || "no date")}</summary>
       <form id="rdet"><label>Name<input name="name" value="${esc(r.name)}"></label><label>Played on<input name="date" type="date" value="${esc(r.date || "")}"></label>
       <button class="btn small" type="submit">Save details</button></form></details>
+    ${Y.enabled() ? historyPanel() : ""}
     ${dropBtn(r)}`;
   const bar = `<a class="btn" href="#score/${rid}/${n - 1}">‹ Scoring</a>
     <button class="btn primary" data-act="save-round" ${M.field ? "" : "disabled"}>All correct, save ›</button>`;
   page("Check the scores", body, { back: `#score/${rid}/${S.holeOf(r)}`, bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep });
+  const hist = document.getElementById("hist");
+  if (hist) hist.addEventListener("toggle", () => { if (hist.open) loadHistory(rid, r, c); });
   document.getElementById("rdet").addEventListener("submit", ev => {
     ev.preventDefault();
     r.name = ev.target.name.value.trim() || r.name;
@@ -863,12 +1163,17 @@ function review(rid, keep = false) {
     const e = r.entries.find(x => x.playerId === b.dataset.pid);
     if (act === "expand") { ui.expanded = ui.expanded === e.playerId ? null : e.playerId; ui.selHole = null; return review(rid, true); }
     if (act === "sel-hole") { ui.expanded = e.playerId; ui.selHole = Number(b.dataset.h); return review(rid, true); }
-    if (["ed", "ed-pick", "del-pen", "add-pen"].includes(act) && !S.roundOpen(r)) return toast("This round is frozen (entered more than 60 days ago)");
     if (act === "ed") {
       const i = ui.selHole, v = e.scores[i], par = c.par[i], d = Number(b.dataset.d);
       S.setScore(r, e, i, (v === null || v === 0) ? par : Math.max(1, Math.min(30, v + d))); return review(rid, true);
     }
     if (act === "ed-pick") { const i = ui.selHole; S.setScore(r, e, i, e.scores[i] === 0 ? c.par[i] : 0); return review(rid, true); }
+    if (["st-putt", "st-bit", "st-fw"].includes(act)) {
+      const i = ui.selHole, ent = r.entries[Number(b.dataset.i)];
+      if (!holedOut(ent, i)) return toast("Put the score in first");
+      statTap(r, ent, i, act, b);
+      return review(rid, true);
+    }
     if (act === "del-pen") { e.penalties.splice(Number(b.dataset.k), 1); S.saveEntry(r, e); return review(rid, true); }
     if (act === "add-pen") {
       const box = b.closest(".pens");
@@ -1158,9 +1463,16 @@ function player(id) {
         <div class="res"><span class="big num">${x.pts}<small>pts</small></span>
           <span class="muted">${ordinal(x.splace)} of ${M.field}${x.gross !== null ? ` · gross ${x.gross} ${fmtToPar(x.topar)}` : " · no return"}</span></div>
         ${split}
+        ${x.statline.any ? `<div class="muted small">${esc(statLine(x.statline))}</div>` : ""}
       </a>
       <button class="btn small" data-act="my-card" data-rid="${r.id}" data-pid="${p.id}">Save card</button></div>`;
   }).join("");
+  const career = statSummary(statHolesOf(rs, p.id));
+  const sgMine = strokesGained(rs.map(o => o.M), p.id);
+  const sgBlockMine = sgMine.total === null ? "" : `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sgMine, "everyone else on the card")}`;
+  const careerBlock = career.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}
+    <div class="card"><div class="muted small">Over ${plural(career.holes, "hole")} of ${plural(rs.length, "round")}. Only what was switched on is counted.</div>
+      ${statTiles(career, { per18: true })}</div>` : "";
   const nines = ninesPlayed(S.roundsOf(p.id), p.id);
   const ninesBlock = nines.length ? `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18, so the loops can be compared with each other.`)}
     <table class="stand"><thead><tr><th class="l">Loop</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
@@ -1170,6 +1482,8 @@ function player(id) {
     <div class="hero"><p class="hi">${esc(p.name)}</p><div class="muted small">index ${fmtIndex(Number(p.hi))} · ${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(rs.length, "round")}</div></div>
     ${stats}
     ${leagueLines ? `<h2>Leagues</h2><div class="list">${leagueLines}</div>` : ""}
+    ${careerBlock}
+    ${sgBlockMine}
     ${ninesBlock}
     <h2>Rounds</h2>
     ${list || `<p class="muted center">No finished rounds yet.</p>`}
@@ -1256,7 +1570,7 @@ function leagueResults(g) {
   const ids = new Set(S.leagueRoundIds(g.id));
   const Ms = [];
   for (const r of S.rounds().filter(r => ids.has(r.id) && r.status === "done")) {
-    const M = safeCompute(r);
+    const M = safeCompute(r, true);   // a league counts claimed contacts as one golfer, not one per address book
     if (M) Ms.push(M);
   }
   const members = [...new Set(Ms.flatMap(M => M.players.map(p => p.id)).filter(Boolean))];
@@ -1399,6 +1713,8 @@ function fieldStats(St, nines = "") {
       <p class="muted small" style="margin:10px 0 0">Every hole this league has played: ${plural(F.holes, "hole")} over ${plural(F.rounds, "round")} on ${plural(F.cards, "card")}.
         A round is worth ${fix(F.avgPts)} points, and a hole is played in ${fmtSigned(F.vspar, 2)} against par.</p>
     </div>
+    ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}
+      <div class="card"><div class="muted small">Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.</div>${statTiles(F.statline, { per18: true })}</div>` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip("everyone in this league together"))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(F)}${everyHoleRow(F)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
@@ -1471,6 +1787,9 @@ function playerStats(St, p, nines = "", gid = "") {
       ${p.penalties ? line("Penalty strokes", String(p.penalties)) : ""}
       ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
     </div>`}
+    ${sgLeague(gid, p.id)}
+    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}
+      <div class="card"><div class="muted small">${esc(first)} over ${plural(p.statline.holes, "hole")} in this league.</div>${statTiles(p.statline, { per18: true })}</div>` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
@@ -1528,6 +1847,7 @@ function rivalCard(r, me, them) {
   return `<div class="card rival">
     <div class="rhead"><b>${esc(r.name)}</b><span class="muted small">${plural(r.played, "round")} together \u00b7 ${rivalRecord(r, me, them)}</span></div>
     <div class="tapes mine">${tapeRow(unit, r.myAvg, r.theirAvg, r.lower, val)}</div>
+    ${r.sg && r.sg.total !== null ? `<div class="sgline">${sgWords(r.sg, them)}</div>` : ""}
     ${split}</div>`;
 }
 
@@ -1543,6 +1863,11 @@ function rivalRows(rs, me, nameOf) {
 function rivalsBlock(St, p, gid) {
   const basis = H2H_BASES.some(([k]) => k === ui.rivalBasis[gid]) ? ui.rivalBasis[gid] : "points";
   const rs = rivals(St.rounds, p.id, basis);
+  // Strokes gained is always against that one opponent, on the days they both played, whatever the tabs
+  // above are set to: it is a count of strokes and there is no Stableford version of it.
+  const g = S.leagues().find(x => x.id === gid);
+  const cards = g ? leagueCards(leagueResults(g).Ms) : [];
+  for (const r of rs) r.sg = cards.length ? strokesGained(cards, p.id, { against: r.id }) : null;
   // points can always be compared, so an empty list there means there is nobody to compare with at all
   if (!rs.length && !rivals(St.rounds, p.id).length) return "";
   const me = esc(firstName(p.name));
@@ -1967,13 +2292,13 @@ function statsPoster(gid) {
 const nc = { step: "where", busy: false, q: "", found: null, left: null, draft: null, loop: 0 };
 
 /**
- * A failed call to the society's backend, said in a way that names the cause. The Worker answers its own
+ * A failed call to the backend, said in a way that names the cause. The Worker answers its own
  * errors as {error}, but its "no such route" is the REST layer's {message, code}: a 404 here is almost
  * always a backend still running a build from before the course lookup existed.
  */
 function apiError(data, status, what) {
   if (data && data.error) return data.error;
-  if (status === 404) return `${what} is not on this society's backend yet. On the PC: python app/build.py --deploy-worker (or --deploy-functions on Supabase).`;
+  if (status === 404) return `${what} is not on the backend yet. On the PC: python app/build.py --deploy-worker`;
   if (data && data.message) return `${what} failed: ${data.message} (${status})`;
   return `${what} failed (${status})`;
 }
@@ -2533,6 +2858,7 @@ function settings() {
   const invite = Y.enabled() ? Y.joinLink(base, false) : null;
   const inviteOrg = Y.enabled() ? Y.joinLink(base, true) : null;
   const phoneCourses = S.state.courses.filter(c => !c.deleted && (c.source || "phone") === "phone");
+  const dstats = S.defaultStats();
   page("Settings", `
     <h2>This phone</h2>
     <div class="card"><div class="row"><div><div class="name">${me ? esc(me.name) : "Nobody yet"}</div><div class="muted small">${me ? "your results show on the home screen" : "say who you are for a personal home screen"}</div></div><a class="btn small" href="#welcome">Change</a></div>
@@ -2551,6 +2877,10 @@ function settings() {
         <button class="btn small" type="button" data-act="resync" style="margin-top:10px">Fetch everything again</button>
         ${DATA.sync && !Y.isDefault() ? `<button class="btn small" type="button" data-act="sync-default">Back to the built-in connection</button>` : ""}
       </form></details></div>
+    <h2>Scoring</h2>
+    <div class="card"><p class="muted small" style="margin:0 0 6px">What a new round asks for beside each score. Every one of these is a single tap on the hole, and anything left off never appears on the scoring screen. A round can differ, and whatever you pick there becomes what the next one starts from.</p>
+      <div class="statpick">${STAT_KINDS.map(k => `<button data-act="def-stat" data-k="${k.key}" class="${dstats[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
+      ${STAT_KEYS.some(k => dstats[k]) ? `<p class="muted small" style="margin:10px 0 0">${STAT_KINDS.filter(k => dstats[k.key]).map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>` : `<p class="muted small" style="margin:10px 0 0">Nothing extra is asked for: scoring is the score and nothing else.</p>`}</div>
     <h2>Theme</h2>
     <div class="card"><p class="muted small" style="margin:0 0 10px">The look of the app itself, and of every poster and player card it makes. A league that has picked its own wears that instead, on its screens and on everything it renders.</p>
       <div class="themes">${themeRadios("apptheme", appTheme().name)}</div></div>
@@ -2596,6 +2926,7 @@ function settings() {
       if (navigator.share) { try { await navigator.share({ title: "Join Hagolf", text: `Join ${cfg.label || "our golf society"} in Hagolf`, url: link }); return; } catch (e) { if (e.name === "AbortError") return; } }
       try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch (e) { prompt("Copy this link", link); }
     }
+    if (b.dataset.act === "def-stat") { S.setDefaultStats({ ...dstats, [b.dataset.k]: !dstats[b.dataset.k] }); return settings(); }
     if (b.dataset.act === "sync-now") { await Y.pushAndPull(); toast(Y.sync.status === "error" ? `Sync problem: ${Y.sync.error}` : "Synced"); settings(); }
     if (b.dataset.act === "resync") { await resyncNow(); }
     if (b.dataset.act === "sync-default") { Y.setConfig(null); settings(); }

@@ -219,15 +219,31 @@ export function header(fig, title, kicker, sub, right = null) {
   return 1.42;
 }
 
-export function footer(fig, text, inchesFromBottom = 0.28) {
+// The mark a free render carries, bottom right. One definition, so a poster and a card wear it identically.
+export const MARK = "hagolf.app";
+const MARK_SIZE = 8;
+
+/** Draws the mark with its baseline block ending `inchesFromBottom` up from the bottom edge. */
+export function drawMark(fig, inchesFromBottom = 0.28) {
+  fig.text(fig.w - MARGIN * fig.w, fig.h - inchesFromBottom, MARK,
+    { size: MARK_SIZE, family: "display", color: fig.T.INK_3, ha: "right", va: "bottom", alpha: 0.8 });
+}
+
+/** Width the footer text may use: the mark sits at the right end of the same line, so it is wrapped clear of it. */
+export function footerWidth(fig, mark = true) {
+  return fig.w * (1 - 2 * MARGIN) - (mark ? fig.measure(MARK, MARK_SIZE, "display") + 0.18 : 0);
+}
+
+export function footer(fig, text, inchesFromBottom = 0.28, mark = true) {
   const M = MARGIN * fig.w;
-  const lines = fig.wrap(text, fig.w - 2 * M, 9);
+  const lines = fig.wrap(text, footerWidth(fig, mark), 9);
   fig.text(M, fig.h - inchesFromBottom, lines.join("\n"), { size: 9, color: fig.T.INK_3, va: "bottom", lineSpacing: 1.5 });
+  if (mark) drawMark(fig, inchesFromBottom);
   return lines.length;
 }
 
-export function footerLines(fig, text) {
-  return fig.wrap(text, fig.w * (1 - 2 * MARGIN), 9).length;
+export function footerLines(fig, text, mark = true) {
+  return fig.wrap(text, footerWidth(fig, mark), 9).length;
 }
 
 export function section(ax, x, y, title, size = 12) {

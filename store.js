@@ -2,6 +2,7 @@
 // leagues, league-round attachments, courses added on phones, course handicaps from club tables, settings.
 // Every record carries updated_at and deleted; the queue remembers which records changed and when.
 import { DATA } from "./data.js";
+import { STAT_KEYS, emptyStat, blankStat } from "./model.js";
 
 const KEY = "hagolf-v2";
 const OLD_KEYS = ["hagolf-v1", "apeliotes-golf-v1"];
@@ -24,7 +25,8 @@ function load() {
   }
   s = s || {};
   const st = { players: s.players || [], rounds: s.rounds || [], leagues: s.leagues || [], leagueRounds: s.leagueRounds || [],
-    courses: s.courses || [], pch: s.pch || [], orphanScores: s.orphanScores || [], held: s.held || [], quarantine: s.quarantine || [],
+    leagueMembers: s.leagueMembers || [],
+    courses: s.courses || [], pch: s.pch || [], orphanScores: s.orphanScores || [], orphanStats: s.orphanStats || [], held: s.held || [], quarantine: s.quarantine || [],
     settings: s.settings || {} };
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
   if (!st.settings.deviceId) st.settings.deviceId = uid();
@@ -35,7 +37,13 @@ function load() {
   for (const r of st.rounds) {
     r.entries = r.entries || [];
     r.removed = r.removed || [];
-    for (const e of r.entries) { e.scoreTs = e.scoreTs || e.scores.map(() => null); e.updated_at = e.updated_at || r.updated_at; }
+    for (const e of [...r.entries, ...r.removed]) {
+      e.scoreTs = e.scoreTs || e.scores.map(() => null);
+      e.stats = e.stats || e.scores.map(() => null);       // one record per hole, or null for a hole with nothing on it
+      e.statsTs = e.statsTs || e.scores.map(() => null);
+      e.trackStats = !!e.trackStats;
+      e.updated_at = e.updated_at || r.updated_at;
+    }
   }
   return st;
 }
@@ -50,7 +58,7 @@ function migrateOld(s) {
       if (r.entries.some(e => (g.members || []).includes(e.playerId))) leagueRounds.push({ league_id: g.id, round_id: r.id, deleted: false, updated_at: ts });
     }
   }
-  const st = { players: s.players || [], rounds: s.rounds || [], leagues, leagueRounds, courses: [], pch: [], orphanScores: [], settings: s.settings || {} };
+  const st = { players: s.players || [], rounds: s.rounds || [], leagues, leagueRounds, courses: [], pch: [], orphanScores: [], orphanStats: [], settings: s.settings || {} };
   for (const list of [st.players, st.rounds, st.leagues, st.leagueRounds]) for (const r of list) { r.deleted = !!r.deleted; r.updated_at = r.updated_at || ts; }
   for (const r of st.rounds) for (const e of r.entries || []) { e.updated_at = ts; e.scoreTs = e.scores.map(v => v === null ? null : ts); }
   localStorage.setItem(KEY, JSON.stringify(st));
@@ -108,10 +116,12 @@ export function quarantine(table, sent, reason) {
   afterPull();
 }
 
-/** A round entered more than 60 days ago is frozen on the server; the phone refuses the edit up front. */
+/**
+ * A card is never locked: whoever played a round can still correct it, however old it is. Kept as a function
+ * because the screens ask it, and because a future league may want to close its own season.
+ */
 export function roundOpen(r) {
-  const t = r.created ? new Date(r.created).getTime() : Date.now();
-  return Date.now() - t < 60 * 86400000;
+  return true;
 }
 
 /** Stamps a record as changed now and queues it. */
@@ -143,20 +153,41 @@ export function nameKey(name) {
   return String(name).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-/** Player ids derive from the name at creation, so two phones adding the same person get one record, not two. */
-export function playerId(name) {
-  const k = nameKey(name);
+/**
+ * A contact id used to be a hash of the name alone, so that two phones adding the same person converged on one
+ * record. That is right for one group sharing everything and wrong for a product: everybody who ever typed
+ * "Jan de Vries" got the same row, so your edit to your friend's handicap landed on a stranger's round.
+ *
+ * The id is now scoped to whoever's address book it is in. Two accounts adding the same golfer get two contacts,
+ * which is correct -- they are two people's private records of one person -- and `linkedAccount` is what puts
+ * them back together on a leaderboard once that golfer claims themself.
+ */
+export function playerId(name, owner = null) {
+  const k = (owner ? owner + "\u0000" : "") + nameKey(name);
   let h1 = 5381, h2 = 52711;
   for (let i = 0; i < k.length; i++) { const c = k.charCodeAt(i); h1 = (h1 * 33) ^ c; h2 = (h2 * 33) ^ c; }
   return "p" + (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
+/** The account this phone is signed in as, or null. Set by sync.js once a session exists. */
+export function myAccount() { return state.settings.accountId || null; }
+
 export function players() { return live(state.players); }
 
-/** By current name or any earlier spelling (aliases), so a renamed player is still found. */
+/**
+ * By current name or any earlier spelling (aliases), within my own address book only. Searching every contact
+ * would hand me somebody else's record of a golfer with the same name, and my edits to it would land on their
+ * rounds -- which is the whole reason contacts have an owner.
+ *
+ * A contact with no owner predates accounts. It is treated as mine so that signing in does not fork the roster;
+ * the migration gives those rows an owner for good.
+ */
 export function findPlayer(name) {
-  const k = nameKey(name);
-  return state.players.find(p => !p.deleted && (nameKey(p.name) === k || (p.aliases || []).includes(k))) || null;
+  const k = nameKey(name), mine = myAccount();
+  const matches = p => !p.deleted && (nameKey(p.name) === k || (p.aliases || []).includes(k));
+  return state.players.find(p => matches(p) && p.owner === mine)
+    || state.players.find(p => matches(p) && !p.owner)
+    || null;
 }
 
 /** Returns the roster player for a name, creating one when new; updates the index and gender they last used. */
@@ -164,7 +195,8 @@ export function upsertPlayer(name, hi, gender) {
   let p = findPlayer(name);
   const ts = now();
   if (!p) {
-    p = { id: playerId(name), name: name.trim(), hi, gender: gender || "m", created: today(), hiUpdated: ts, aliases: [], deleted: false };
+    p = { id: playerId(name, myAccount()), owner: myAccount(), linkedAccount: null, name: name.trim(), hi,
+      gender: gender || "m", created: today(), hiUpdated: ts, aliases: [], deleted: false };
     const ghost = state.players.find(x => x.id === p.id);
     if (ghost) { Object.assign(ghost, p, { created: ghost.created || p.created, aliases: ghost.aliases || [] }); p = ghost; console.info("player restored", p.name); }
     else state.players.push(p);
@@ -230,11 +262,13 @@ export function mergePlayers(keepId, dropId) {
     const j = r.entries.findIndex(e => e.playerId === keepId);
     removeEntry(r, i);
     if (j >= 0) continue;  // both in the round: keep the record already under the kept name
-    const e = { ...old, playerId: keepId, name: keep.name, deleted: false, updated_at: now(), scores: [...old.scores], scoreTs: old.scores.map(v => v === null ? null : now()) };
+    const e = { ...old, playerId: keepId, name: keep.name, deleted: false, updated_at: now(), scores: [...old.scores], scoreTs: old.scores.map(v => v === null ? null : now()),
+      stats: [...(old.stats || old.scores.map(() => null))], statsTs: old.scores.map((_, h) => (old.stats || [])[h] ? now() : null) };
     r.removed = r.removed.filter(x => x.playerId !== keepId);
     r.entries.push(e);
     mark("round_entries", `${r.id}|${keepId}`, e.updated_at);
     e.scores.forEach((v, h) => { if (v !== null) mark("scores", `${r.id}|${keepId}|${h}`, e.scoreTs[h]); });
+    e.stats.forEach((v, h) => { if (v) mark("hole_stats", `${r.id}|${keepId}|${h}`, e.statsTs[h]); });
   }
   for (const x of state.pch.filter(y => y.player_id === dropId && !y.deleted)) {
     if (getPch(keepId, x.course, x.tee) === null) setPch(keepId, x.course, x.tee, x.ch);
@@ -354,7 +388,7 @@ export function rounds() {
 }
 
 export function createRound({ course, name, date, defaultTee, allowance }) {
-  const r = { id: uid(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup",
+  const r = { id: uid(), owner: myAccount(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup",
     hole: 0, entries: [], removed: [], created: now(), deleted: false };
   state.rounds.unshift(r);
   touch("rounds", r);
@@ -390,20 +424,70 @@ export function setScore(r, e, h, v) {
   save();
 }
 
+/**
+ * The extras on one hole of one player: putts, fairway, and the rest, merged into whatever is already there.
+ * Its own row and its own clock, apart from the score, so the phone keeping the card and the phone adding its
+ * owner's putts can both write the same hole without one quietly undoing the other.
+ */
+export function setStat(r, e, h, patch) {
+  const next = { ...blankStat(), ...(e.stats[h] || {}), ...patch };
+  e.stats[h] = emptyStat(next) ? null : next;
+  e.statsTs[h] = now();
+  mark("hole_stats", `${r.id}|${e.playerId}|${h}`, e.statsTs[h]);
+  save();
+}
+
+/** Whether this player's extras are being kept. Shared, not per phone: two scorers must agree on whose card has them. */
+export function setTrackStats(r, e, on) {
+  e.trackStats = !!on;
+  saveEntry(r, e);
+}
+
+/**
+ * Which extras this round is keeping on this phone. The switches in Settings are the default; a round may
+ * differ, and remembers it, so the Sunday medal can carry putts without the Tuesday roll-up having to.
+ */
+export function statsFor(rid) {
+  const per = state.settings.statsRound || {};
+  return { ...defaultStats(), ...(per[rid] || {}) };
+}
+
+export function setStatsFor(rid, kinds) {
+  state.settings.statsRound = state.settings.statsRound || {};
+  state.settings.statsRound[rid] = kinds;
+  state.settings.stats = { ...kinds };   // what you chose today is what the next round starts from, like tees and indexes
+  save();
+}
+
+/** The phone-wide default: off everywhere until somebody turns something on. */
+export function defaultStats() {
+  const on = state.settings.stats || {};
+  return Object.fromEntries(STAT_KEYS.map(k => [k, !!on[k]]));
+}
+
+export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
+
+/** True when this round is keeping anything at all on this phone. */
+export const anyStatsOn = rid => Object.values(statsFor(rid)).some(Boolean);
+
 export function deleteRound(id) {
   const r = state.rounds.find(x => x.id === id);
-  if (r) { r.deleted = true; delete state.settings.holes[id]; touch("rounds", r); save(); }
+  if (r) { r.deleted = true; delete state.settings.holes[id]; if (state.settings.statsRound) delete state.settings.statsRound[id]; touch("rounds", r); save(); }
 }
 
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */
-export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1 }) {
+export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1, trackStats = null }) {
   const known = findPlayer(name);  // a scan of an old card must not rewrite the index they play off today
   const stale = known && round.date && lastPlayedDate(known.id, round.id) > round.date;
   const p = upsertPlayer(name, stale ? null : hi, gender);
   const ghost = round.removed.find(x => x.playerId === p.id);  // taken out earlier: their scores come back with them
   round.removed = round.removed.filter(x => x.playerId !== p.id);
   const e = { playerId: p.id, name: p.name, hi, tee, gender: gender || "m", courseHandicap: courseHandicap ?? null, group, fromHole,
-    scores: ghost ? ghost.scores : new Array(n).fill(null), scoreTs: ghost ? ghost.scoreTs : new Array(n).fill(null), penalties: [], updated_at: now() };
+    scores: ghost ? ghost.scores : new Array(n).fill(null), scoreTs: ghost ? ghost.scoreTs : new Array(n).fill(null),
+    stats: ghost ? ghost.stats : new Array(n).fill(null), statsTs: ghost ? ghost.statsTs : new Array(n).fill(null),
+    // Keeping putts is the phone owner's habit, so it follows them and nobody else until somebody asks.
+    trackStats: trackStats === null ? (ghost ? !!ghost.trackStats : p.id === state.settings.meId) : !!trackStats,
+    penalties: [], updated_at: now() };
   round.entries.push(e);
   mark("round_entries", `${round.id}|${e.playerId}`, e.updated_at);
   save();
@@ -421,23 +505,66 @@ export function removeEntry(r, i) {
 }
 
 /** What model.compute expects from a stored round. */
-export function toModelRound(round) {
+/** The identity a contact belongs to: their own account once they have claimed themselves, otherwise itself. */
+export function identityOf(id) {
+  const p = state.players.find(x => x.id === id);
+  return (p && p.linkedAccount) || id;
+}
+
+/** The spelling to show for an identity: the newest among the contacts pointing at it. */
+export function identityName(key, fallback) {
+  const mine = state.players.filter(p => !p.deleted && (p.linkedAccount === key || p.id === key));
+  if (!mine.length) return fallback;
+  mine.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  return mine[0].name || fallback;
+}
+
+/**
+ * `collapse` is what a league table needs: three people may each hold a contact for the same golfer, and those
+ * are one line, not three. It rewrites each entry's id to its identity, which is all the model compares on, so
+ * standings, head-to-heads and the stats posters all get it without knowing about contacts at all.
+ *
+ * A round's own screens never collapse -- they address entries by contact id, and the card belongs to whoever
+ * was written on it that day.
+ */
+export function toModelRound(round, collapse = false) {
+  const seen = new Set();
+  const entries = [];
+  for (const e of round.entries) {
+    const id = collapse ? identityOf(e.playerId) : e.playerId;
+    if (seen.has(id)) continue;   // two contacts for one golfer on one card: a data error, and not two players
+    seen.add(id);
+    entries.push({ id, name: collapse ? identityName(id, e.name) : e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
+      courseHandicap: e.courseHandicap ?? getPch(e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1,
+      stats: e.stats || [], trackStats: !!e.trackStats });
+  }
   return {
     name: round.name, date: round.date, defaultTee: round.defaultTee, allowance: round.allowance,
     final: round.status === "done",
-    entries: round.entries.map(e => ({ id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
-      courseHandicap: e.courseHandicap ?? getPch(e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1 })),
+    entries,
   };
 }
 
 // ---------------------------------------------------------------- leagues
 export function leagues() { return live(state.leagues).sort((a, b) => a.name.localeCompare(b.name)); }
 
+/** The leagues this account belongs to, as a set of ids. What a phone is allowed to pull follows from it. */
+export function myLeagueIds() {
+  const me = myAccount();
+  return new Set(state.leagueMembers.filter(m => !m.deleted && m.account_id === me).map(m => m.league_id));
+}
+
+/** My membership row in one league, which is what says whether I have claimed a player in it. */
+export function myMembership(leagueId) {
+  const me = myAccount();
+  return state.leagueMembers.find(m => !m.deleted && m.league_id === leagueId && m.account_id === me) || null;
+}
+
 export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "soccerpts", "gp", "gpstroke"];
 export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
-  const g = { id: uid(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null };
+  const g = { id: uid(), owner: myAccount(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null };
   state.leagues.push(g);
   touch("leagues", g);
   save();
@@ -498,12 +625,20 @@ export function importJSON(text) {
   for (const r of d.rounds) {
     r.entries = r.entries || []; r.removed = r.removed || [];
     r.updated_at = r.updated_at || stamp;
-    for (const e of [...r.entries, ...r.removed]) { e.scores = e.scores || []; e.scoreTs = e.scoreTs || e.scores.map(v => v === null ? null : stamp); e.updated_at = e.updated_at || stamp; }
+    for (const e of [...r.entries, ...r.removed]) {
+      e.scores = e.scores || []; e.scoreTs = e.scoreTs || e.scores.map(v => v === null ? null : stamp);
+      e.stats = e.stats || e.scores.map(() => null); e.statsTs = e.statsTs || e.stats.map(x => x ? stamp : null);
+      e.updated_at = e.updated_at || stamp;
+    }
     const mine = state.rounds.find(x => x.id === r.id);
     if (!mine) {
       state.rounds.push(r); added++;
       mark("rounds", r.id, r.updated_at);
-      r.entries.forEach(e => { mark("round_entries", `${r.id}|${e.playerId}`, e.updated_at); e.scores.forEach((v, h) => { if (v !== null) mark("scores", `${r.id}|${e.playerId}|${h}`, e.scoreTs[h]); }); });
+      r.entries.forEach(e => {
+        mark("round_entries", `${r.id}|${e.playerId}`, e.updated_at);
+        e.scores.forEach((v, h) => { if (v !== null) mark("scores", `${r.id}|${e.playerId}|${h}`, e.scoreTs[h]); });
+        e.stats.forEach((v, h) => { if (v) mark("hole_stats", `${r.id}|${e.playerId}|${h}`, e.statsTs[h]); });
+      });
     } else {
       added += mergeRoundInto(mine, r) ? 1 : 0;
     }
@@ -525,6 +660,8 @@ function mergeRoundInto(mine, theirs) {
   }
   for (const te of [...theirs.entries, ...(theirs.removed || [])]) {
     te.scoreTs = te.scoreTs || te.scores.map(v => v === null ? null : theirs.updated_at);
+    te.stats = te.stats || te.scores.map(() => null);
+    te.statsTs = te.statsTs || te.stats.map(x => x ? theirs.updated_at : null);
     const i = mine.entries.findIndex(e => e.playerId === te.playerId);
     const j = mine.removed.findIndex(e => e.playerId === te.playerId);
     const me_ = i >= 0 ? mine.entries[i] : (j >= 0 ? mine.removed[j] : null);
@@ -532,11 +669,12 @@ function mergeRoundInto(mine, theirs) {
       (te.deleted ? mine.removed : mine.entries).push(te);
       mark("round_entries", `${mine.id}|${te.playerId}`, te.updated_at);
       te.scores.forEach((v, h) => { if (v !== null) mark("scores", `${mine.id}|${te.playerId}|${h}`, te.scoreTs[h]); });
+      te.stats.forEach((v, h) => { if (v) mark("hole_stats", `${mine.id}|${te.playerId}|${h}`, te.statsTs[h]); });
       changed = true;
       continue;
     }
     if ((te.updated_at || "") > (me_.updated_at || "")) {
-      const keep = { scores: me_.scores, scoreTs: me_.scoreTs };
+      const keep = { scores: me_.scores, scoreTs: me_.scoreTs, stats: me_.stats, statsTs: me_.statsTs };
       Object.assign(me_, te, keep);
       if (te.deleted && i >= 0) { mine.entries.splice(i, 1); mine.removed.push(me_); }
       if (!te.deleted && j >= 0) { mine.removed.splice(j, 1); mine.entries.push(me_); }
@@ -546,6 +684,11 @@ function mergeRoundInto(mine, theirs) {
       if (v === null || (te.scoreTs[h] || "") <= (me_.scoreTs[h] || "")) return;
       me_.scores[h] = v; me_.scoreTs[h] = te.scoreTs[h];
       mark("scores", `${mine.id}|${te.playerId}|${h}`, te.scoreTs[h]); changed = true;
+    });
+    te.stats.forEach((v, h) => {
+      if (!v || (te.statsTs[h] || "") <= (me_.statsTs[h] || "")) return;
+      me_.stats[h] = v; me_.statsTs[h] = te.statsTs[h];
+      mark("hole_stats", `${mine.id}|${te.playerId}|${h}`, te.statsTs[h]); changed = true;
     });
   }
   return changed;
@@ -578,6 +721,21 @@ export function toYAML(round) {
     if (e.penalties && e.penalties.length) {
       L.push("  penalties:");
       for (const p of e.penalties) L.push(`  - {hole: ${p.hole}, strokes: ${p.strokes}, reason: ${yamlStr(p.reason || "")}}`);
+    }
+    // The desktop kit reads players with .get() and ignores what it does not know, so carrying the extras
+    // across costs it nothing and means an exported round is not a lossy copy of the one on the phone.
+    if ((e.stats || []).some(Boolean)) {
+      L.push("  hole_stats:");
+      e.stats.forEach((x, h) => {
+        if (!x) return;
+        const f = [`hole: ${h + 1}`];
+        if (x.putts !== null && x.putts !== undefined) f.push(`putts: ${x.putts}`);
+        if (x.fairway) f.push(`fairway: ${x.fairway}`);
+        if (x.gir !== null && x.gir !== undefined) f.push(`gir: ${x.gir ? "true" : "false"}`);
+        if (x.penaltyShots) f.push(`penalty_shots: ${x.penaltyShots}`);
+        if (x.bunker) f.push("bunker: true");
+        L.push(`  - {${f.join(", ")}}`);
+      });
     }
   }
   return L.join("\n") + "\n";
