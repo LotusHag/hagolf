@@ -96,6 +96,12 @@ button { font: inherit; color: inherit; }
 .banner.accent { background: var(--green-soft); border-color: transparent; color: var(--green); font-weight: 600; }
 .banner.warn { background: var(--gold-soft); border-color: transparent; color: var(--gold-ink); }
 .banner.muted { color: var(--ink3); }
+/* a banner that is a button still wraps its sentence, rather than running off the side of the phone */
+button.banner { width: 100%; text-align: left; white-space: normal; font: inherit; font-weight: 600; }
+/* a banner with something to tap: the sentence takes the room it needs and the action stays whole beside it */
+.banner.act { display: flex; align-items: center; gap: 10px; }
+.banner.act > span { flex: 1 1 auto; }
+.banner.act > .btn { flex: 0 0 auto; }
 .ios-share { display: inline-block; border: 1px solid var(--ink3); border-radius: 4px; padding: 0 5px; font-size: 12px; }
 
 .hero { padding: 14px 4px 4px; }

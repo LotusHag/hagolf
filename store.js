@@ -3,6 +3,7 @@
 // Every record carries updated_at and deleted; the queue remembers which records changed and when.
 import { DATA } from "./data.js";
 import { STAT_KEYS, emptyStat, blankStat } from "./model.js";
+import { mirror } from "./idb.js";
 
 const KEY = "hagolf-v2";
 const OLD_KEYS = ["hagolf-v1", "apeliotes-golf-v1"];
@@ -74,6 +75,7 @@ function migrateOld(s) {
 
 export function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { alert("Could not save: the browser storage is full or blocked."); }
+  mirror();   // the second copy, in IndexedDB, for the day the browser empties localStorage
   if (onSave) onSave();
 }
 
@@ -81,6 +83,7 @@ export function save() {
 export function afterPull() {
   reconcileNames();  // a phone on an older build can push an entry still under a since-renamed spelling
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* full */ }
+  mirror();
 }
 
 // ---------------------------------------------------------------- change queue: { table: { key: updated_at } }
@@ -146,6 +149,24 @@ const live = list => list.filter(r => !r.deleted);
 // ---------------------------------------------------------------- settings
 export function setSetting(k, v) { state.settings[k] = v; save(); }
 export function me() { return state.settings.meId ? players().find(p => p.id === state.settings.meId) || null : null; }
+
+/**
+ * Makes the signed-in golfer a contact in their own address book, linked to their own account, and the one this
+ * phone means by "me". Their name on a card and their line in a league both come from this record, and a round
+ * they score for themselves has an entry claimed by them from the start.
+ */
+export function linkMe(account) {
+  const p = upsertPlayer(account.name, account.hi ?? null, account.gender || "m");
+  if (p.linkedAccount !== account.id || p.owner !== account.id) {
+    p.linkedAccount = account.id;
+    p.owner = p.owner || account.id;
+    touch("players", p);
+  }
+  state.settings.meId = p.id;
+  state.settings.welcomed = true;
+  save();
+  return p;
+}
 
 // ---------------------------------------------------------------- roster
 /** Case, accent and punctuation insensitive key so "Maurits van 't Hag" and "maurits van t hag" are one player. */
@@ -509,6 +530,28 @@ export function removeEntry(r, i) {
 export function identityOf(id) {
   const p = state.players.find(x => x.id === id);
   return (p && p.linkedAccount) || id;
+}
+
+/**
+ * The index a contact plays off today. A golfer who has claimed themselves keeps their own index on their
+ * account, and that is the truth; this phone's copy is what it was the last time it typed them in. The entry
+ * still snapshots whatever is used, so a round reproduces itself after the index moves.
+ */
+export function currentIndex(p) {
+  return p && p.hiLinked !== null && p.hiLinked !== undefined ? p.hiLinked : (p ? p.hi : null);
+}
+
+/** What the backend says the linked golfers' own indexes are, by account id; kept on the contact, never pushed. */
+export function applyLinkedIndexes(byAccount) {
+  let changed = 0;
+  for (const p of state.players) {
+    if (!p.linkedAccount || !(p.linkedAccount in byAccount)) continue;
+    const a = byAccount[p.linkedAccount];
+    const hi = a && a.hi !== null && a.hi !== undefined ? Number(a.hi) : null;
+    if (p.hiLinked !== hi) { p.hiLinked = hi; changed++; }
+  }
+  if (changed) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* full */ } mirror(); }
+  return changed;
 }
 
 /** The spelling to show for an identity: the newest among the contacts pointing at it. */

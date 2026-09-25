@@ -4,6 +4,7 @@
 // the server's own clock. Rows carry updated_at from the phone that wrote them; the newest write wins.
 import { DATA } from "./data.js";
 import * as S from "./store.js";
+import * as A from "./auth.js";
 
 const ts = s => s ? new Date(s).getTime() : 0;  // Postgres returns +00:00, phones write Z: compare as numbers
 const iso = s => s ? new Date(s).toISOString() : s;
@@ -133,9 +134,13 @@ const TABLES = {
     },
   },
   leagues: {
+    // kind, visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
+    // them only through /league/<id>/visibility, so a phone editing the name offline cannot undo them.
     collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
       created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null,
+      kind: r.kind || "friendly", visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0,
+      deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_rounds: {
     collect: keys => S.state.leagueRounds.filter(x => keys.has(`${x.league_id}|${x.round_id}`)).map(x => ({ league_id: x.league_id, round_id: x.round_id,
@@ -220,13 +225,30 @@ export function setConfig(c) {
 
 export function enabled() { return !!sync.config; }
 
-function headers(extra = {}) {
-  return { apikey: sync.config.anonKey, Authorization: `Bearer ${sync.config.anonKey}`, "Content-Type": "application/json", ...extra };
+/**
+ * Signed in, the session token goes as the bearer and the server scopes everything to that account. Not signed
+ * in, the shared key goes instead, which the server still accepts until REQUIRE_ACCOUNT retires it.
+ */
+async function headers(extra = {}) {
+  const access = await A.bearer();
+  return { apikey: sync.config.anonKey, Authorization: `Bearer ${access || sync.config.anonKey}`, "Content-Type": "application/json", ...extra };
 }
 
-async function rest(path, init = {}) {
-  const res = await fetch(`${sync.config.url}/rest/v1/${path}`, { ...init, headers: headers(init.headers) });
-  if (!res.ok) { const e = new Error(`${init.method || "GET"} ${path.split("?")[0]}: ${res.status} ${(await res.text()).slice(0, 200)}`); e.status = res.status; throw e; }
+async function rest(path, init = {}, retried = false) {
+  const res = await fetch(`${sync.config.url}/rest/v1/${path}`, { ...init, headers: await headers(init.headers) });
+  if (res.status === 401 && A.signedIn() && !retried) {
+    // The access token ran out, which on a phone that lives offline is routine. One refresh, one retry; if the
+    // refresh itself is refused the session is over and A.refresh has already forgotten it.
+    try { await A.refresh(); } catch (e) { /* fall through to the 401 below */ }
+    if (A.signedIn()) return rest(path, init, true);
+  }
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 200);
+    const e = new Error(`${init.method || "GET"} ${path.split("?")[0]}: ${res.status} ${body}`);
+    e.status = res.status;
+    try { e.reason = JSON.parse(body).reason || null; } catch (x) { e.reason = null; }
+    throw e;
+  }
   const text = await res.text();
   return text.trim() ? JSON.parse(text) : null;
 }
@@ -265,7 +287,10 @@ async function doPush() {
           }
           S.clearDirty(table, sent);
         } catch (e) {
-          if (e.status && e.status >= 400 && e.status < 500) { S.quarantine(table, sent, e.message); refused = e.message; continue; }  // the server will never take these: park them, keep going
+          // A 401 is about who is asking, not about the rows: the queue is kept whole and goes out once the phone
+          // is signed in again. Every other 4xx is the server saying it will never take these, so they are parked.
+          if (e.status === 401 || e.status === 429) throw e;
+          if (e.status && e.status >= 400 && e.status < 500) { S.quarantine(table, sent, e.message); refused = e.message; continue; }
           throw e;
         }
       }
@@ -277,8 +302,8 @@ async function doPush() {
     emit({ status: true, changed });
     return;
   } catch (e) {
-    sync.status = "error";
-    sync.error = e.message;
+    sync.status = e.status === 401 ? "signedout" : "error";
+    sync.error = e.status === 401 ? "Sign in to sync this phone" : e.message;
     console.warn("sync push", e);
   } finally {
     sync.pushing = false;
@@ -352,9 +377,15 @@ async function doPull(again = false) {
     sync.status = "idle";
     sync.error = null;
     sync.lastPull = new Date().toISOString();
+    // The golfers in my address book who have claimed themselves keep their own index on their account; a
+    // round they are added to prefills from that rather than from this phone's copy. Best effort: a failure
+    // here is not a sync failure.
+    if (A.signedIn()) {
+      try { const r = await A.api("/account/linked"); if (r && r.linked && S.applyLinkedIndexes(r.linked)) changed = true; } catch (e) { /* offline, or an older Worker */ }
+    }
   } catch (e) {
-    sync.status = "error";
-    sync.error = e.message;
+    sync.status = e.status === 401 ? "signedout" : "error";
+    sync.error = e.status === 401 ? "Sign in to sync this phone" : e.message;
     console.warn("sync pull", e);
   } finally {
     sync.pulling = false;
@@ -385,6 +416,7 @@ export async function resync() {
 export function start() {
   sync.config = config();
   clearInterval(sync.timer);
+  A.setOrigin(sync.config ? sync.config.url : null);   // sign-in happens against the same backend the data does
   if (!sync.config) { sync.status = "off"; emit({ status: true }); return; }
   sync.status = "idle";
   // an empty phone that still has pull bookmarks (the app was reinstalled, or the data was cleared) would otherwise never see anything
@@ -429,5 +461,16 @@ export function parseJoin(payload) {
   return JSON.parse(decodeURIComponent(escape(atob(b64))));
 }
 
+// A different account sees different rows, so signing in or out reads everything again. A token refresh also
+// fires this and must not: it is the same account, and re-pulling every fifteen minutes would be the whole
+// database on a loop.
+let lastAccount = A.account() ? A.account().id : null;
+A.onChange(s => {
+  const id = s.account ? s.account.id : null;
+  if (id === lastAccount) return;
+  lastAccount = id;
+  localStorage.removeItem(CURSOR_KEY);
+  if (sync.config) pushAndPull();
+});
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pushAndPull(); });
 window.addEventListener("online", () => pushAndPull());

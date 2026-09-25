@@ -223,18 +223,27 @@ export function header(fig, title, kicker, sub, right = null) {
 export const MARK = "hagolf.app";
 const MARK_SIZE = 8;
 
+// Whether renders carry the mark at all. Paying removes it; the app sets this from what the account holds, once,
+// rather than every poster and card asking. On until told otherwise, so a phone with no account is marked.
+let MARK_ON = true;
+let MARK_TEXT = MARK;   // a club's members carry the club's name here instead
+export function setMarked(on) { MARK_ON = !!on; }
+export function setMarkText(text) { MARK_TEXT = String(text || MARK).slice(0, 40); }
+export const marked = () => MARK_ON;
+
 /** Draws the mark with its baseline block ending `inchesFromBottom` up from the bottom edge. */
 export function drawMark(fig, inchesFromBottom = 0.28) {
-  fig.text(fig.w - MARGIN * fig.w, fig.h - inchesFromBottom, MARK,
+  if (!MARK_ON) return;
+  fig.text(fig.w - MARGIN * fig.w, fig.h - inchesFromBottom, MARK_TEXT,
     { size: MARK_SIZE, family: "display", color: fig.T.INK_3, ha: "right", va: "bottom", alpha: 0.8 });
 }
 
 /** Width the footer text may use: the mark sits at the right end of the same line, so it is wrapped clear of it. */
-export function footerWidth(fig, mark = true) {
-  return fig.w * (1 - 2 * MARGIN) - (mark ? fig.measure(MARK, MARK_SIZE, "display") + 0.18 : 0);
+export function footerWidth(fig, mark = MARK_ON) {
+  return fig.w * (1 - 2 * MARGIN) - (mark ? fig.measure(MARK_TEXT, MARK_SIZE, "display") + 0.18 : 0);
 }
 
-export function footer(fig, text, inchesFromBottom = 0.28, mark = true) {
+export function footer(fig, text, inchesFromBottom = 0.28, mark = MARK_ON) {
   const M = MARGIN * fig.w;
   const lines = fig.wrap(text, footerWidth(fig, mark), 9);
   fig.text(M, fig.h - inchesFromBottom, lines.join("\n"), { size: 9, color: fig.T.INK_3, va: "bottom", lineSpacing: 1.5 });

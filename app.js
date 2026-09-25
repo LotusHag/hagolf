@@ -4,9 +4,12 @@
 import { DATA } from "./data.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
+import * as A from "./auth.js";
+import * as E from "./entitlements.js";
+import * as N from "./notify.js";
 import { compute, computeNine, halves, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, headToHead, leagueStats, rivals, SCORE_BUCKETS, handicapFor, prepareCourse, coursesFromClub, validateCourse, slugify, outcome, stableford, fmtToPar, fmtSigned, fmtHcp, fmtIndex, fix, NO_SCORE,
   STAT_KINDS, STAT_KEYS, hasFairway, girFrom, statSummary, fmtPct, strokesGained, leagueCards } from "./model.js";
-import { loadFonts, makeTheme } from "./draw.js";
+import { loadFonts, makeTheme, setMarked, setMarkText } from "./draw.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster, STANDINGS_TITLES } from "./posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster } from "./statsposters.js";
 import { renderCards } from "./cards.js";
@@ -42,7 +45,9 @@ const basisUnit = b => b === "points" ? "points" : b === "gross" ? "gross stroke
 // that wins over the phone's setting wherever the league is on screen or being rendered. `hagolf` is the
 // fallback -- it is the design system app.css is written in, so an unset phone looks exactly as it always did.
 const themeNamed = n => DATA.themes.find(t => t.name === n) || null;
-const appTheme = () => themeNamed(S.state.settings.theme) || themeNamed("hagolf") || DATA.themes[0];
+// A club's members wear the club's look, unless they have picked their own: the club sets the default, not the law.
+const clubTheme = () => { const c = A.account() && A.account().club; return c && c.theme && !S.state.settings.themeChosen ? themeNamed(c.theme) : null; };
+const appTheme = () => clubTheme() || themeNamed(S.state.settings.theme) || themeNamed("hagolf") || DATA.themes[0];
 const leagueTheme = g => (g && themeNamed(g.theme)) || null;
 const themeFor = g => leagueTheme(g) || appTheme();
 /** The theme of the first league a round counts for that has picked one, else the phone's. */
@@ -108,7 +113,9 @@ const h2tip = (title, text) => `<details class="tip"><summary><h2>${esc(title)}<
 const tip = (text, label = "What this means") => `<details class="tip solo"><summary>${ibtn}<span>${esc(label)}</span></summary>${tipBody(text)}</details>`;
 let toastTimer = null;
 const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, h2hBasis: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, mineOnly: false, plSort: {},
-  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {} };
+  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {},
+  // Which ways in the backend offers. Google alone until it says otherwise, which is what it says by default.
+  authMethods: ["google"] };
 
 function toast(msg, ms = 2600, action = null) {
   let t = document.getElementById("toast");
@@ -181,7 +188,8 @@ function bind(fn) {
 
 function syncDot() {
   const s = Y.sync.status;
-  const title = { off: "Solo phone: not connected to a shared database", idle: "Synced", syncing: "Syncing", error: "Sync problem: " + (Y.sync.error || "") }[s];
+  const title = { off: "Solo phone: not connected to a backend", idle: "Synced", syncing: "Syncing", signedout: "Signed out: sign in to keep syncing",
+    error: "Sync problem: " + (Y.sync.error || "") }[s];
   return `<a class="dot ${s}" href="#settings" title="${esc(title)}" aria-label="${esc(title)}"></a>`;
 }
 
@@ -236,30 +244,151 @@ function liveBoard(r) {
 }
 
 // ---------------------------------------------------------------- welcome and join
+/**
+ * Who is holding the phone. Signing in is what makes the answer travel -- your rounds, your league line and
+ * your card become yours on every phone -- but it is never required on the day: the name form still works
+ * without an account, exactly as before, and "Skip for now" still works too.
+ */
 function welcome() {
   const ps = S.players().sort((a, b) => a.name.localeCompare(b.name));
   const c = Y.config();
+  const acct = A.account();
+  const pending = ui.signinEmail;   // an address a code was just sent to
+  const idx = a => a.hi !== null && a.hi !== undefined ? ` · index ${fmtIndex(Number(a.hi))}` : "";
+  const signin = !c ? "" : acct
+    ? `<div class="card"><div class="name">Signed in as ${esc(acct.email)}</div><div class="muted small">${acct.name ? esc(acct.name) + idx(acct) : "Your name and handicap are not on the account yet: fill them in below."}</div></div>`
+    : pending
+    ? `<form id="codef" class="card form open"><h2>Check your email</h2>
+        <p class="muted small">A code and a link went to <b>${esc(pending)}</b>. Type the code here, or tap the link on this phone. From an app on the home screen, the code is the one that works.</p>
+        <label>Code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" required></label>
+        <button class="btn primary" type="submit">Sign in</button>
+        <p class="center"><a class="muted small" href="#welcome" data-act="signin-again">Use a different address</a></p></form>`
+    : `<form id="signinf" class="card form open"><h2>Sign in</h2>
+        <p class="muted small">There is no password. Your rounds and leagues follow you to any phone.</p>
+        <div id="gbtn"></div>
+        ${ui.authMethods.includes("email") ? `<label>Email<input name="email" type="email" inputmode="email" autocapitalize="off" autocomplete="email webauthn" placeholder="you@example.com" required></label>
+        <button class="btn primary" type="submit">Email me a code</button>` : ""}
+        ${ui.authMethods.includes("passkey") && A.passkeysAvailable() ? `<button class="btn" type="button" data-act="passkey" style="margin-top:8px">Use a passkey on this phone</button>` : ""}
+        <p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></form>`;
+  const named = acct && acct.name;
   page("Hagolf", `<div class="welcome">
     <h1>Who are you?</h1>
-    <p class="muted">Pick your name so the app can show your rounds, your league line and your card. ${c ? `Connected to <b>${esc(c.label || "the shared database")}</b>.` : "This phone is not connected to a shared database yet; that can be set up later in Settings."}</p>
-    ${ps.length ? `<div class="chips-wrap" style="margin:12px 0">${ps.map(p => `<button class="pchip" data-act="me" data-id="${p.id}">${esc(p.name)}<small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
-    <form id="mef" class="card form open"><h2>${ps.length ? "Not in the list" : "Your name"}</h2>
+    <p class="muted">${!c ? "This phone is not connected to a backend yet; that can be set up later in Settings." : acct ? "" : "Sign in so your results are yours on every phone, or just say who you are on this one."}</p>
+    ${signin}
+    ${!named && ps.length ? `<div class="chips-wrap" style="margin:12px 0">${ps.map(p => `<button class="pchip" data-act="me" data-id="${p.id}">${esc(p.name)}<small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
+    ${named ? "" : `<form id="mef" class="card form open"><h2>${ps.length && !acct ? "Not in the list" : "Your name"}</h2>
       <label>Name<input name="name" autocapitalize="words" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
       <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" placeholder="18,4 or +2.1" required></label>
       <label>Rating<select name="gender"><option value="m">Men's</option><option value="f">Women's</option></select></label></div>
-      <button class="btn primary" type="submit">That's me</button></form>
-    <p class="center"><a class="muted small" href="#skipme">Skip for now</a></p></div>`, { back: "", brand: true });
-  bind(ev => {
-    const b = ev.target.closest("[data-act=me]");
-    if (b) { S.state.settings.meId = b.dataset.id; S.state.settings.welcomed = true; S.save(); go("#home"); }
+      <button class="btn primary" type="submit">That's me</button></form>`}
+    ${named ? `<button class="btn primary big" data-act="link-me">Continue as ${esc(acct.name.split(" ")[0])} ›</button>` : `<p class="center"><a class="muted small" href="#skipme">Skip for now</a></p>`}</div>`, { back: "", brand: true });
+
+  // A signed-in account with a name is a contact in its own book, linked to itself, and what this phone means by "me".
+  const settle = a => { S.linkMe(a); toast(`Signed in as ${a.email}`); go("#home"); };
+  bind(async ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    if (b.dataset.act === "signin-again") { ui.signinEmail = null; return welcome(); }
+    if (b.dataset.act === "link-me") return settle(A.account());
+    if (b.dataset.act === "passkey") {
+      const email = (document.querySelector("#signinf input[name=email]") || {}).value;
+      let a;
+      try { a = await A.signInWithPasskey(email ? email.trim() : null); }
+      catch (e) { return toast(e.name === "NotAllowedError" ? "No passkey was used" : e.message, 5000); }
+      return a.name ? settle(a) : welcome();
+    }
+    if (b.dataset.act === "me") {
+      const p = S.state.players.find(x => x.id === b.dataset.id);
+      if (acct && p) {   // an account without a name yet, picking an existing spelling of it
+        try { return settle(await A.update({ name: p.name, hi: p.hi, gender: p.gender || "m" })); } catch (e) { return toast(e.message, 5000); }
+      }
+      S.state.settings.meId = b.dataset.id; S.state.settings.welcomed = true; S.save(); go("#home");
+    }
   });
-  document.getElementById("mef").addEventListener("submit", ev => {
+  if (document.getElementById("gbtn")) googleButton(settle);
+  const signinf = document.getElementById("signinf");
+  if (signinf) signinf.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const email = ev.target.email.value.trim();
+    try { await A.request(email); } catch (e) { return toast(`Could not send it: ${e.message}`, 6000); }
+    ui.signinEmail = email;
+    welcome();
+  });
+  const codef = document.getElementById("codef");
+  if (codef) codef.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    let a;
+    try { a = await A.finishCode(pending, ev.target.code.value); } catch (e) { return toast(e.message, 6000); }
+    ui.signinEmail = null;
+    if (a.name) settle(a); else welcome();
+  });
+  const mef = document.getElementById("mef");
+  if (mef) mef.addEventListener("submit", async ev => {
     ev.preventDefault();
     const f = ev.target, hi = parseHI(f.hi.value);
     if (!(hi >= -10 && hi <= 54)) return toast("Handicap index between +10 and 54, e.g. 18,4");
+    if (acct) {
+      try { return settle(await A.update({ name: f.name.value.trim(), hi, gender: f.gender.value })); } catch (e) { return toast(e.message, 5000); }
+    }
     const p = S.upsertPlayer(f.name.value.trim(), hi, f.gender.value);
     S.state.settings.meId = p.id; S.state.settings.welcomed = true; S.save(); go("#home");
   });
+}
+
+/**
+ * Google's own button, drawn by Google's own script, which is the only way it is allowed to look. Loaded when
+ * the sign-in screen is shown rather than at boot, so a phone that never signs in never fetches it, and the
+ * app works with no network at all -- the email code below it is always there.
+ *
+ * Google hands over a name, so an account made this way arrives complete and the next screen is "Continue as".
+ */
+let gisLoading = null;
+function loadGis() {
+  if (window.google && window.google.accounts) return Promise.resolve();
+  if (!gisLoading) {
+    gisLoading = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.async = true; s.onload = res; s.onerror = () => rej(new Error("Google's sign-in script could not be loaded"));
+      document.head.appendChild(s);
+    }).catch(e => { gisLoading = null; throw e; });
+  }
+  return gisLoading;
+}
+
+async function googleButton(settle) {
+  const slot = document.getElementById("gbtn");
+  if (!slot) return;
+  let cfg;
+  try { cfg = await A.config(); } catch (e) { return; }
+  // What the backend offers decides what the form shows. Redrawn once, when the answer arrives, so the screen
+  // is never blank while it waits and never shows a way in that does not work.
+  const m = (cfg.methods || ["google"]).join(",");
+  if (m !== ui.authMethods.join(",")) { ui.authMethods = cfg.methods || ["google"]; return welcome(); }
+  const none = document.getElementById("gnone");
+  if (!cfg.google) { if (none && ui.authMethods.join(",") === "google") none.hidden = false; return; }
+  try { await loadGis(); } catch (e) { if (none) { none.hidden = false; none.textContent = "Google's sign-in could not be loaded. Check the connection and try again."; } return; }
+  if (!document.getElementById("gbtn")) return;  // the screen moved on while the script loaded
+  window.google.accounts.id.initialize({
+    client_id: cfg.google,
+    callback: async ({ credential }) => {
+      let a;
+      try { a = await A.signInWithGoogle(credential); } catch (e) { return toast(e.message, 6000); }
+      ui.signinEmail = null;
+      if (a.name) settle(a); else welcome();
+    },
+  });
+  window.google.accounts.id.renderButton(slot, { theme: "outline", size: "large", width: 320, text: "continue_with", shape: "pill" });
+}
+
+/** The emailed link, tapped on this phone: `#signin/<token>`. Without a token it is just the sign-in form. */
+async function signin(token) {
+  if (!token) return welcome();
+  page("Signing in…", `<p class="muted center">One moment…</p>`, { back: "" });
+  let a;
+  try { a = await A.finish(token); } catch (e) { toast(`Could not sign in: ${e.message}`, 6000); return go("#welcome"); }
+  ui.signinEmail = null;
+  if (a.name) { S.linkMe(a); toast(`Signed in as ${a.email}`); go("#home"); } else go("#welcome");
 }
 
 async function join(payload) {
@@ -318,6 +447,16 @@ function home() {
   const me = S.me();
   const banners = [];
   if (Y.sync.status === "error") banners.push(`<a class="banner warn" href="#settings">Sync problem: ${esc(Y.sync.error || "")}. Changes are kept on this phone and sent when it works again.</a>`);
+  if (Y.sync.status === "signedout") banners.push(`<a class="banner warn" href="#signin">Signed out. Everything is kept on this phone; sign in to keep syncing.</a>`);
+  // Somebody else logged a round you played in. Not an approval: the round is in, this says so and offers to
+  // open it, where it can be corrected or thrown away like any other.
+  for (const n of N.held().slice(0, 3)) {
+    const c = courseBy(n.course);
+    const who = n.actor_name ? `${esc(firstName(n.actor_name))} added` : "Someone added";
+    banners.push(`<div class="banner accent act" data-act="notice" data-rid="${esc(n.round_id)}">
+      <span>${who} a round you played in${n.date ? ` · ${esc(fmtDate(n.date))}` : ""}${c ? ` · ${esc(c.loop || c.name)}` : ""} <b>Look ›</b></span>
+      <button class="btn small" data-act="notice-dismiss" data-rid="${esc(n.round_id)}">Not now</button></div>`);
+  }
   if (window.__updateReady) banners.push(`<div class="banner" data-act="update">A new version is ready. Tap to reload.</div>`);
   if (window.__installPrompt) banners.push(`<div class="banner" data-act="install">Install Hagolf on this phone</div>`);
   else if (isIOS() && !isStandalone()) banners.push(`<div class="banner muted">To install: tap Share <span class="ios-share">⎋</span> in Safari, then “Add to Home Screen”.</div>`);
@@ -342,7 +481,7 @@ function home() {
   }).join("")}</div>` : (finished.length ? `<p class="muted center">No rounds of yours yet.</p>` : (open.length ? "" : `<p class="muted center">No rounds yet. Start your first one.</p>`));
   const hour = new Date().getHours(), greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   page("Hagolf", `
-    <div class="hero"><p class="hi">${greet}${me ? `, ${esc(me.name.split(" ")[0])}` : ""}</p><div class="muted small">${Y.enabled() ? `Synced with ${esc(Y.config().label || "your society")}` : "Solo phone"} · ${S.courses().length} courses · v${DATA.version.slice(4, 8)}.${DATA.version.slice(9)}</div></div>
+    <div class="hero"><p class="hi">${greet}${me ? `, ${esc(me.name.split(" ")[0])}` : ""}</p><div class="muted small">${A.account() ? `Signed in as ${esc(A.account().email)}` : Y.enabled() ? `Synced with ${esc(Y.config().label || "the backend")}` : "Solo phone"} · ${S.courses().length} courses · v${DATA.version.slice(4, 8)}.${DATA.version.slice(9)}</div></div>
     ${banners.join("")}
     ${now}
     <a class="btn primary big" href="#new">+ Start a round</a>
@@ -352,8 +491,16 @@ function home() {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "mine") { ui.mineOnly = b.dataset.v === "1"; return home(); }
+    if (b.dataset.act === "notice-dismiss") { await N.markSeen([b.dataset.rid]); return home(); }
+    if (b.dataset.act === "notice") { await N.markSeen([b.dataset.rid]); return go(`#review/${b.dataset.rid}`); }
     if (b.dataset.act === "resync") await resyncNow();
   });
+}
+
+/** The share sheet where there is one, the clipboard where there is not, and a prompt where even that is blocked. */
+async function shareLink(link, title, text) {
+  if (navigator.share) { try { await navigator.share({ title, text, url: link }); return; } catch (e) { if (e.name === "AbortError") return; } }
+  try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch (e) { prompt("Copy this link", link); }
 }
 
 async function resyncNow() {
@@ -646,7 +793,8 @@ function players(rid, keep = false) {
     if (!b) return;
     if (b.dataset.act === "add-roster") {
       const p = S.players().find(x => x.id === b.dataset.id);
-      S.addEntry(r, c.n, { name: p.name, hi: p.hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
+      // a golfer who has claimed themselves prefills from their own current index, not from this phone's copy of it
+      S.addEntry(r, c.n, { name: p.name, hi: S.currentIndex(p), tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
       return players(rid);
     }
     if (b.dataset.act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid); }
@@ -1225,14 +1373,21 @@ function tchip(input, t, label, on) {
 }
 
 /** The generate screens, where several looks can be rendered at once. */
+// A skin not held is still shown, dressed as itself, so what is on offer can be seen -- and cannot be picked.
+const LOCKED = " · in the shop";
 function themeChips(selected) {
-  return DATA.themes.map(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name))).join("");
+  return DATA.themes.map(t => E.canTheme(t.name)
+    ? tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name))
+    : tchip(`<input type="checkbox" name="theme" value="${t.name}" disabled>`, t, t.name + LOCKED, false)).join("");
 }
 
 /** The settings screens, where one look is picked. `dflt` adds a first chip that defers to the theme above it. */
 function themeRadios(name, sel, dflt = null) {
   const none = dflt ? tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel) : "";
-  return none + DATA.themes.map(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel)).join("");
+  // a look already chosen stays pickable whatever is held: what was chosen is never taken away
+  return none + DATA.themes.map(t => E.canTheme(t.name) || t.name === sel
+    ? tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel)
+    : tchip(`<input type="radio" name="${name}" value="${t.name}" disabled>`, t, t.name + LOCKED, false)).join("");
 }
 
 /** Keeps the ticked chip lit: a radio puts the light out on the rest of its row, a checkbox only on itself. */
@@ -1264,8 +1419,11 @@ function graphics(rid) {
     <div class="card checks">
       <label><input type="checkbox" name="g" value="stbl" checked> Stableford leaderboard</label>
       <label><input type="checkbox" name="g" value="gross"> Gross leaderboard</label>
-      <label><input type="checkbox" name="g" value="both"> Both boards on one sheet</label>
-      <label><input type="checkbox" name="g" value="holes"> How the holes played</label>
+      ${E.boardTier() === "full"
+        ? `<label><input type="checkbox" name="g" value="both"> Both boards on one sheet</label>
+      <label><input type="checkbox" name="g" value="holes"> How the holes played</label>`
+        : `<label class="muted"><input type="checkbox" disabled> Both boards on one sheet <a href="#shop" class="small">· full boards, in the shop</a></label>
+      <label class="muted"><input type="checkbox" disabled> How the holes played <a href="#shop" class="small">· in the shop</a></label>`}
       <label><input type="checkbox" name="g" value="cards"> Player cards <span class="muted">&nbsp;(${M.field})</span></label>
       <details><summary class="muted small">Only some players' cards</summary>${M.players.map(p => `<label><input type="checkbox" name="card" value="${esc(p.name)}" checked> ${esc(p.name)}</label>`).join("")}</details>
       <button class="btn small" type="button" data-act="tick-all">Everything, every theme</button>
@@ -1286,7 +1444,7 @@ function graphics(rid) {
     }
     if (b.dataset.act !== "generate") return;
     const want = [...document.querySelectorAll("input[name=g]:checked")].map(i => i.value);
-    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value);
+    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(E.canTheme);   // "everything" ticks locked chips too
     const cardNames = [...document.querySelectorAll("input[name=card]:checked")].map(i => i.value);
     if (!want.length) return toast("Tick at least one graphic");
     if (!chosen.length) return toast("Pick at least one theme");
@@ -1294,11 +1452,14 @@ function graphics(rid) {
     for (const tn of chosen) {
       const T = makeTheme(themeNamed(tn));
       const prefix = chosen.length > 1 ? `${tn}/` : "";
-      if (want.includes("gross")) jobs.push({ label: `${prefix}1_leaderboard_gross.png`, make: () => grossLeaderboard(M, T) });
-      if (want.includes("stbl")) jobs.push({ label: `${prefix}2_leaderboard_stableford.png`, make: () => stablefordLeaderboard(M, T) });
-      if (want.includes("holes")) jobs.push({ label: `${prefix}3_holes.png`, make: () => holesPoster(M, T) });
-      if (want.includes("both")) jobs.push({ label: `${prefix}4_leaderboard_both.png`, make: () => bothBoards(M, T) });
-      if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) jobs.push({ label: `${prefix}${renderCards(M, T, [p.name])[0].file}`, make: () => renderCards(M, T, [p.name])[0].fig });
+      // The tier is what the account holds: the free board is position, name and score on a narrower sheet; the
+      // full one adds what the round was like. Same renderer either way, so the two can never drift apart.
+      const tier = E.boardTier(), cardTier = E.cardTier();
+      if (want.includes("gross")) jobs.push({ label: `${prefix}1_leaderboard_gross.png`, make: () => grossLeaderboard(M, T, tier) });
+      if (want.includes("stbl")) jobs.push({ label: `${prefix}2_leaderboard_stableford.png`, make: () => stablefordLeaderboard(M, T, tier) });
+      if (want.includes("holes") && tier === "full") jobs.push({ label: `${prefix}3_holes.png`, make: () => holesPoster(M, T) });
+      if (want.includes("both") && tier === "full") jobs.push({ label: `${prefix}4_leaderboard_both.png`, make: () => bothBoards(M, T) });
+      if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) jobs.push({ label: `${prefix}${renderCards(M, T, [p.name], cardTier)[0].file}`, make: () => renderCards(M, T, [p.name], cardTier)[0].fig });
     }
     await runJobs(jobs, slugFile(r.name));
   });
@@ -2151,11 +2312,22 @@ function league(gid) {
   } else {
     body = `<form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
-      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
+      <div class="fmtlist">${S.FORMATS.map(f => {
+        const lock = !E.formatAllowed(f) && !formats.includes(f);   // a format already in use is never taken away
+        return `<label class="${lock ? "muted" : ""}"><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""} ${lock ? "disabled" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${lock ? `<a href="#shop">In the shop</a> · ` : ""}${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`;
+      }).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
       <label>Theme <span class="muted">(what this league wears on screen, and what its standings, stats and round graphics are made in)</span></label>
       <div class="themes" style="margin-top:8px">${themeRadios("ltheme", leagueTheme(g) ? g.theme : "", { theme: appTheme(), label: "App theme" })}</div>
       <div class="two"><button class="btn primary" type="submit">Save</button>${organiser() ? `<button class="btn danger" type="button" data-act="del-league">Delete league</button>` : ""}</div></form>
+      ${A.account() ? `<div class="card" style="margin-top:12px"><h2 style="margin-top:0">Who can read this league</h2>
+        <p class="muted small" style="margin:0 0 8px">Members always see it on their phones. <b>Link</b> lets anyone with the link read the board; <b>public</b> also lets it be listed and found. Reading is not joining: nobody gets in by looking.</p>
+        <div class="statpick">${[["private", "Private"], ["link", "Link"], ["public", "Public"]].map(([v, l]) => `<button data-act="vis" data-v="${v}" class="${(g.visibility || "private") === v ? "on" : ""}">${l}</button>`).join("")}</div>
+        <p class="muted small" style="margin:10px 0 8px"><b>Friendly</b>: everyone here knows each other, and anyone who joins can say which player is them. <b>Organised</b>: someone runs this league and confirms a claim before it counts.</p>
+        <div class="statpick">${[["friendly", "Friendly"], ["organised", "Organised"]].map(([v, l]) => `<button data-act="kind" data-v="${v}" class="${(g.kind || "friendly") === v ? "on" : ""}">${l}</button>`).join("")}</div>
+        <label class="checks" style="margin-top:10px"><input type="checkbox" id="showhcp" ${g.showHandicaps === false ? "" : "checked"}> Show handicaps on the board</label>
+        ${g.token && g.visibility && g.visibility !== "private" ? `<button class="btn" data-act="share-board" data-link="${esc(`${location.origin}${location.pathname}#board/${g.token}`)}" style="margin-top:10px">Share the board link</button>` : ""}
+        <button class="btn" data-act="invite" style="margin-top:10px">Invite someone to this league</button></div>` : ""}
       ${g.createdBy ? `<p class="muted small center">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}`;
   }
   page(g.name, `${subtabs(LEAGUE_TABS.map(([k, l]) => `<button data-act="ltab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join(""))}${body}`,
@@ -2185,6 +2357,23 @@ function league(gid) {
       S.mergePlayers(keep, drop); toast("Merged"); league(gid);
     }
     if (b_.dataset.act === "del-league" && confirm(`Delete the league ${g.name} on every phone? Rounds and players stay.`)) { S.deleteLeague(gid); go("#leagues"); }
+    // Who reads the league and how claiming works are the Worker's to change, never pushed from the phone: a
+    // stale copy edited offline must not undo them. The answer is applied locally without queueing anything.
+    if (b_.dataset.act === "vis" || b_.dataset.act === "kind") {
+      const body = b_.dataset.act === "vis" ? { visibility: b_.dataset.v } : { kind: b_.dataset.v };
+      A.api(`/league/${gid}/visibility`, body).then(r => { Object.assign(g, { visibility: r.visibility, kind: r.kind, token: r.token || g.token, showHandicaps: r.showHandicaps }); S.afterPull(); league(gid); })
+        .catch(e => toast(e.message, 5000));
+    }
+    if (b_.dataset.act === "share-board") shareLink(b_.dataset.link, `${g.name} on Hagolf`, `The ${g.name} board`);
+    if (b_.dataset.act === "invite") {
+      A.api(`/league/${gid}/invite`, {}).then(r => shareLink(r.url, "Join my league on Hagolf", `Join ${g.name} on Hagolf`))
+        .catch(e => toast(e.message, 5000));
+    }
+  });
+  const showhcp = document.getElementById("showhcp");
+  if (showhcp) showhcp.addEventListener("change", ev => {
+    A.api(`/league/${gid}/visibility`, { showHandicaps: ev.target.checked }).then(r => { g.showHandicaps = r.showHandicaps; S.afterPull(); toast("Saved"); })
+      .catch(e => { toast(e.message, 5000); league(gid); });
   });
   bindChips(app.querySelector(".themes"));
   const rq = document.getElementById("rq");
@@ -2219,7 +2408,7 @@ function leaguePoster(gid) {
     { back: `#league/${gid}`, bar: `<button class="btn primary" data-act="generate">Generate image${formats.length > 1 ? "s" : ""}</button>` });
   bindChips(app.querySelector(".themes"));
   document.querySelector(".bar [data-act=generate]").addEventListener("click", async () => {
-    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value);
+    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(E.canTheme);   // "everything" ticks locked chips too
     if (!chosen.length) return toast("Pick at least one theme");
     const want = formats.length > 1 ? [...document.querySelectorAll("input[name=sf]:checked")].map(i => i.value) : formats;
     if (!want.length) return toast("Pick at least one set of standings");
@@ -2240,6 +2429,8 @@ function statsPoster(gid) {
   const { Ms, members } = leagueResults(g);
   const St = leagueStats(Ms, members);
   if (!St.rounds.length) return page("Stats images", `<p class="muted center" style="margin:30px 0">No finished rounds in this league yet.</p>`, { back: `#league/${gid}` });
+  if (!E.seasonAllowed()) return page("Stats images", `<div class="banner"><b>The season pack</b> makes these: how the league scores, the nines walked, and one image a player. <a href="#shop">In the shop ›</a></div>
+    <p class="muted small" style="margin:8px 4px">The Stats tab on the league screen stays: only the images are in the pack.</p>`, { back: `#league/${gid}`, sub: g.name });
   const N = ninesForPoster(leagueRounds(gid), members);
   const who = St.players.some(p => p.id === ui.statsWho[gid]) ? ui.statsWho[gid] : "";
   const themes = [themeFor(g).name];
@@ -2266,7 +2457,7 @@ function statsPoster(gid) {
     if (b.dataset.act !== "generate") return;
     const want = [...document.querySelectorAll("input[name=si]:checked")].map(i => i.value);
     const pids = [...document.querySelectorAll("input[name=sp]:checked")].map(i => i.value);
-    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value);
+    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(E.canTheme);   // "everything" ticks locked chips too
     if (!want.length && !pids.length) return toast("Tick at least one image");
     if (!chosen.length) return toast("Pick at least one theme");
     const jobs = [];
@@ -2859,7 +3050,37 @@ function settings() {
   const inviteOrg = Y.enabled() ? Y.joinLink(base, true) : null;
   const phoneCourses = S.state.courses.filter(c => !c.deleted && (c.source || "phone") === "phone");
   const dstats = S.defaultStats();
+  const acct = A.account();
+  const acctCard = acct
+    ? `<div class="card"><div class="row"><div><div class="name">${esc(acct.email)}</div><div class="muted small">${acct.name ? esc(acct.name) + (acct.hi !== null && acct.hi !== undefined ? ` · index ${fmtIndex(Number(acct.hi))}` : "") : "no name on the account yet"}</div></div><a class="btn small" href="#welcome">Change</a></div>
+        <label class="checks" style="margin-top:10px"><input type="checkbox" id="hidepub" ${acct.hidePublic ? "checked" : ""}> Keep me off shared boards <span class="muted">&nbsp;(initials instead of my name on any board that is not private)</span></label>
+        <div class="two" style="margin-top:10px"><button class="btn" data-act="signout">Sign out</button><button class="btn" data-act="signout-all">Sign out everywhere</button></div>
+        ${ui.authMethods.includes("passkey") && A.passkeysAvailable() ? `<button class="btn" data-act="add-passkey" style="margin-top:10px">Add a passkey on this phone <span class="muted">&nbsp;(sign in with its lock next time)</span></button>` : ""}
+        ${N.pushPossible() ? `<label class="checks" style="margin-top:10px"><input type="checkbox" id="pushtoggle" ${N.pushState() === "granted" && S.state.settings.push ? "checked" : ""}> Tell me when a round is added <span class="muted">&nbsp;(a round you played in, logged by somebody else)</span></label>
+          ${N.pushState() === "denied" ? `<p class="muted small">Notifications are blocked for Hagolf on this phone; turn them back on in its settings. The home screen still says when a round has been added.</p>` : ""}` : ""}
+        <details style="margin-top:10px"><summary class="muted small">My data</summary>
+          <p class="muted small">Everything the account can see, as one file; or the account and everything that is its own, gone for good. Other people's records of you stay theirs, with your name taken off them.</p>
+          <div class="two"><button class="btn" data-act="export-me">Download my data</button><button class="btn danger" data-act="erase-me">Delete my account</button></div></details></div>`
+    : Y.enabled()
+    ? `<div class="card"><div class="muted small">Not signed in. Sign in so your rounds and leagues are yours on every phone, and so a card can say who changed it.</div><a class="btn primary" href="#signin" style="margin-top:8px">Sign in</a></div>`
+    : `<div class="card"><div class="muted small">Solo phone. Signing in needs a backend; connect one under Shared database.</div></div>`;
   page("Settings", `
+    <h2>Account</h2>
+    ${acctCard}
+    ${Y.enabled() ? `<h2>Shop</h2>
+    <div class="card"><div class="row"><div><div class="name">Skins, full boards, the other ways of scoring</div><div class="muted small">Bought once, yours on every phone. Scoring and leagues stay free.</div></div><a class="btn small primary" href="#shop">Open</a></div></div>` : ""}
+    ${acct ? `<h2>Club</h2>
+    ${acct.club ? `<div class="card"><div class="row"><div><div class="name">${esc(acct.club.name)}</div><div class="muted small">${acct.club.role === "owner" ? "You run this club." : acct.club.role === "organiser" ? "You organise this club." : "You are a member."} Its look is on this phone${acct.club.theme ? ` (${esc(acct.club.theme)})` : ""} and everything in the shop is yours while you are.</div></div>
+        ${acct.club.role === "owner" ? "" : `<button class="btn small" data-act="club-leave">Leave</button>`}</div>
+      ${["owner", "organiser"].includes(acct.club.role) ? `<details style="margin-top:10px"><summary class="muted small">Run the club</summary>
+        ${ui.clubCode ? `<p class="small"><b>Join code: ${esc(ui.clubCode)}</b> · read it out or send it; a new one replaces it.</p>` : ""}
+        <div class="two"><button class="btn small" data-act="club-code">${ui.clubCode ? "New join code" : "Show a join code"}</button><button class="btn small" data-act="club-members">Who is in</button></div>
+        <form id="clubf" style="margin-top:10px"><label>Club name<input name="name" value="${esc(acct.club.name)}"></label>
+          <label>The club's look<select name="theme"><option value="">The app's own</option>${DATA.themes.map(t => `<option value="${t.name}" ${acct.club.theme === t.name ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label>
+          <button class="btn small primary" type="submit">Save the look</button></form></details>` : ""}</div>`
+    : `<div class="card"><p class="muted small" style="margin:0 0 8px">A club gives every member its own look and everything in the shop, for as long as they are in it. Your rounds stay yours either way.</p>
+        <form id="joinclubf"><div class="two"><input name="code" placeholder="Join code from the club" autocapitalize="characters" autocomplete="off"><button class="btn small primary" type="submit">Join</button></div></form>
+        <button class="btn small" data-act="club-create" style="margin-top:8px">Start a club</button></div>`}` : ""}
     <h2>This phone</h2>
     <div class="card"><div class="row"><div><div class="name">${me ? esc(me.name) : "Nobody yet"}</div><div class="muted small">${me ? "your results show on the home screen" : "say who you are for a personal home screen"}</div></div><a class="btn small" href="#welcome">Change</a></div>
       <label class="checks" style="margin-top:10px"><input type="checkbox" id="orgtoggle" ${organiser() ? "checked" : ""}> Organiser on this phone <span class="muted">&nbsp;(can delete rounds and leagues)</span></label></div>
@@ -2871,8 +3092,8 @@ function settings() {
       <details style="margin-top:10px"><summary class="muted small">${DATA.sync ? "Connection details (only change to use another database)" : "Connect to a database"}</summary>
       <form id="syncf">
         <label>Database address<input name="url" value="${esc(cfg.url)}" placeholder="https://hagolf.….workers.dev" autocapitalize="off" autocorrect="off"></label>
-        <label>Society key<input name="anonKey" value="${esc(cfg.anonKey)}" placeholder="…" autocapitalize="off" autocorrect="off"></label>
-        <label>Name of the society<input name="label" value="${esc(cfg.label || "")}" placeholder="e.g. Apeliotes"></label>
+        <label>Backend key<input name="anonKey" value="${esc(cfg.anonKey)}" placeholder="…" autocapitalize="off" autocorrect="off"></label>
+        <label>Backend name<input name="label" value="${esc(cfg.label || "")}" placeholder="e.g. Hagolf"></label>
         <div class="two"><button class="btn primary" type="submit">Test and save</button><button class="btn" type="button" data-act="sync-now">Sync now</button></div>
         <button class="btn small" type="button" data-act="resync" style="margin-top:10px">Fetch everything again</button>
         ${DATA.sync && !Y.isDefault() ? `<button class="btn small" type="button" data-act="sync-default">Back to the built-in connection</button>` : ""}
@@ -2906,8 +3127,36 @@ function settings() {
       for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (q.isDark(y, x)) ctx.fillRect(10 + x * cell, 10 + y * cell, cell + 0.5, cell + 0.5);
     } catch (e) { console.warn("qr", e); }
   }
-  bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); paint(themeHere()); toast("Saved"); });
+  bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); S.setSetting("themeChosen", true); paint(themeHere()); toast("Saved"); });
   document.getElementById("orgtoggle").addEventListener("change", ev => { S.setSetting("organiser", ev.target.checked); settings(); });
+  const clubf = document.getElementById("clubf");
+  if (clubf) clubf.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    try { await A.api(`/club/${acct.club.id}/brand`, { name: ev.target.name.value.trim(), theme: ev.target.theme.value || null }); await A.whoami(); applyBrand(); toast("Saved"); }
+    catch (e) { toast(e.message, 5000); }
+    settings();
+  });
+  const joinclubf = document.getElementById("joinclubf");
+  if (joinclubf) joinclubf.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    try { const r = await A.api("/club/join", { code: ev.target.code.value }); await A.whoami(); applyBrand(); toast(`Welcome to ${r.club.name}`); }
+    catch (e) { toast(e.message, 5000); }
+    settings();
+  });
+  const pushtoggle = document.getElementById("pushtoggle");
+  if (pushtoggle) pushtoggle.addEventListener("change", async ev => {
+    // Asked for from a tap and never on load: a permission box nobody asked for is the fastest way to be
+    // refused for ever, and the home screen says it anyway.
+    if (ev.target.checked) { try { await N.enablePush(); toast("You will be told when a round is added"); } catch (e) { toast(e.message, 6000); } }
+    else { await N.disablePush(); toast("Notifications off; the home screen still says"); }
+    settings();
+  });
+  const hidepub = document.getElementById("hidepub");
+  if (hidepub) hidepub.addEventListener("change", async ev => {
+    try { await A.update({ hidePublic: ev.target.checked }); toast(ev.target.checked ? "You are initials on shared boards from now on" : "Your name is back on shared boards"); }
+    catch (e) { toast(e.message, 5000); }
+    settings();
+  });
   document.getElementById("syncf").addEventListener("submit", async ev => {
     ev.preventDefault();
     const c = { url: ev.target.url.value.trim(), anonKey: ev.target.anonKey.value.trim(), label: ev.target.label.value.trim() };
@@ -2927,6 +3176,55 @@ function settings() {
       try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch (e) { prompt("Copy this link", link); }
     }
     if (b.dataset.act === "def-stat") { S.setDefaultStats({ ...dstats, [b.dataset.k]: !dstats[b.dataset.k] }); return settings(); }
+    if (b.dataset.act === "signout" || b.dataset.act === "signout-all") {
+      await A.signOut(b.dataset.act === "signout-all");   // everything on this phone stays; only the session goes
+      toast("Signed out");
+      return settings();
+    }
+    // The club: a brand and a bag of seats. Everything here goes through the Worker and then re-reads the account,
+    // since the club and the catalogue it carries arrive with the session.
+    if (b.dataset.act === "club-create") {
+      const name = prompt("The club's name:");
+      if (!name) return;
+      try { const r = await A.api("/club", { name }); ui.clubCode = r.code; await A.whoami(); applyBrand(); toast(`${r.name} started. Seats are set once the plan is agreed.`, 5000); }
+      catch (e) { toast(e.message, 5000); }
+      return settings();
+    }
+    if (b.dataset.act === "club-leave") {
+      if (!confirm("Leave the club? Its look and everything it gave you go; your rounds stay yours.")) return;
+      try { await A.api("/club/leave", {}); await A.whoami(); applyBrand(); toast("You have left the club"); } catch (e) { toast(e.message, 5000); }
+      return settings();
+    }
+    if (b.dataset.act === "club-code") {
+      try { ui.clubCode = (await A.api(`/club/${acct.club.id}/code`, {})).code; } catch (e) { toast(e.message, 5000); }
+      return settings();
+    }
+    if (b.dataset.act === "club-members") {
+      try { const r = await A.api(`/club/${acct.club.id}/members`); alert(r.members.map(m => `${m.name || m.email} · ${m.role}`).join("\n") || "Nobody yet"); } catch (e) { toast(e.message, 5000); }
+      return;
+    }
+    if (b.dataset.act === "add-passkey") {
+      try { await A.registerPasskey(navigator.userAgent.slice(0, 60)); toast("Passkey added. Next time, sign in with this phone's lock."); }
+      catch (e) { toast(e.name === "NotAllowedError" ? "No passkey was made" : e.message, 5000); }
+      return;
+    }
+    if (b.dataset.act === "export-me") {
+      try {
+        const data = await A.api("/account/export");
+        await saveFiles([new File([JSON.stringify(data, null, 1)], `hagolf-${data.exported.slice(0, 10)}.json`, { type: "application/json" })], "My Hagolf data");
+      } catch (e) { toast(e.message, 5000); }
+      return;
+    }
+    if (b.dataset.act === "erase-me") {
+      const email = prompt("This deletes your account and everything that is its own -- your rounds, your address book, what you bought -- on every phone, for good. Other people's records of you stay theirs, with your name taken off.\n\nType your email address to confirm:");
+      if (!email) return;
+      try {
+        await A.api("/account/erase", { confirm: email });
+        A.forget();
+        toast("Your account is gone. What is on this phone stays until you clear it.", 6000);
+        go("#home");
+      } catch (e) { toast(e.message, 6000); }
+    }
     if (b.dataset.act === "sync-now") { await Y.pushAndPull(); toast(Y.sync.status === "error" ? `Sync problem: ${Y.sync.error}` : "Synced"); settings(); }
     if (b.dataset.act === "resync") { await resyncNow(); }
     if (b.dataset.act === "sync-default") { Y.setConfig(null); settings(); }
@@ -3004,7 +3302,90 @@ document.addEventListener("click", ev => {
   if (act === "install" && window.__installPrompt) { window.__installPrompt.prompt(); window.__installPrompt = null; }
 });
 
-const screens = { home, welcome, join, new: newRound, loops, players, score, review, attach, graphics, roster, player, leagues, league, leagueposter: leaguePoster, statsposter: statsPoster, settings, newcourse: newCourse, scan,
+/**
+ * A board a stranger can open: `#board/<token>`. Read from the public endpoint with no session, and drawn with
+ * the same standings table the league screen uses, so the two can never disagree. The courses come with the
+ * payload for a phone that has never synced; a phone that has prefers its own copy.
+ */
+async function board(token) {
+  const c = Y.config();
+  if (!token || !c) return go("#home");
+  page("Board", `<p class="muted center" style="margin-top:40px">Loading the board…</p>`, { back: "#home", brand: true });
+  let P;
+  try {
+    const res = await fetch(`${c.url}/public/league/${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error(res.status === 404 ? "This board is private, or the link is not right." : `The board could not be read (${res.status}).`);
+    P = await res.json();
+  } catch (e) { return page("Board", `<div class="banner warn">${esc(e.message)}</div>`, { back: "#home", brand: true }); }
+  const courseOf = slug => courseBy(slug) || (() => { const k = P.courses.find(x => x.slug === slug); return k && k.data ? { ...k.data, slug } : null; })();
+  const Ms = [];
+  for (const r of P.rounds) {
+    const course = courseOf(r.course);
+    if (!course) continue;
+    const n = course.n || (course.par || []).length;
+    const entries = P.entries.filter(e => e.roundId === r.id).map(e => {
+      const scores = new Array(n).fill(null);
+      for (const s of P.scores) if (s.roundId === r.id && s.id === e.id && s.hole < n) scores[s.hole] = s.strokes;
+      return { id: e.id, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", group: e.group || 1, courseHandicap: e.courseHandicap, scores, penalties: e.penalties || [], fromHole: e.fromHole || 1 };
+    });
+    try { Ms.push(Object.assign(compute(course, { name: r.name, date: r.date, defaultTee: r.defaultTee, allowance: r.allowance || 100, final: true, entries }), { id: r.id })); }
+    catch (e) { console.warn("board: round left out", r.id, e.message); }
+  }
+  const g = { id: P.league.id, name: P.league.name, formats: S.cleanFormats(P.league.formats), bestN: P.league.bestN || 0, theme: P.league.theme || null };
+  paint(themeNamed(g.theme) || appTheme());
+  const members = [...new Set(Ms.flatMap(M => M.players.map(p => p.id)))];
+  const formats = g.formats;
+  const pick = formats.includes(ui.boardFmt) ? ui.boardFmt : formats[0];
+  const body = Ms.length ? `
+      ${formats.length > 1 ? subtabs(formats.map(f => `<button data-act="bfmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")) : ""}
+      ${standingsTable(pick, standingsFor(g, Ms, members, pick), g, null)}
+      ${tip(FORMAT_NOTES[pick], "How this table is scored")}`
+    : `<p class="muted center" style="margin:30px 0 14px">No finished rounds on this board yet.</p>`;
+  page(g.name, `${body}
+    <p class="muted small center" style="margin-top:18px">${P.league.showHandicaps ? "" : "Handicaps are not shown on this board. "}Shared from Hagolf.${A.account() ? "" : ` <a href="#signin">Sign in</a> to keep leagues of your own.`}</p>`,
+    { back: "#home", brand: true, sub: `${plural(P.rounds.length, "round")} · ${formats.map(f => FORMAT_NAMES[f]).join(", ")}` });
+  bind(ev => { const b = ev.target.closest("[data-act=bfmt]"); if (b) { ui.boardFmt = b.dataset.f; board(token); } });
+}
+
+/**
+ * The catalogue, in one place and out of the scoring flow: `#shop`. Buying happens on Stripe's page, and the
+ * Worker's webhook is what grants -- the phone coming back to `#shop/thanks` only re-reads the account.
+ */
+async function shop(state) {
+  if (state === "thanks") {
+    try { await A.whoami(); } catch (e) { /* offline: the next refresh brings it */ }
+    setMarked(E.marked());
+    toast("Thank you. It is yours, on every phone you sign in on.", 5000);
+    return go("#shop");
+  }
+  if (!A.account()) return page("Shop", `<div class="banner"><a href="#signin">Sign in</a> first: what you buy follows your email to every phone.</div>`, { back: "#settings" });
+  page("Shop", `<p class="muted center" style="margin-top:30px">Loading…</p>`, { back: "#settings" });
+  let cat;
+  try { cat = await A.api("/shop/catalogue"); } catch (e) { return page("Shop", `<div class="banner warn">${esc(e.message)}</div>`, { back: "#settings" }); }
+  const eur = c => `€${(c / 100).toFixed(2).replace(".", ",")}`;
+  const row = c => `<div class="card"><div class="row"><div><div class="name">${esc(c.name)}</div><div class="muted small">${esc(c.blurb)}</div></div>
+    ${c.owned ? `<span class="pill done">Yours</span>` : `<button class="btn small primary" data-act="buy" data-sku="${esc(c.sku)}" ${cat.stripe ? "" : "disabled"}>${eur(c.price)}</button>`}</div></div>`;
+  const all = cat.skus.some(c => (c.sku === "pass" || c.sku === "skins") && c.owned);
+  const skins = DATA.themes.filter(t => !cat.freeThemes.includes(t.name))
+    .map(t => ({ sku: `skin:${t.name}`, name: `The ${t.name} skin`, blurb: t.blurb || "", price: cat.skinPrice, owned: all || cat.skins.includes(t.name) }));
+  page("Shop", `
+    <p class="muted small" style="margin:4px 4px 10px">Scoring a round, keeping a league and inviting people are free, and always will be. What is sold is how the output looks and how much it says.${cat.open ? "" : " <b>Nothing is gated yet: everything is open to everyone until the shop is switched on.</b>"}${cat.stripe ? "" : " Buying is not open yet."}</p>
+    ${cat.skus.filter(c => c.sku !== "skins").map(row).join("")}
+    <h2>Skins</h2>
+    <p class="muted small" style="margin:-4px 4px 10px">A skin dresses the app itself as well as every poster and card. ${esc(cat.freeThemes.join(" and "))} are free.</p>
+    ${row(cat.skus.find(c => c.sku === "skins"))}${skins.map(row).join("")}
+    <p class="foot">Bought once, on the web, never inside an app store. Yours on every phone you sign in on.</p>`,
+    { back: "#settings", sub: "Bought once, yours on every phone" });
+  bind(async ev => {
+    const b = ev.target.closest("[data-act=buy]");
+    if (!b) return;
+    b.disabled = true;
+    try { const r = await A.api("/shop/checkout", { sku: b.dataset.sku }); location.href = r.url; }
+    catch (e) { toast(e.message, 5000); b.disabled = false; }
+  });
+}
+
+const screens = { home, welcome, signin, join, board, shop, new: newRound, loops, players, score, review, attach, graphics, roster, player, leagues, league, leagueposter: leaguePoster, statsposter: statsPoster, settings, newcourse: newCourse, scan,
   skipme: () => { S.state.settings.welcomed = true; S.save(); go("#home"); } };
 
 function route() {
@@ -3021,10 +3402,16 @@ function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) && !windo
 function isStandalone() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
 
 // other phones' changes: redraw the current screen, unless the user is typing, scoring, or looking at rendered images
+let lastSyncStatus = Y.sync.status;
 Y.onChange(({ changed, status }) => {
   const typing = document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
   const busy = document.querySelector(".thumbs, .progress") || location.hash.startsWith("#score/") || location.hash.startsWith("#join/");
-  if (changed && !typing && !busy) route();
+  // Being signed out is found out by a push failing, after the home screen has already drawn: the banner that
+  // says so has to be drawn then, not on the next visit.
+  const signedOutNow = Y.sync.status !== lastSyncStatus && (Y.sync.status === "signedout" || lastSyncStatus === "signedout");
+  lastSyncStatus = Y.sync.status;
+  const onHome = !location.hash || location.hash === "#home";
+  if ((changed || (signedOutNow && onHome)) && !typing && !busy) route();
   else if (status) { const d = document.querySelector(".top .dot"); if (d) d.outerHTML = syncDot(); }
 });
 S.setOnSave(Y.schedulePush);
@@ -3041,5 +3428,24 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   }).catch(e => console.warn("sw", e));
   navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());
 }
+/**
+ * What the account brings to the phone's look: whether renders carry the mark, what the mark says, and the
+ * club's theme if there is one and the phone has not picked its own. Applied at boot and again whenever the
+ * account changes -- signing in, signing out, buying, joining or leaving a club.
+ */
+function applyBrand() {
+  const club = A.account() && A.account().club;
+  if (club) { setMarkText(club.name); setMarked(true); }   // a club's name in the footer, in place of ours
+  else { setMarkText(null); setMarked(E.marked()); }
+  paint(themeHere());
+}
+applyBrand();
+A.onChange(applyBrand);
+
+// What is waiting is asked for after every sync, and redraws the home screen when it changes.
+N.onChange(() => { if (!location.hash || location.hash === "#home") home(); });
+Y.onChange(({ changed }) => { if (changed) N.refresh(); });
+A.onChange(() => N.refresh());
+if (A.signedIn()) N.refresh();
 Y.start();
 route();
