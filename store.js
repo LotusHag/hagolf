@@ -26,7 +26,7 @@ function load() {
   }
   s = s || {};
   const st = { players: s.players || [], rounds: s.rounds || [], leagues: s.leagues || [], leagueRounds: s.leagueRounds || [],
-    leagueMembers: s.leagueMembers || [],
+    leagueMembers: s.leagueMembers || [], roundShares: s.roundShares || [],
     courses: s.courses || [], pch: s.pch || [], orphanScores: s.orphanScores || [], orphanStats: s.orphanStats || [], held: s.held || [], quarantine: s.quarantine || [],
     settings: s.settings || {} };
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
@@ -600,6 +600,23 @@ export function myLeagueIds() {
   return new Set(state.leagueMembers.filter(m => !m.deleted && m.account_id === me).map(m => m.league_id));
 }
 
+/** The rounds handed to me, as a set of ids; and, for one round, who it was handed to. */
+export function sharedWithMe() {
+  const me = myAccount();
+  return new Set(state.roundShares.filter(x => !x.deleted && x.account_id === me).map(x => x.round_id));
+}
+export function sharesOf(roundId) {
+  return state.roundShares.filter(x => !x.deleted && x.round_id === roundId);
+}
+
+/** Whether this phone's account was on a round's card, or created it. What a share sheet and a delete button ask. */
+export function iPlayed(r) {
+  const me = myAccount(), mine = state.settings.meId;
+  if (!r) return false;
+  if (me && r.owner === me) return true;
+  return r.entries.some(e => (mine && e.playerId === mine) || (me && identityOf(e.playerId) === me));
+}
+
 /** My membership row in one league, which is what says whether I have claimed a player in it. */
 export function myMembership(leagueId) {
   const me = myAccount();
@@ -650,7 +667,7 @@ export function exportJSON() {
   state.settings.lastExport = now();
   save();
   return JSON.stringify({ app: "hagolf", format: 3, exported: state.settings.lastExport, players: state.players, rounds: state.rounds,
-    leagues: state.leagues, leagueRounds: state.leagueRounds, courses: state.courses, pch: state.pch }, null, 1);
+    leagues: state.leagues, leagueRounds: state.leagueRounds, courses: state.courses, pch: state.pch, roundShares: state.roundShares }, null, 1);
 }
 
 /** Merges a backup in: the newer updated_at wins per record. Importing twice changes nothing. */

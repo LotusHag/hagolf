@@ -1,0 +1,204 @@
+// Who is playing: the card's rows, each with the two things that change from round to round, and the people to
+// add -- friends first (their row is theirs at once), then everybody typed in before, then someone new.
+import * as S from "../store.js";
+import * as A from "../auth.js";
+import * as F from "../social.js";
+import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, parseHI, hiOk, confirmSheet, promptSheet, avatar } from "../ui.js";
+import { handicapFor, fmtHcp, fmtIndex, STAT_KINDS } from "../model.js";
+
+/** Giving up on a round: it is thrown away everywhere. A finished one is deleted by whoever was on it. */
+export function dropBtn(r) {
+  if (r.status === "done" && !S.iPlayed(r)) return "";
+  return `<p class="center" style="margin-top:18px"><button class="btn small danger" data-act="drop-round" data-rid="${r.id}">${r.status === "done" ? "Delete this round" : "Discard this round"}</button></p>`;
+}
+
+export async function dropRound(rid) {
+  const r = S.getRound(rid);
+  if (!r) return go("#play");
+  const scored = r.entries.reduce((n, e) => n + e.scores.filter(v => v !== null).length, 0);
+  const yes = await confirmSheet(r.status === "done" ? "Delete this round?" : "Discard this round?",
+    `${r.name} goes from every phone${scored ? `, with ${plural(scored, "score")} in it` : ""}. This cannot be undone.`, { label: r.status === "done" ? "Delete" : "Discard", danger: true });
+  if (!yes) return;
+  S.deleteRound(r.id);
+  toast(`${r.name} deleted`);
+  go("#play");
+}
+
+export function players(rid, keep = false) {
+  const r = S.getRound(rid);
+  if (!r) return go("#play");
+  const c = courseBy(r.course);
+  if (!c) return noCourse(r);
+  const tees = Object.keys(c.tees);
+  const inRound = new Set(r.entries.map(e => e.playerId));
+  const me = S.me();
+  const friends = F.held().friends;
+  const linkedIds = new Set(S.players().map(p => p.linkedAccount).filter(Boolean));
+  const inRoundAccounts = new Set(r.entries.map(e => S.identityOf(e.playerId)));
+  // friends who are not yet a contact of mine, or whose contact is not on the card
+  const friendChips = friends.filter(f => !inRoundAccounts.has(f.id) && f.id !== A.account()?.id);
+  const roster = S.players().filter(p => !inRound.has(p.id) && !friends.some(f => f.id === p.linkedAccount && !inRoundAccounts.has(f.id))).sort((a, b) => a.name.localeCompare(b.name));
+  const showGroups = r.entries.length > 4 || r.entries.some(e => (e.group || 1) > 1);
+  const kinds = S.statsFor(rid), statsOn = S.anyStatsOn(rid);
+  const rows = r.entries.map((e, i) => {
+    let hc = "", missing = false;
+    const ov = e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee);
+    const hasOv = ov !== null && ov !== undefined;
+    try { const h = handicapFor(c, { ...e, courseHandicap: ov }, r.defaultTee, r.allowance); hc = `course hcp ${fmtHcp(h.ch)}`; }
+    catch (err) { hc = `<span class="warn">${esc(err.message)}</span>`; missing = true; }
+    const isMe = me && e.playerId === me.id;
+    return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}${isMe ? ` <span class="pill done">you</span>` : ""}</div><div class="muted small">${e.gender === "f" ? "women's" : "men's"} rating · ${hc}${hasOv ? " (club table)" : ""}</div></div>
+        <button class="x" data-act="remove-entry" data-i="${i}" aria-label="Remove">×</button></div>
+      <div class="entry-tools">
+        <span class="tool"><span class="seg-label">index</span><input class="hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="Handicap index"></span>
+        <select data-act="tee" data-i="${i}" aria-label="Tee">${tees.map(t => `<option ${t === e.tee ? "selected" : ""}>${esc(t)} tee</option>`).join("")}</select>
+        ${showGroups ? `<span class="tool"><span class="seg-label">group</span><span class="seg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</span></span>` : ""}
+        <select data-act="from" data-i="${i}" title="Joins at hole"><option value="1" ${(e.fromHole || 1) === 1 ? "selected" : ""}>from hole 1</option>${c.par.slice(1).map((_, k) => `<option value="${k + 2}" ${(e.fromHole || 1) === k + 2 ? "selected" : ""}>joins at hole ${c.first_hole + k + 1}</option>`).join("")}</select>
+        ${missing || hasOv ? `<input data-act="pch" data-i="${i}" inputmode="numeric" value="${hasOv ? ov : ""}" placeholder="course hcp (club table)" aria-label="Course handicap from the club table">` : ""}
+        ${statsOn ? `<span class="tool"><span class="seg-label">extras</span><span class="seg"><button data-act="trk" data-i="${i}" class="${e.trackStats ? "on" : ""}">${e.trackStats ? "keeping" : "not kept"}</button></span></span>` : ""}
+      </div></div>`;
+  }).join("");
+  const chip = (act, id, name, sub, on = false) => `<button class="pchip ${on ? "on" : ""}" data-act="${act}" data-id="${esc(id)}"><span><span class="plus">+</span>${esc(name)}</span><small>${esc(sub)}</small></button>`;
+  const body = `
+    ${h2tip(`${plural(r.entries.length, "player")} on this card`, `<p>Each player's handicap index is turned into a course handicap for the tee they are standing on: the index is stretched by this course's slope and shifted by its rating, so the same index gives more strokes off a harder tee.</p>
+      <p>Index and tee are asked again every round, filled in with what that player last used, because both change. Type over either one and the course handicap follows.</p>
+      <p>If the club's own table gives a different number, put it in the course handicap box and that is what counts; it is remembered for this course and tee.</p>`)}
+    ${rows || `<p class="muted small">Nobody yet. Tap names below to add them.</p>`}
+    ${statsPicker(rid, kinds, r)}
+    ${me && !inRound.has(me.id) ? `<h2>You</h2><div class="chips-wrap">${chip("add-roster", me.id, me.name, S.currentIndex(me) !== null && S.currentIndex(me) !== undefined ? `index ${fmtIndex(Number(S.currentIndex(me)))}` : "add your index", true)}</div>` : ""}
+    ${friendChips.length ? `<h2>Friends</h2><div class="chips-wrap">${friendChips.map(f => chip("add-friend", f.id, f.name, f.hi !== null && f.hi !== undefined ? `index ${fmtIndex(Number(f.hi))}` : "no index yet")).join("")}</div>` : ""}
+    ${roster.filter(p => !me || p.id !== me.id).length ? `<h2>Played with before</h2><div class="chips-wrap">${roster.filter(p => !me || p.id !== me.id).map(p => chip("add-roster", p.id, p.name, p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))}` : "no index yet")).join("")}</div>` : ""}
+    <form id="addf" class="card form ${roster.length || r.entries.length || friendChips.length ? "" : "open"}">
+      <h2>Someone new</h2>
+      <label>Name<input id="pname" autocomplete="off" autocapitalize="words" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
+      <div class="two">
+        <label>Handicap index<input id="phi" inputmode="decimal" placeholder="18,4 or +2.1" required></label>
+        <label>Tee<select id="ptee">${tees.map(t => `<option ${t === r.defaultTee ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
+      <div class="two">
+        <label>Rating<select id="pgender"><option value="m">Men's</option><option value="f">Women's</option></select></label>
+        <label>Course hcp <span class="muted">(optional)</span><input id="pch" inputmode="numeric" placeholder="from club table"></label></div>
+      <button class="btn primary" type="submit">Add player</button>
+    </form>
+    <button class="btn addbtn ${roster.length || r.entries.length || friendChips.length ? "" : "hidden"}" data-act="toggle-add"><span class="plus">+</span> Someone new</button>
+    ${dropBtn(r)}`;
+  const bar = !r.entries.length ? `<button class="btn" disabled>Add players to start</button>`
+    : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
+    : `<button class="btn primary" data-act="start-scoring" data-rid="${rid}">${r.status === "setup" ? "Start scoring ›" : "Back to scoring ›"}</button>`;
+  page("Who is playing?", body, { back: r.status === "done" ? `#review/${rid}` : "#play", bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep });
+
+  /** An index for somebody the app does not know one for, asked once. */
+  const askIndex = async name => {
+    const v = await promptSheet(`${firstName(name)}'s handicap index`, "For example 18,4 or +2.1.", { placeholder: "18,4", inputmode: "decimal", label: "Add" });
+    if (v === null) return null;
+    const hi = parseHI(v);
+    if (!hiOk(hi)) { toast("Handicap index between +10 and 54, e.g. 18,4"); return null; }
+    return hi;
+  };
+  bind(async ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === "toggle-add") { const f = document.getElementById("addf"); f.classList.add("open"); b.classList.add("hidden"); document.getElementById("pname").focus(); f.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+    if (act === "start-scoring") return go(`#score/${r.id}/${S.holeOf(r)}`);
+    if (act === "drop-round") return dropRound(rid);
+    if (act === "remove-entry") {
+      const i = Number(b.dataset.i), e = r.entries[i];
+      if (e.scores.every(s => s === null) || await confirmSheet(`Remove ${e.name}?`, "Their scores on this card go too.", { label: "Remove", danger: true })) { S.removeEntry(r, i); players(rid); }
+      return;
+    }
+    if (act === "add-roster") {
+      const p = S.players().find(x => x.id === b.dataset.id);
+      let hi = S.currentIndex(p);
+      if (hi === null || hi === undefined) {
+        hi = await askIndex(p.name);
+        if (hi === null) return;
+        if (me && p.id === me.id && A.signedIn()) { try { await A.update({ hi }); } catch (e) { /* the entry still carries it */ } }
+      }
+      S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
+      return players(rid);
+    }
+    if (act === "add-friend") {
+      // a friend's row is linked to their account from the start, so the round is theirs to see and correct
+      const f = F.friendById(b.dataset.id);
+      if (!f) return;
+      let hi = f.hi;
+      if (hi === null || hi === undefined) { hi = await askIndex(f.name); if (hi === null) return; }
+      const p = S.upsertPlayer(f.name, hi, "m");
+      if (p.linkedAccount !== f.id) { p.linkedAccount = f.id; S.touch("players", p); S.save(); }
+      S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
+      return players(rid);
+    }
+    if (act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid); }
+    if (act === "trk") { const e = r.entries[Number(b.dataset.i)]; S.setTrackStats(r, e, !e.trackStats); return players(rid, true); }
+    if (act === "trk-all") {
+      const all = b.dataset.who === "all";
+      const mine = r.entries.find(e => e.playerId === S.state.settings.meId);
+      for (const e of r.entries) S.setTrackStats(r, e, all || e === mine);
+      return players(rid, true);
+    }
+    if (act === "stat-kind") {
+      const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
+      S.setStatsFor(rid, next);
+      if (Object.values(next).some(Boolean) && !r.entries.some(e => e.trackStats)) {
+        const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
+        if (mine) S.setTrackStats(r, mine, true);
+      }
+      return players(rid, true);
+    }
+  });
+  document.querySelector("main").addEventListener("change", ev => {
+    const el = ev.target.closest("[data-act]");
+    if (!el) return;
+    const e = r.entries[Number(el.dataset.i)];
+    if (el.dataset.act === "tee") { e.tee = el.value; S.saveEntry(r, e); players(rid); }
+    if (el.dataset.act === "from") { e.fromHole = Number(el.value); S.saveEntry(r, e); players(rid); }
+    if (el.dataset.act === "hi") {
+      const hi = parseHI(el.value);
+      if (!hiOk(hi)) { el.value = fmtIndex(Number(e.hi)); return toast("Handicap index between +10 and 54, e.g. 18,4"); }
+      S.setEntryHi(r, e, hi); players(rid);
+    }
+    if (el.dataset.act === "pch") {
+      const raw = el.value.trim(), v = Number(raw);
+      if (raw !== "" && !Number.isInteger(v)) return toast("Course handicap must be a whole number");
+      e.courseHandicap = null;
+      S.saveEntry(r, e);
+      S.setPch(e.playerId, r.course, e.tee, raw === "" ? null : v);
+      players(rid);
+    }
+  });
+  const f = document.getElementById("addf"), nameEl = document.getElementById("pname");
+  f.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const name = nameEl.value.trim();
+    const hi = parseHI(document.getElementById("phi").value);
+    const tee = document.getElementById("ptee").value, gender = document.getElementById("pgender").value;
+    const chRaw = document.getElementById("pch").value.trim();
+    const courseHandicap = chRaw === "" ? null : Number(chRaw);
+    if (!name) return toast("Give the player a name");
+    if (!hiOk(hi)) return toast("Handicap index between +10 and 54, e.g. 18,4");
+    if (chRaw !== "" && !Number.isInteger(courseHandicap)) return toast("Course handicap must be a whole number");
+    if (r.entries.some(e => S.nameKey(e.name) === S.nameKey(name))) return toast(`${name} is already on this card`);
+    const known = S.findPlayer(name);
+    if (known) toast(`${known.name} was already known; added with today's index`, 3500);
+    S.addEntry(r, c.n, { name: known ? known.name : name, hi, tee, gender, courseHandicap });
+    players(rid);
+  });
+  if (f.classList.contains("open")) nameEl.focus();
+}
+
+function statsPicker(rid, kinds, r) {
+  const on = STAT_KINDS.filter(k => kinds[k.key]);
+  const who = r.entries.filter(e => e.trackStats);
+  const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
+  const line = !on.length ? "Putts, fairways and the rest: not kept"
+    : `Keeping ${andList(on.map(k => k.word))}${who.length ? ` for ${andList(who.map(e => firstName(e.name)))}` : " — for nobody yet"}`;
+  return `<details class="card" id="statpick"><summary class="small">${esc(line)}</summary>
+    <p class="muted small" style="margin:8px 0 0">Tick what you want to tap in beside each score. One tap on the hole each; anything left off never appears.</p>
+    <div class="statpick">${STAT_KINDS.map(k => `<button data-act="stat-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
+    ${on.length ? `<p class="muted small" style="margin:10px 0 0">${on.map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>
+      <p class="pickline" style="margin:12px 0 0">Keep them for</p>
+      <div class="statpick">
+        <button data-act="trk-all" data-who="me" class="${who.length === 1 && mine && who[0] === mine ? "on" : ""}">Just me</button>
+        <button data-act="trk-all" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
+      </div>` : ""}</details>`;
+}

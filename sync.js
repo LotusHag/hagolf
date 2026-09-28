@@ -155,13 +155,19 @@ const TABLES = {
       { league_id: r.league_id, account_id: r.account_id, role: r.role, claimed_player: r.claimed_player, claim_state: r.claim_state,
         joined: r.joined, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
+  // A card handed to me. Read only, like membership: the Worker writes it through /round/<id>/share.
+  round_shares: {
+    collect: () => [],
+    apply: r => lww(S.state.roundShares, x => x.round_id === r.round_id && x.account_id === r.account_id,
+      { round_id: r.round_id, account_id: r.account_id, shared_by: r.shared_by || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+  },
   player_course_handicap: {
     collect: keys => S.state.pch.filter(x => keys.has(`${x.player_id}|${x.course}|${x.tee}`)).map(x => ({ player_id: x.player_id, course: x.course, tee: x.tee, ch: x.ch ?? 0,
       deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
     apply: r => lww(S.state.pch, x => x.player_id === r.player_id && x.course === r.course && x.tee === r.tee, { player_id: r.player_id, course: r.course, tee: r.tee, ch: r.ch, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
 };
-const CONFLICT = { league_members: "league_id,account_id", league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", hole_stats: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
+const CONFLICT = { round_shares: "round_id,account_id", league_members: "league_id,account_id", league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", hole_stats: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
 
 function lww(list, match, rec, row) {
   const i = list.findIndex(match);
@@ -186,6 +192,7 @@ function drainHeld() {
 function keyOf(table, row) {
   if (table === "league_rounds") return `${row.league_id}|${row.round_id}`;
   if (table === "league_members") return `${row.league_id}|${row.account_id}`;
+  if (table === "round_shares") return `${row.round_id}|${row.account_id}`;
   if (table === "round_entries") return `${row.round_id}|${row.player_id}`;
   if (table === "scores" || table === "hole_stats") return `${row.round_id}|${row.player_id}|${row.hole}`;
   if (table === "courses") return row.slug;
@@ -347,6 +354,7 @@ async function doPull(again = false) {
   emit({ status: true });
   const cur = cursors();  // one cursor per table: a row landing in an already-read table during the pull is not skipped
   const leaguesBefore = S.myLeagueIds();
+  const sharesBefore = S.sharedWithMe();
   let changed = drainHeld();
   try {
     for (const [table, t] of Object.entries(TABLES)) {
@@ -368,6 +376,10 @@ async function doPull(again = false) {
     const orphanStats = S.state.orphanStats.splice(0);
     for (const row of orphanStats) { if (TABLES.hole_stats.apply(row)) changed = true; }
     if (changed || orphans.length || S.state.orphanScores.length) S.afterPull();
+    // A card just handed to me is older than every cursor, so it is fetched by name rather than by re-reading
+    // everything: shares are far more common than joining a league, and one is four small requests.
+    const fresh = [...S.sharedWithMe()].filter(id => !sharesBefore.has(id) && !S.getRound(id));
+    if (fresh.length) { await fetchRounds(fresh); changed = true; }
     if (!again && newLeaguesSince(leaguesBefore)) {   // a league just became visible: its history predates the cursor
       localStorage.removeItem(CURSOR_KEY);
       sync.pulling = false;
@@ -392,6 +404,23 @@ async function doPull(again = false) {
   }
   emit({ status: true, changed });
   return changed;
+}
+
+/** Reads named rounds in full -- header, entries, scores, extras -- and applies them like any pull. */
+async function fetchRounds(ids) {
+  for (let i = 0; i < ids.length; i += 40) {
+    const part = `in.(${ids.slice(i, i + 40).map(encodeURIComponent).join(",")})`;
+    for (const [table, col] of [["rounds", "id"], ["round_entries", "round_id"], ["scores", "round_id"], ["hole_stats", "round_id"]]) {
+      let rows;
+      try { rows = await rest(`${table}?select=*&${col}=${part}&limit=5000`); } catch (e) { console.warn("sync: fetching shared rounds", e.message); return; }
+      for (const row of rows || []) TABLES[table].apply(row);
+    }
+  }
+  const orphans = S.state.orphanScores.splice(0);
+  for (const row of orphans) TABLES.scores.apply(row);
+  const orphanStats = S.state.orphanStats.splice(0);
+  for (const row of orphanStats) TABLES.hole_stats.apply(row);
+  S.afterPull();
 }
 
 let pushTimer = null;

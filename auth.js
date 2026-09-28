@@ -39,6 +39,8 @@ function save() {
 /** The Worker's origin, taken from the sync configuration so a self-hosted backend signs in against itself. */
 let origin = null;
 export function setOrigin(url) { origin = url ? url.replace(/\/+$/, "") : null; }
+export const originOf = () => origin;
+export { originOf as origin };
 
 async function call(path, body, extra = {}, method = body === undefined ? "GET" : "POST") {
   if (!origin) throw new Error("This phone is not connected to a backend.");

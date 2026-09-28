@@ -1,11 +1,8 @@
 // Offline cache. The version is stamped by app/build.py; a new version replaces the whole cache on next load.
-const VERSION = "20260928-121001";
+const VERSION = "20260928-173732";
 const CACHE = `hagolf-${VERSION}`;
-const SHELL = ["./", "./index.html", "./app.css", "./boot.js", "./idb.js", "./app.js", "./auth.js", "./entitlements.js", "./model.js", "./draw.js", "./posters.js", "./cards.js",
-  "./statsposters.js", "./store.js", "./sync.js", "./notify.js", "./data.js", "./vendor/qrcode.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/apple-touch-icon.png",
-  "./fonts/oswald/Oswald-Variable.ttf", "./fonts/source-sans-3/SourceSans3-Variable.ttf",
-  "./fonts/libre-baskerville/LibreBaskerville-Regular.ttf", "./fonts/libre-baskerville/LibreBaskerville-Bold.ttf",
-  "./fonts/montserrat/Montserrat-Regular.ttf", "./fonts/montserrat/Montserrat-Bold.ttf"];
+// Stamped by app/build.py from what dist/ actually holds, so a new screen file is never missing offline.
+const SHELL = ["./", "./app.css", "./app.js", "./auth.js", "./boot.js", "./cards.js", "./data.js", "./draw.js", "./entitlements.js", "./idb.js", "./index.html", "./manifest.webmanifest", "./model.js", "./notify.js", "./posters.js", "./router.js", "./social.js", "./statsposters.js", "./store.js", "./sync.js", "./ui.js", "./fonts/libre-baskerville/LibreBaskerville-Bold.ttf", "./fonts/libre-baskerville/LibreBaskerville-Regular.ttf", "./fonts/libre-baskerville/LibreBaskerville-SemiBold.ttf", "./fonts/montserrat/Montserrat-Bold.ttf", "./fonts/montserrat/Montserrat-Regular.ttf", "./fonts/montserrat/Montserrat-SemiBold.ttf", "./fonts/oswald/Oswald-Variable.ttf", "./fonts/source-sans-3/SourceSans3-Variable.ttf", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./screens/course.js", "./screens/extras.js", "./screens/formats.js", "./screens/gate.js", "./screens/graphics.js", "./screens/home.js", "./screens/kinds.js", "./screens/league.js", "./screens/leagues.js", "./screens/legal.js", "./screens/me.js", "./screens/people.js", "./screens/play.js", "./screens/players.js", "./screens/public.js", "./screens/review.js", "./screens/score.js", "./screens/shop.js", "./screens/stats.js", "./screens/updates.js", "./vendor/qrcode.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));  // a new version takes over at once; the page reloads on controllerchange

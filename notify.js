@@ -16,7 +16,13 @@ const KEY = "hagolf-notices";
 export function held() {
   try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; }
 }
-const keep = list => { try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 20))); } catch (e) { /* full */ } };
+const keep = list => { try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 100))); } catch (e) { /* full */ } };
+
+/** How many are waiting to be looked at. */
+export const unread = () => held().filter(n => !n.seen).length;
+/** The ones that ask for a tap: an invite, a request, a claim. What the bell's badge counts. */
+export const actionable = () => held().filter(n => !n.seen && ["league_invite", "friend_request", "claim_pending"].includes(n.kind)).length;
+export const keyOf = n => `${n.kind}|${n.ref}`;
 
 let listeners = [];
 export function onChange(fn) { listeners.push(fn); }
@@ -33,12 +39,19 @@ export async function refresh() {
   } catch (e) { return held(); }
 }
 
-/** Marks these rounds read, or everything when none are named. */
-export async function markSeen(roundIds = null) {
-  const before = held();
-  keep(roundIds ? before.filter(n => !roundIds.includes(n.round_id)) : []);
+/** Marks these read (by "kind|ref" key), or everything when none are named. Read rows stay, greyed. */
+export async function markSeen(keys = null) {
+  const now = new Date().toISOString();
+  const all = !keys || !keys.length;
+  keep(held().map(n => (all || keys.includes(keyOf(n))) && !n.seen ? { ...n, seen: now } : n));
   emit();
-  try { await A.api("/notifications/seen", { roundIds: roundIds || [] }); } catch (e) { /* it will be marked next time */ }
+  try { await A.api("/notifications/seen", { keys: keys || [] }); } catch (e) { /* it will be marked next time */ }
+}
+
+/** Takes one out of the local list at once (an invite accepted, a request answered); the server drops it too. */
+export function drop(key) {
+  keep(held().filter(n => keyOf(n) !== key));
+  emit();
 }
 
 // ---------------------------------------------------------------- push
