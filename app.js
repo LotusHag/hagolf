@@ -151,10 +151,12 @@ const ICONS = {
 const TABS = [["home", "#home", "Home"], ["leagues", "#leagues", "Leagues"], ["players", "#roster", "Players"], ["settings", "#settings", "Settings"]];
 
 /** One screen: header (back or brand), body, and either an action bar (a flow) or the tab bar (a top-level screen). */
-function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false } = {}) {
+function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false } = {}) {
   const y = keepScroll ? window.scrollY : 0;
   const nav = tabs ? `<nav class="tabs">${TABS.map(([k, h, l]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[k]}${l}</a>`).join("")}</nav>` : "";
-  app.innerHTML = `
+  // `bare` is the sign-in gate: no header at all, not even the sync dot, because there is nothing yet to sync
+  // and a red dot is the first thing anybody would see.
+  app.innerHTML = bare ? `<main class="bare">${body}</main>` : `
     <header class="top">${back ? `<a class="back" href="${back}" aria-label="Back">‹</a>` : "<span class='back none'></span>"}
       <div class="ttl">${brand ? `<div class="brand">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>${syncDot()}</header>
     <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
@@ -263,28 +265,41 @@ function welcome() {
         <label>Code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" required></label>
         <button class="btn primary" type="submit">Sign in</button>
         <p class="center"><a class="muted small" href="#welcome" data-act="signin-again">Use a different address</a></p></form>`
-    : `<form id="signinf" class="card form open"><h2>Sign in</h2>
-        <p class="muted small">There is no password. Your rounds and leagues follow you to any phone.</p>
+    : `<form id="signinf" class="card form open">
+        <p class="muted small center">Score a round, keep a league, make the posters. Sign in and it is yours on every phone.</p>
         <div id="gbtn"></div>
         ${ui.authMethods.includes("email") ? `<label>Email<input name="email" type="email" inputmode="email" autocapitalize="off" autocomplete="email webauthn" placeholder="you@example.com" required></label>
         <button class="btn primary" type="submit">Email me a code</button>` : ""}
         ${ui.authMethods.includes("passkey") && A.passkeysAvailable() ? `<button class="btn" type="button" data-act="passkey" style="margin-top:8px">Use a passkey on this phone</button>` : ""}
         <p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></form>`;
   const named = acct && acct.name;
-  page("Hagolf", `<div class="welcome">
-    <h1>Who are you?</h1>
-    <p class="muted">${!c ? "This phone is not connected to a backend yet; that can be set up later in Settings." : acct ? "" : "Sign in so your results are yours on every phone, or just say who you are on this one."}</p>
-    ${signin}
-    ${!named && ps.length ? `<div class="chips-wrap" style="margin:12px 0">${ps.map(p => `<button class="pchip" data-act="me" data-id="${p.id}">${esc(p.name)}<small>index ${fmtIndex(Number(p.hi))}</small></button>`).join("")}</div>` : ""}
-    ${named ? "" : `<form id="mef" class="card form open"><h2>${ps.length && !acct ? "Not in the list" : "Your name"}</h2>
-      <label>Name<input name="name" autocapitalize="words" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
-      <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" placeholder="18,4 or +2.1" required></label>
-      <label>Rating<select name="gender"><option value="m">Men's</option><option value="f">Women's</option></select></label></div>
-      <button class="btn primary" type="submit">That's me</button></form>`}
-    ${named ? `<button class="btn primary big" data-act="link-me">Continue as ${esc(acct.name.split(" ")[0])} ›</button>` : `<p class="center"><a class="muted small" href="#skipme">Skip for now</a></p>`}</div>`, { back: "", brand: true });
+  // Signed out, this screen is the mark and one button and nothing else. Every roster name on it was somebody
+  // else's -- a list of who plays here, shown to whoever opened the link -- and a form beside a sign-in button
+  // is a choice nobody came to make.
+  if (!acct) {
+    page("Hagolf", `<div class="welcome gate">
+      <div class="gatemark">Hagolf</div>
+      ${signin}</div>`, { back: "", brand: false, bare: true });
+  } else {
+    page("Hagolf", `<div class="welcome">
+      <h1>Who are you?</h1>
+      ${signin}
+      ${named ? "" : `<form id="mef" class="card form open"><h2>Your name</h2>
+        <label>Name<input name="name" autocapitalize="words" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
+        <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" placeholder="18,4 or +2.1" required></label>
+        <label>Rating<select name="gender"><option value="m">Men's</option><option value="f">Women's</option></select></label></div>
+        <button class="btn primary" type="submit">That's me</button></form>`}
+      ${named ? `<button class="btn primary big" data-act="link-me">Continue as ${esc(acct.name.split(" ")[0])} ›</button>` : ""}</div>`,
+      { back: "", brand: true });
+  }
 
   // A signed-in account with a name is a contact in its own book, linked to itself, and what this phone means by "me".
-  const settle = a => { S.linkMe(a); toast(`Signed in as ${a.email}`); go("#home"); };
+  const settle = a => {
+    if (!a || !a.name) return welcome();   // nothing to be yet: the screen redraws asking for a name
+    S.linkMe(a);
+    toast(`Signed in as ${a.email}`);
+    go("#home");
+  };
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
@@ -442,7 +457,7 @@ function lastRoundCard(me) {
 }
 
 function home() {
-  if (!S.state.settings.welcomed) return welcome();
+  if (gated() || !S.state.settings.welcomed) return welcome();
   const rounds = S.rounds();
   const me = S.me();
   const banners = [];
@@ -3045,20 +3060,18 @@ function settings() {
   const st = Y.sync;
   const status = st.status === "off" ? "Solo phone, not connected" : st.status === "error" ? `Problem: ${st.error}` : st.status === "syncing" ? "Syncing…" : `Synced with ${cfg.label || "the shared database"}${st.lastPull ? " · last check " + st.lastPull.slice(11, 16) : ""}`;
   const me = S.me();
-  const base = location.origin + location.pathname;
-  const invite = Y.enabled() ? Y.joinLink(base, false) : null;
-  const inviteOrg = Y.enabled() ? Y.joinLink(base, true) : null;
   const phoneCourses = S.state.courses.filter(c => !c.deleted && (c.source || "phone") === "phone");
   const dstats = S.defaultStats();
   const acct = A.account();
   const acctCard = acct
-    ? `<div class="card"><div class="row"><div><div class="name">${esc(acct.email)}</div><div class="muted small">${acct.name ? esc(acct.name) + (acct.hi !== null && acct.hi !== undefined ? ` · index ${fmtIndex(Number(acct.hi))}` : "") : "no name on the account yet"}</div></div><a class="btn small" href="#welcome">Change</a></div>
+    ? `<div class="card"><div class="row"><div><div class="name">${acct.name ? esc(acct.name) : "No name yet"}${acct.hi !== null && acct.hi !== undefined ? ` <span class="muted">· ${fmtIndex(Number(acct.hi))}</span>` : ""}</div>
+        <div class="muted small addr">${esc(acct.email)}</div></div><a class="btn small" href="#welcome">Change</a></div>
         <label class="checks" style="margin-top:10px"><input type="checkbox" id="hidepub" ${acct.hidePublic ? "checked" : ""}> Keep me off shared boards <span class="muted">&nbsp;(initials instead of my name on any board that is not private)</span></label>
         <div class="two" style="margin-top:10px"><button class="btn" data-act="signout">Sign out</button><button class="btn" data-act="signout-all">Sign out everywhere</button></div>
         ${ui.authMethods.includes("passkey") && A.passkeysAvailable() ? `<button class="btn" data-act="add-passkey" style="margin-top:10px">Add a passkey on this phone <span class="muted">&nbsp;(sign in with its lock next time)</span></button>` : ""}
         ${N.pushPossible() ? `<label class="checks" style="margin-top:10px"><input type="checkbox" id="pushtoggle" ${N.pushState() === "granted" && S.state.settings.push ? "checked" : ""}> Tell me when a round is added <span class="muted">&nbsp;(a round you played in, logged by somebody else)</span></label>
           ${N.pushState() === "denied" ? `<p class="muted small">Notifications are blocked for Hagolf on this phone; turn them back on in its settings. The home screen still says when a round has been added.</p>` : ""}` : ""}
-        <details style="margin-top:10px"><summary class="muted small">My data</summary>
+        <details class="foldrow" style="margin-top:12px"><summary>My data</summary>
           <p class="muted small">Everything the account can see, as one file; or the account and everything that is its own, gone for good. Other people's records of you stay theirs, with your name taken off them.</p>
           <div class="two"><button class="btn" data-act="export-me">Download my data</button><button class="btn danger" data-act="erase-me">Delete my account</button></div></details></div>`
     : Y.enabled()
@@ -3079,22 +3092,23 @@ function settings() {
           <label>The club's look<select name="theme"><option value="">The app's own</option>${DATA.themes.map(t => `<option value="${t.name}" ${acct.club.theme === t.name ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label>
           <button class="btn small primary" type="submit">Save the look</button></form></details>` : ""}</div>`
     : `<div class="card"><p class="muted small" style="margin:0 0 8px">A club gives every member its own look and everything in the shop, for as long as they are in it. Your rounds stay yours either way.</p>
-        <form id="joinclubf"><div class="two"><input name="code" placeholder="Join code from the club" autocapitalize="characters" autocomplete="off"><button class="btn small primary" type="submit">Join</button></div></form>
+        <form id="joinclubf"><label>Join code<input name="code" placeholder="ABCD2345" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8"></label>
+          <button class="btn primary" type="submit">Join the club</button></form>
         <button class="btn small" data-act="club-create" style="margin-top:8px">Start a club</button></div>`}` : ""}
     <h2>This phone</h2>
     <div class="card"><div class="row"><div><div class="name">${me ? esc(me.name) : "Nobody yet"}</div><div class="muted small">${me ? "your results show on the home screen" : "say who you are for a personal home screen"}</div></div><a class="btn small" href="#welcome">Change</a></div>
       <label class="checks" style="margin-top:10px"><input type="checkbox" id="orgtoggle" ${organiser() ? "checked" : ""}> Organiser on this phone <span class="muted">&nbsp;(can delete rounds and leagues)</span></label></div>
-    <h2>Shared database</h2>
-    <div class="card"><div class="name">${esc(status)}</div>
-      ${invite ? `<p class="muted small">Invite another phone: let them scan this code, or send them the link. It connects them to ${esc(cfg.label || "this database")} and asks who they are.</p>
-        <canvas class="qr" id="qr" width="220" height="220"></canvas>
-        <div class="two"><button class="btn" data-act="share-link" data-link="${esc(invite)}">Share join link</button><button class="btn" data-act="share-link" data-link="${esc(inviteOrg)}">Organiser link</button></div>` : ""}
-      <details style="margin-top:10px"><summary class="muted small">${DATA.sync ? "Connection details (only change to use another database)" : "Connect to a database"}</summary>
+    <h2>Sync</h2>
+    <div class="card"><div class="row"><div><div class="name">${esc(status)}</div>
+        <div class="muted small">Your rounds and leagues live on the backend and follow your account to any phone.</div></div>
+      <button class="btn small" data-act="sync-now">Sync now</button></div>
+      <details class="foldrow" style="margin-top:12px"><summary>${DATA.sync ? "Connection" : "Connect to a backend"}</summary>
+      <p class="muted small">Only change these to point this phone at a different backend.</p>
       <form id="syncf">
         <label>Database address<input name="url" value="${esc(cfg.url)}" placeholder="https://hagolf.….workers.dev" autocapitalize="off" autocorrect="off"></label>
         <label>Backend key<input name="anonKey" value="${esc(cfg.anonKey)}" placeholder="…" autocapitalize="off" autocorrect="off"></label>
         <label>Backend name<input name="label" value="${esc(cfg.label || "")}" placeholder="e.g. Hagolf"></label>
-        <div class="two"><button class="btn primary" type="submit">Test and save</button><button class="btn" type="button" data-act="sync-now">Sync now</button></div>
+        <button class="btn primary" type="submit">Test and save</button>
         <button class="btn small" type="button" data-act="resync" style="margin-top:10px">Fetch everything again</button>
         ${DATA.sync && !Y.isDefault() ? `<button class="btn small" type="button" data-act="sync-default">Back to the built-in connection</button>` : ""}
       </form></details></div>
@@ -3119,14 +3133,6 @@ function settings() {
     <div class="list">${done.map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(fmtDate(r.date))}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
     ${organiser() ? `<h2>Delete a round</h2><div class="list">${S.rounds().map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${roundStatus(r)}</div></div><button class="btn small danger" data-act="del-round" data-rid="${r.id}">Delete</button></div>`).join("") || `<div class="muted small">No rounds.</div>`}</div>` : ""}
     <p class="foot">Hagolf ${DATA.version} · ${S.courses().length} courses · ${DATA.themes.length} themes</p>`, { back: "", tabs: "settings" });
-  if (invite && window.qrcode) {
-    try {
-      const q = window.qrcode(0, "M"); q.addData(invite); q.make();
-      const cv = document.getElementById("qr"), ctx = cv.getContext("2d"), N = q.getModuleCount(), cell = 200 / N;
-      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 220, 220); ctx.fillStyle = "#000";
-      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (q.isDark(y, x)) ctx.fillRect(10 + x * cell, 10 + y * cell, cell + 0.5, cell + 0.5);
-    } catch (e) { console.warn("qr", e); }
-  }
   bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); S.setSetting("themeChosen", true); paint(themeHere()); toast("Saved"); });
   document.getElementById("orgtoggle").addEventListener("change", ev => { S.setSetting("organiser", ev.target.checked); settings(); });
   const clubf = document.getElementById("clubf");
@@ -3386,12 +3392,18 @@ async function shop(state) {
 }
 
 const screens = { home, welcome, signin, join, board, shop, new: newRound, loops, players, score, review, attach, graphics, roster, player, leagues, league, leagueposter: leaguePoster, statsposter: statsPoster, settings, newcourse: newCourse, scan,
-  skipme: () => { S.state.settings.welcomed = true; S.save(); go("#home"); } };
+};
+
+// The gate. Signed out, the only screens that exist are the sign-in one and a shared board somebody sent you --
+// a board needs no account by design. Everything else is somebody's golf, and there is no "somebody" yet.
+const OPEN_SCREENS = ["welcome", "signin", "board", "join"];
+const gated = () => Y.enabled() && !A.signedIn();
 
 function route() {
   const t = document.getElementById("toast");
   if (t && !t.classList.contains("action")) t.classList.remove("show");
   const [name, ...args] = location.hash.replace(/^#/, "").split("/");
+  if (gated() && !OPEN_SCREENS.includes(name)) return welcome();
   paint(themeHere());
   ui.expanded = name === "review" ? ui.expanded : null;
   if (name !== "review") ui.reviewOrder = {};

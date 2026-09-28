@@ -148,9 +148,9 @@ const TABLES = {
     apply: r => lww(S.state.leagueRounds, x => x.league_id === r.league_id && x.round_id === r.round_id, { league_id: r.league_id, round_id: r.round_id, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_members: {
-    collect: keys => S.state.leagueMembers.filter(x => keys.has(`${x.league_id}|${x.account_id}`)).map(x => ({ league_id: x.league_id,
-      account_id: x.account_id, role: x.role || "player", claimed_player: x.claimed_player || null, claim_state: x.claim_state || "none",
-      joined: x.joined || null, deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
+    // Read only. Which leagues I am in is the server's to say -- joining, claiming and confirming all go through
+    // /league/*, which checks who is asking -- so nothing here is ever pushed.
+    collect: () => [],
     apply: r => lww(S.state.leagueMembers, x => x.league_id === r.league_id && x.account_id === r.account_id,
       { league_id: r.league_id, account_id: r.account_id, role: r.role, claimed_player: r.claimed_player, claim_state: r.claim_state,
         joined: r.joined, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),

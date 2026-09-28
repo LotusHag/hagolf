@@ -77,6 +77,10 @@ button { font: inherit; color: inherit; }
 /* ---- cards and rows */
 .card { background: var(--card); border-radius: var(--r); padding: 14px 16px; margin: 10px 0; color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow); width: 100%; text-align: left; }
 .card.row, .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* A long address or club name must wrap rather than push the button off the side of the phone: the text takes
+   what is left, the action keeps its own width. min-width:0 is what lets a flex child shrink below its content. */
+.row > :first-child { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
+.row > .btn, .row > .pill, .row > .chev { flex: 0 0 auto; }
 .row.plain { background: none; border: 0; padding: 0; width: 100%; color: inherit; text-align: left; cursor: pointer; box-shadow: none; }
 .card .name, .name { font-weight: 700; font-size: 17px; line-height: 1.25; }
 .chev { color: var(--ink3); font-size: 22px; flex: none; }
@@ -134,11 +138,21 @@ input[type=checkbox] { -webkit-appearance: checkbox; appearance: checkbox; accen
 input::placeholder { color: var(--ink3); opacity: .8; font-weight: 400; }
 .search { margin: 6px 0 10px; font-size: 16px; border-radius: 999px; padding-left: 40px; background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237A877E' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") 14px 50% / 18px no-repeat; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+/* Side-by-side buttons match heights even when one of them wraps to two lines. */
+.two > .btn { align-self: stretch; }
+/* An email address is one long word: break it where it runs out of room rather than pushing the card wide,
+   but only this one, since breaking an ordinary word mid-syllable reads badly. */
+.addr { overflow-wrap: anywhere; }
 .two .btn { margin-top: 12px; }
 .form { display: none; } .form.open { display: block; }
 .form .btn.primary { margin-top: 16px; width: 100%; }
 .form h2 { margin-top: 4px; }
-.checks label { display: flex; align-items: center; font-size: 16px; color: var(--ink); min-height: 44px; margin: 0; font-weight: 500; }
+/* The box stays beside the first line and the explanation sits under the label, rather than the parenthetical
+   wrapping back under the tick and reading as a second, unticked option. */
+.checks label { display: grid; grid-template-columns: auto 1fr; align-items: start; column-gap: 10px;
+  font-size: 16px; color: var(--ink); min-height: 44px; padding: 6px 0; margin: 0; font-weight: 500; }
+.checks label > input { margin: 2px 0 0; }
+.checks label > .muted { grid-column: 2; font-size: 13px; font-weight: 400; line-height: 1.35; margin-top: 2px; }
 .checks details { margin-top: 6px; } .checks summary { list-style: none; cursor: pointer; }
 .addbtn { width: 100%; margin: 10px 0; gap: 10px; border-style: dashed; box-shadow: none; background: transparent; }
 .addbtn .plus { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--green); color: var(--green-ink); font-size: 22px; font-weight: 800; line-height: 1; }
@@ -146,6 +160,21 @@ details.card > summary { display: flex; align-items: center; justify-content: sp
 details.card > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
 details.card[open] > summary::after { transform: rotate(-90deg); }
 .welcome h1 { font-size: 30px; margin: 18px 0 6px; letter-spacing: -.4px; }
+
+/* A foldaway inside a card: it has to look tappable, which a muted caption does not. */
+.foldrow > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+  min-height: 44px; font-weight: 600; color: var(--ink2); }
+.foldrow > summary::-webkit-details-marker { display: none; }
+.foldrow > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
+.foldrow[open] > summary::after { transform: rotate(-90deg); }
+
+/* ---- the sign-in gate: the mark and one button, centred, and nothing else on the screen */
+main.bare { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); }
+.welcome.gate { width: 100%; max-width: 380px; text-align: center; }
+.gatemark { font-family: "Oswald", sans-serif; font-weight: 600; font-size: 46px; letter-spacing: 1px; color: var(--green); margin-bottom: 22px; }
+.welcome.gate .card { text-align: center; }
+.welcome.gate #gbtn { display: flex; justify-content: center; min-height: 44px; margin: 4px 0 2px; }
+.welcome.gate .form .btn.primary { margin-top: 12px; }
 
 /* ---- course picker, players in a round */
 .course .name { font-size: 16px; }

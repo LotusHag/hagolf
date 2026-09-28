@@ -156,6 +156,9 @@ export function me() { return state.settings.meId ? players().find(p => p.id ===
  * they score for themselves has an entry claimed by them from the start.
  */
 export function linkMe(account) {
+  // An account with no name yet cannot be a contact: the welcome screen asks for one first, and a name is what
+  // a card, a board and a league line are drawn from.
+  if (!account || !account.name) return null;
   const p = upsertPlayer(account.name, account.hi ?? null, account.gender || "m");
   if (p.linkedAccount !== account.id || p.owner !== account.id) {
     p.linkedAccount = account.id;
