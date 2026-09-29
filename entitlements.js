@@ -9,8 +9,10 @@
 // Read access is never revoked: a league already ranked on a format its owner no longer holds keeps
 // rendering, a league theme already chosen keeps painting. The gate is on choosing, not on what was chosen.
 import * as A from "./auth.js";
+import { DATA } from "./data.js";
 
 export const FREE_THEMES = ["hagolf", "paper"];
+const familyOf = name => { const t = DATA.themes.find(t => t.name === name); return (t && t.family) || "other"; };
 export const FORMAT_SKU = { match: "matchplay", matchpts: "matchplay", soccer: "matchplay", soccerpts: "matchplay", gp: "grandprix", gpstroke: "grandprix" };
 
 export const enforced = () => { const a = A.account(); return !!(a && a.shop); };
@@ -22,7 +24,7 @@ export function has(sku) {
   return s.has("pass") || s.has(sku);
 }
 
-export const canTheme = name => FREE_THEMES.includes(name) || has("skins") || has(`skin:${name}`);
+export const canTheme = name => FREE_THEMES.includes(name) || has("skins") || has(`collection:${familyOf(name)}`) || has(`skin:${name}`);
 export const boardTier = () => has("boards") ? "full" : "basic";
 export const cardTier = () => has("card") ? "full" : "basic";
 export const formatAllowed = f => !FORMAT_SKU[f] || has(FORMAT_SKU[f]);

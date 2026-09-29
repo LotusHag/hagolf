@@ -21,7 +21,7 @@ function scoreRow(r, c, e, i, h, kinds = null) {
   return `<div class="prow" data-i="${i}">
     <div class="pinfo"><div class="name">${esc(e.name)}</div><div class="muted small">${detail}</div>${badge}</div>
     <button class="sbtn" data-act="dec" data-i="${i}" aria-label="minus">−</button>
-    <button class="sval ${cls}" data-act="pickup" data-i="${i}" title="Tap to mark picked up">${v === null ? "–" : v === 0 ? String(NO_SCORE) : v}</button>
+    <button class="sval ${cls}" data-act="par" data-i="${i}">${v === null ? "–" : v === 0 ? String(NO_SCORE) : v}</button>
     <button class="sbtn" data-act="inc" data-i="${i}" aria-label="plus">+</button>
     ${kinds ? statStrip(r, c, e, i, h, kinds) : ""}</div>`;
 }
@@ -49,16 +49,17 @@ export function score(rid, hArg) {
   const shown = r.entries.map((e, i) => [e, i]).filter(([e]) => !gf || (e.group || 1) === gf);
   const metres = c.tees[r.defaultTee] && c.tees[r.defaultTee].metres;
   const kinds = S.statsFor(rid);
-  const tracking = r.entries.filter(e => e.trackStats).length;
+  const extras = S.anyStatsOn(rid) && r.entries.some(e => e.trackStats);
   const body = `
     <div class="strip">${stripHtml(r, c, rid, h)}</div>
     ${groups.length > 1 ? `<div class="filter"><button data-act="gf" data-g="0" class="${gf === 0 ? "on" : ""}">All</button>${groups.map(g => `<button data-act="gf" data-g="${g}" class="${gf === g ? "on" : ""}">Group ${g}</button>`).join("")}</div>` : ""}
     <div class="holehead"><div class="hnum num">${c.first_hole + h}</div>
       <div><div class="name">Par ${c.par[h]}${metres ? ` · ${metres[h]} m` : ""}</div>
-      <div class="muted small">Stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${n}</div></div></div>
+      <div class="muted small">Stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${n}</div></div>
+      <button class="xtoggle ${extras ? "on" : ""}" data-act="extras" title="Putts, fairways and the rest">${extras ? "Extras on" : "+ Extras"}</button></div>
     <div class="card" style="padding:4px 14px" id="rows">${shown.map(([e, i]) => scoreRow(r, c, e, i, h, kinds)).join("")}</div>
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}
-    <p class="hint">First tap sets par. Tap the score for a pick-up (counts ${NO_SCORE}).${tracking && S.anyStatsOn(rid) ? " Extras go in under the score; tap a chip again to clear it." : ""}</p>
+    <p class="hint">First tap sets par, then + and −.${extras ? ` Extras go in under the score; tap a chip again to clear it. <a href="#players/${rid}">Choose who keeps them</a>.` : ""}</p>
     <p class="center"><a class="btn small" href="#players/${rid}">Add or remove players</a></p>
     ${dropBtn(r)}`;
   const bar = (h === 0 ? `<a class="btn" href="#players/${rid}">‹ Players</a>` : `<a class="btn" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`) +
@@ -78,22 +79,21 @@ export function score(rid, hArg) {
     if (!b) return;
     if (b.dataset.act === "gf") { ui.groupFilter = Number(b.dataset.g); return score(rid, h); }
     if (b.dataset.act === "drop-round") return dropRound(rid);
+    if (b.dataset.act === "extras") { S.unlockStats(r, !extras); return score(rid, h); }
     if (["st-putt", "st-bit", "st-fw"].includes(b.dataset.act)) {
       const i = Number(b.dataset.i);
       if (!holedOut(r.entries[i], h)) return toast("Put the score in first");
       statTap(r, r.entries[i], h, b.dataset.act, b);
       return refresh(i);
     }
-    if (!["inc", "dec", "pickup"].includes(b.dataset.act)) return;
+    if (!["inc", "dec", "par"].includes(b.dataset.act)) return;
     const i = Number(b.dataset.i), e = r.entries[i];
     const par = c.par[h], v = e.scores[h];
+    // A 0 is a pick-up from an older card; the first tap on it starts over at par like an empty hole.
     if (b.dataset.act === "inc") S.setScore(r, e, h, (v === null || v === 0) ? par : Math.min(30, v + 1));
     else if (b.dataset.act === "dec") S.setScore(r, e, h, (v === null || v === 0) ? par : Math.max(1, v - 1));
-    else if (b.dataset.act === "pickup") {
-      if (v === 0) S.setScore(r, e, h, null);
-      else if (v === null) S.setScore(r, e, h, par);
-      else { S.setScore(r, e, h, 0); toast(`${e.name}: picked up on hole ${c.first_hole + h}, counts ${NO_SCORE}`, 5000, { label: "Undo", fn: () => { S.setScore(r, e, h, v); refresh(i); } }); }
-    }
+    else if (v === null || v === 0) S.setScore(r, e, h, par);
+    else return;
     refresh(i);
   });
 }

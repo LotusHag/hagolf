@@ -87,26 +87,28 @@ export const ICONS = {
   inbox: I(`<path d="M4 4h16v16H4z"/><path d="M4 14h5l1.5 2h3L15 14h5"/>`),
   mail: I(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>`),
   golf: I(`<circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/>`),
+  shop: I(`<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`),
 };
-export const TABS = [["home", "#home", "Home", "home"], ["play", "#play", "Play", "play"], ["leagues", "#leagues", "Leagues", "leagues"], ["people", "#people", "People", "people"], ["me", "#me", "Me", "me"]];
+export const TABS = [["home", "#home", "Home", "home"], ["play", "#play", "Play", "play"], ["leagues", "#leagues", "Leagues", "leagues"], ["people", "#people", "People", "people"], ["shop", "#shop", "Shop", "shop"]];
 
 // ---------------------------------------------------------------- the page shell
 let toastTimer = null;
 
 /**
- * One screen. A top-level screen (tabs given) carries the brand and the bell; a sub-screen carries a back arrow
+ * One screen. A top-level screen (tabs given) carries the brand, the bell and the gear; a sub-screen carries a back arrow
  * and a title. `actions` are extra header buttons, `bar` a fixed action bar instead of the tabs, `bare` the
  * gate (no chrome at all).
  */
 export function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false, actions = "", bell = true } = {}) {
   const y = keepScroll ? window.scrollY : 0;
   const badge = N.actionable();
-  const nav = tabs ? `<nav class="tabs">${TABS.map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "people" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
+  const nav = tabs ? `<nav class="tabs">${TABS.filter(([k]) => k !== "shop" || Y.enabled()).map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "people" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
   const bellBtn = bell && A.signedIn() ? `<a class="iconbtn ${location.hash === "#updates" ? "on" : ""}" href="#updates" aria-label="Updates">${ICONS.bell}${badge ? `<span class="n">${badge}</span>` : N.unread() ? `<span class="n quiet">${N.unread()}</span>` : ""}</a>` : "";
+  const gearBtn = tabs ? `<a class="iconbtn ${tabs === "me" ? "on" : ""}" href="#me" aria-label="Me and settings">${ICONS.settings}</a>` : "";
   app.innerHTML = bare ? `<main class="bare">${body}</main>` : `
     <header class="top">${back ? `<a class="back" href="${back}" aria-label="Back">‹</a>` : "<span class='back none'></span>"}
       <div class="ttl">${brand ? `<div class="brand">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
-      <div class="acts">${actions}${bellBtn}</div></header>
+      <div class="acts">${actions}${bellBtn}${gearBtn}</div></header>
     <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
     ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
   window.scrollTo(0, y);
@@ -244,16 +246,30 @@ export function tchip(input, t, label, on) {
     ${input}<span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(label)}</label>`;
 }
 const LOCKED = " · in the shop";
+export const FAMILIES = DATA.families || [{ key: "other", name: "Every look", blurb: "" }];
+export const themesIn = key => DATA.themes.filter(t => (t.family || "other") === key);
+/** A strip of one sliver per look, the family seen at a glance. */
+export const familyStrip = themes => `<span class="fstrip">${themes.map(t => `<i style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT}"></i>`).join("")}</span>`;
+/** A hundred looks are ten folded families, each opened only when it holds the pick; `chip` draws one look. */
+function familyFolds(chip, isOpen) {
+  return FAMILIES.map(f => {
+    const ts = themesIn(f.key);
+    if (!ts.length) return "";
+    const open = ts.some(isOpen), free = ts.filter(t => E.canTheme(t.name)).length;
+    return `<details class="tfam" ${open ? "open" : ""}><summary>${familyStrip(ts)}<span class="fname">${esc(f.name)}</span><span class="muted small">${ts.length}${free < ts.length ? ` · ${free ? free + " yours" : "in the shop"}` : ""}</span></summary>
+      <div class="tgrid">${ts.map(chip).join("")}</div></details>`;
+  }).join("");
+}
 export function themeChips(selected) {
-  return DATA.themes.map(t => E.canTheme(t.name)
+  return familyFolds(t => E.canTheme(t.name)
     ? tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name))
-    : tchip(`<input type="checkbox" name="theme" value="${t.name}" disabled>`, t, t.name + LOCKED, false)).join("");
+    : tchip(`<input type="checkbox" name="theme" value="${t.name}" disabled>`, t, t.name + LOCKED, false), t => selected.includes(t.name));
 }
 export function themeRadios(name, sel, dflt = null) {
-  const none = dflt ? tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel) : "";
-  return none + DATA.themes.map(t => E.canTheme(t.name) || t.name === sel
+  const none = dflt ? `<div class="tgrid">${tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel)}</div>` : "";
+  return none + familyFolds(t => E.canTheme(t.name) || t.name === sel
     ? tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel)
-    : tchip(`<input type="radio" name="${name}" value="${t.name}" disabled>`, t, t.name + LOCKED, false)).join("");
+    : tchip(`<input type="radio" name="${name}" value="${t.name}" disabled>`, t, t.name + LOCKED, false), t => t.name === sel);
 }
 export function bindChips(el, onPick = null) {
   if (!el) return;

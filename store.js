@@ -468,28 +468,35 @@ export function setTrackStats(r, e, on) {
 }
 
 /**
- * Which extras this round is keeping on this phone. The switches in Settings are the default; a round may
- * differ, and remembers it, so the Sunday medal can carry putts without the Tuesday roll-up having to.
+ * Which extras this round is keeping on this phone. Off on every card until the Extras button on the score
+ * screen (or the picker on Players) opens them, and remembered for the rest of that card.
  */
 export function statsFor(rid) {
-  const per = state.settings.statsRound || {};
-  return { ...defaultStats(), ...(per[rid] || {}) };
+  const per = (state.settings.statsRound || {})[rid];
+  return Object.fromEntries(STAT_KEYS.map(k => [k, !!(per && per[k])]));
 }
 
 export function setStatsFor(rid, kinds) {
   state.settings.statsRound = state.settings.statsRound || {};
   state.settings.statsRound[rid] = kinds;
-  state.settings.stats = { ...kinds };   // what you chose today is what the next round starts from, like tees and indexes
   save();
 }
 
-/** The phone-wide default: off everywhere until somebody turns something on. */
+/** What unlocking opens on a card: the kinds ticked in Settings, or everything until somebody narrows it. */
 export function defaultStats() {
-  const on = state.settings.stats || {};
-  return Object.fromEntries(STAT_KEYS.map(k => [k, !!on[k]]));
+  const on = state.settings.stats;
+  return Object.fromEntries(STAT_KEYS.map(k => [k, on ? !!on[k] : true]));
 }
 
 export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
+
+/** The Extras button: opens the ticked kinds for this card and every player on it, or shuts them again. */
+export function unlockStats(r, on) {
+  const want = defaultStats();
+  const kinds = Object.fromEntries(STAT_KEYS.map(k => [k, on && (want[k] || !Object.values(want).some(Boolean))]));
+  setStatsFor(r.id, kinds);
+  if (on) for (const e of r.entries) if (!e.trackStats) setTrackStats(r, e, true);
+}
 
 /** True when this round is keeping anything at all on this phone. */
 export const anyStatsOn = rid => Object.values(statsFor(rid)).some(Boolean);

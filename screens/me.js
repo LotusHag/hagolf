@@ -6,7 +6,7 @@ import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, alertSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, applyBrand, parseHI, hiOk, app, ICONS, roundStatus } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, alertSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, FAMILIES, themesIn } from "../ui.js";
 import { fmtIndex, STAT_KINDS, STAT_KEYS } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
@@ -35,16 +35,15 @@ export function me(section) {
       ${row("#me/updates", "bell", "Updates and notifications", N.pushState() === "granted" && S.state.settings.push ? "Push on" : "Push off")}
       ${row("#me/privacy", "shield", "Privacy", acct ? `Found by ${acct.discoverable === "everyone" ? "everyone" : acct.discoverable === "nobody" ? "nobody" : "people in your leagues"}` : "")}
       ${row("#me/look", "sun", "Appearance", `${esc(appTheme().name)} theme`)}
-      ${row("#me/scoring", "golf", "Scoring extras", STAT_KEYS.some(k => S.defaultStats()[k]) ? STAT_KINDS.filter(k => S.defaultStats()[k.key]).map(k => k.short).join(", ") : "Score only")}
+      ${row("#me/scoring", "golf", "Scoring extras", STAT_KEYS.every(k => S.defaultStats()[k]) ? "Everything, once a card asks" : STAT_KEYS.some(k => S.defaultStats()[k]) ? STAT_KINDS.filter(k => S.defaultStats()[k.key]).map(k => k.short).join(", ") : "Nothing")}
       ${row("#me/courses", "flag", "Courses", `${S.courses().length} courses`)}
       ${row("#me/data", "db", "Data and backup", "Export, import, download or delete")}
-      ${Y.enabled() && acct ? row("#shop", "trophy", "Shop", "Skins, full boards, the other ways of scoring") : ""}
       ${acct ? row("#me/club", "users", "Club", acct.club ? esc(acct.club.name) : "Join with a code, or start one") : ""}
       ${row("#me/backend", "settings", "Connection", `${syncWord}${st.lastPull ? " · " + st.lastPull.slice(11, 16) : ""}`)}
       ${row("#me/about", "info", "About Hagolf", `v${DATA.version.slice(4, 8)}.${DATA.version.slice(9)}`)}
     </div>
     ${acct ? `<div class="btnrow" style="margin-top:20px"><button class="btn" data-act="signout">${ICONS.logout} Sign out</button></div>` : ""}`,
-    { back: "", tabs: "me" });
+    { back: "#home", tabs: "me" });
   bind(async ev => {
     const b = ev.target.closest("[data-act=signout]");
     if (!b) return;
@@ -149,9 +148,9 @@ function look() {
 // ---------------------------------------------------------------- scoring extras
 function scoring() {
   const dstats = S.defaultStats();
-  sub("Scoring extras", `<p class="muted small" style="margin:4px 4px 10px">What a new round asks for beside each score. One tap on the hole each; anything left off never appears. A round can differ, and what you pick there becomes the next round's default.</p>
+  sub("Scoring extras", `<p class="muted small" style="margin:4px 4px 10px">Every card starts with the score and nothing else. The Extras button on the scoring screen opens what is ticked here for that card, one tap on the hole each; anything left off never appears.</p>
     <div class="card"><div class="statpick">${STAT_KINDS.map(k => `<button data-act="def-stat" data-k="${k.key}" class="${dstats[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
-      ${STAT_KEYS.some(k => dstats[k]) ? `<p class="muted small" style="margin:10px 0 0">${STAT_KINDS.filter(k => dstats[k.key]).map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>` : `<p class="muted small" style="margin:10px 0 0">Nothing extra is asked for: scoring is the score and nothing else.</p>`}</div>`);
+      ${STAT_KEYS.some(k => dstats[k]) ? `<p class="muted small" style="margin:10px 0 0">${STAT_KINDS.filter(k => dstats[k.key]).map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>` : `<p class="muted small" style="margin:10px 0 0">Nothing ticked, so the Extras button opens everything.</p>`}</div>`);
   bind(ev => { const b = ev.target.closest("[data-act=def-stat]"); if (b) { S.setDefaultStats({ ...dstats, [b.dataset.k]: !dstats[b.dataset.k] }); scoring(); } });
 }
 
@@ -219,7 +218,7 @@ function club() {
         ${ui.clubCode ? `<p class="small"><b>Join code: ${esc(ui.clubCode)}</b> · read it out or send it; a new one replaces it.</p>` : ""}
         <div class="two"><button class="btn small" data-act="club-code">${ui.clubCode ? "New join code" : "Show a join code"}</button><button class="btn small" data-act="club-members">Who is in</button></div>
         <form id="clubf" style="margin-top:10px"><label>Club name<input name="name" value="${esc(acct.club.name)}"></label>
-          <label>The club's look<select name="theme"><option value="">The app's own</option>${DATA.themes.map(t => `<option value="${t.name}" ${acct.club.theme === t.name ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label>
+          <label>The club's look<select name="theme"><option value="">The app's own</option>${FAMILIES.map(f => `<optgroup label="${esc(f.name)}">${themesIn(f.key).map(t => `<option value="${t.name}" ${acct.club.theme === t.name ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</optgroup>`).join("")}</select></label>
           <button class="btn small primary" type="submit" style="margin-top:10px">Save the look</button></form></details>` : ""}</div>`
     : `<div class="card"><p class="muted small" style="margin:0 0 8px">A club gives every member its own look and everything in the shop, for as long as they are in it. Your rounds stay yours either way.</p>
         <form id="joinclubf"><label>Join code<input name="code" placeholder="ABCD2345" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8"></label>

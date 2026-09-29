@@ -249,6 +249,8 @@ main.bare { min-height: 100dvh; display: grid; place-items: center; padding: 24p
 .holehead { display: flex; align-items: center; gap: 14px; padding: 4px 0 14px; }
 .hnum { font-size: 56px; font-weight: 600; line-height: 1; color: var(--green); min-width: 64px; text-align: center; }
 .holehead .name { font-size: 18px; }
+.xtoggle { margin-left: auto; align-self: flex-start; flex: none; min-height: 30px; padding: 4px 12px; border-radius: 999px; border: 1px dashed var(--line2); background: var(--card); color: var(--ink2); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.xtoggle.on { border-style: solid; border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .filter { display: flex; gap: 6px; margin: 0 0 10px; background: var(--card2); padding: 4px; border-radius: 999px; }
 .filter button { flex: 1; min-height: 36px; border-radius: 999px; border: 0; background: transparent; color: var(--ink2); font-weight: 600; }
 .filter button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
@@ -322,7 +324,18 @@ main.bare { min-height: 100dvh; display: grid; place-items: center; padding: 24p
 .pens { margin-top: 8px; } .pens summary { cursor: pointer; margin-top: 6px; } .pens .btn { margin-top: 10px; }
 
 /* ---- graphics */
-.themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.themes { display: grid; gap: 8px; }
+.tgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tfam { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0 10px; }
+.tfam > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; min-height: 48px; font-weight: 600; }
+.tfam > summary::-webkit-details-marker { display: none; }
+.tfam > summary .fname { flex: 1; }
+.tfam > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
+.tfam[open] > summary::after { transform: rotate(-90deg); }
+.tfam > .tgrid { padding: 2px 0 12px; }
+.fstrip { display: flex; width: 56px; height: 28px; border-radius: 6px; overflow: hidden; flex: none; }
+.fstrip i { flex: 1; display: block; background: var(--tbg); position: relative; }
+.fstrip i::after { content: ""; position: absolute; left: 25%; right: 25%; top: 62%; height: 18%; background: var(--tacc); }
 .tchip { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px; border-radius: 14px; border: 2px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; }
 .tchip input { display: none; }
 .tchip .sw { display: block; height: 58px; border-radius: 9px; background: var(--tbg); position: relative; overflow: hidden; }
@@ -619,6 +632,12 @@ a.kv:active { background: var(--card2); }
 .swrow i { flex: 1; display: block; background: var(--tbg); position: relative; }
 .swrow i::after { content: ""; position: absolute; left: 20%; right: 20%; top: 36%; height: 26%; border-radius: 2px; background: var(--tpanel); border-left: 5px solid var(--tacc); }
 .skins { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+.skins.colls { grid-template-columns: 1fr; gap: 0; }
+.collrows { display: grid; gap: 6px; margin: 8px 0; }
+.collrow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.collrow > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.collrow small { font-size: 12px; }
+.collrow i { color: var(--ink3); font-size: 22px; font-style: normal; }
 .tchip.skin { width: 100%; padding-bottom: 8px; }
 .tchip.skin .sw { height: 72px; }
 .tchip small { display: block; color: var(--ink3); font-size: 12px; font-weight: 500; margin-top: -2px; }
@@ -632,7 +651,7 @@ a.kv:active { background: var(--card2); }
 .skinmock .mtop { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 4px; }
 .skinmock .brand { font-family: "Oswald", sans-serif; font-weight: 600; font-size: 22px; letter-spacing: .5px; color: var(--green); }
 .skinmock svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
-.skinmock .mbell { color: var(--ink2); display: grid; }
+.skinmock .mbell { color: var(--ink2); display: flex; gap: 10px; }
 .skinmock .now { margin: 8px 0; }
 .skinmock h2 { margin: 12px 4px 6px; }
 .skinmock .card { margin: 0; padding: 0; }

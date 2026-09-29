@@ -136,8 +136,7 @@ export function review(rid, keep = false) {
     return `<div class="editor"><div>Hole ${c.first_hole + i} · par ${par} · SI ${c.stroke_index[i]}</div>
       <div class="edrow"><button class="sbtn" data-act="ed" data-d="-1" data-pid="${e.playerId}">−</button>
       <span class="sval big">${v === null ? "–" : v === 0 ? String(NO_SCORE) : v}</span>
-      <button class="sbtn" data-act="ed" data-d="1" data-pid="${e.playerId}">+</button>
-      <button class="btn small" data-act="ed-pick" data-pid="${e.playerId}">${v === 0 ? "Un-pick" : "Picked up"}</button></div>
+      <button class="sbtn" data-act="ed" data-d="1" data-pid="${e.playerId}">+</button></div>
       ${statStrip(r, c, e, ei, i, kinds)}</div>`;
   };
   const penalties = e => !mine ? "" : `<div class="pens">${(e.penalties || []).map((p, k) => `<span class="pen">+${p.strokes} on hole ${p.hole}${p.reason ? ` (${esc(p.reason)})` : ""} <button data-act="del-pen" data-pid="${e.playerId}" data-k="${k}" aria-label="remove">×</button></span>`).join("")}
@@ -206,7 +205,6 @@ export function review(rid, keep = false) {
       const i = ui.selHole, v = e.scores[i], par = c.par[i], d = Number(b.dataset.d);
       S.setScore(r, e, i, (v === null || v === 0) ? par : Math.max(1, Math.min(30, v + d))); return review(rid, true);
     }
-    if (act === "ed-pick") { const i = ui.selHole; S.setScore(r, e, i, e.scores[i] === 0 ? c.par[i] : 0); return review(rid, true); }
     if (["st-putt", "st-bit", "st-fw"].includes(act)) {
       const i = ui.selHole, ent = r.entries[Number(b.dataset.i)];
       if (!holedOut(ent, i)) return toast("Put the score in first");
