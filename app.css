@@ -663,3 +663,6 @@ a.kv:active { background: var(--card2); }
 .skingrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
 .skingrid button { padding: 0; border: 0; background: none; text-align: center; font: inherit; font-weight: 600; font-size: 13px; color: var(--ink); cursor: pointer; }
 .skingrid button span { display: block; margin-top: 4px; }
+.skingrid .board { position: relative; aspect-ratio: 2.2 / 1; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card2); }
+.skingrid .board img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
+.skingrid .board .skeleton { position: absolute; inset: 0; margin: 0; border-radius: 0; height: auto; }

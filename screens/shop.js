@@ -1,19 +1,19 @@
-// The shop: the catalogue in one place, out of the scoring flow, and every item shown working on your own last
-// round before it is bought. A locked item is a preview drawn on your data, never a padlock. Buying happens on
+// The shop: the catalogue in one place, out of the scoring flow, and every item shown working on the showcase
+// round before it is bought. A locked item is a preview, never a padlock. The showcase is an invented round and
+// league (sample.js), the same on every phone, so a first-time buyer sees as much as anyone. Buying happens on
 // Stripe's page.
 import { DATA } from "../data.js";
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as E from "../entitlements.js";
-import { page, bind, esc, go, toast, sheet, app, ICONS, TABS, subtabs, firstName, appTheme, themeNamed, themeHere, paint, makeTheme, loadFonts, safeCompute, FAMILIES, themesIn, familyStrip } from "../ui.js";
+import { page, bind, esc, go, toast, sheet, app, ICONS, TABS, subtabs, firstName, appTheme, themeNamed, themeHere, paint, makeTheme, loadFonts, FAMILIES, themesIn, familyStrip } from "../ui.js";
 import { setMarked, marked } from "../draw.js";
-import { compute, leagueStats } from "../model.js";
+import { leagueStats } from "../model.js";
 import { stablefordLeaderboard, bothBoards, holesPoster, standingsPoster, STANDINGS_TITLES } from "../posters.js";
-import { statsFieldPoster, statsNinesPoster, statsPlayerPoster } from "../statsposters.js";
+import { statsFieldPoster, statsPlayerPoster } from "../statsposters.js";
 import { renderCard } from "../cards.js";
-import { leagueResults, standingsFor } from "./formats.js";
-import { ninesForPoster, leagueRounds } from "./stats.js";
-import { sampleRound, sampleLeague, sampleCourse } from "../sample.js";
+import { standingsFor } from "./formats.js";
+import { showcaseLeague } from "../sample.js";
 
 const eur = c => `€${(c / 100).toFixed(2).replace(".", ",")}`;
 const words = n => ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"][n] || String(n);
@@ -61,15 +61,15 @@ export async function shop(state) {
   };
 
   const itemHtml = c => `<div class="card shopitem" data-sku="${esc(c.sku)}">
-    <button class="shopthumb" data-act="peek" data-sku="${esc(c.sku)}" aria-label="See ${esc(c.name)} on ${onWhat(c.sku, D).short}"><span class="skeleton"></span></button>
-    <div class="body row"><button class="plain" data-act="peek" data-sku="${esc(c.sku)}"><div class="name">${esc(c.name)}</div><div class="muted small">${esc(c.blurb)}</div>${plus(c)}<div class="peek">See it on ${onWhat(c.sku, D).short} ›</div></button>
+    <button class="shopthumb" data-act="peek" data-sku="${esc(c.sku)}" aria-label="See ${esc(c.name)} on ${onWhat(c.sku).short}"><span class="skeleton"></span></button>
+    <div class="body row"><button class="plain" data-act="peek" data-sku="${esc(c.sku)}"><div class="name">${esc(c.name)}</div><div class="muted small">${esc(c.blurb)}</div>${plus(c)}<div class="peek">See it on ${onWhat(c.sku).short} ›</div></button>
       ${c.owned ? `<span class="pill done">Yours</span>` : `<button class="btn small primary" data-act="buy" data-sku="${esc(c.sku)}" ${cat.stripe ? "" : "disabled"}>${eur(c.price)}</button>`}</div></div>`;
 
   page("Shop", `
     ${subtabs(TABS_.map(([k, l]) => `<button data-act="tab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join(""))}
     <div data-tab="all">
     ${fee ? `<div class="banner fees"><b>Why the prices are what they are.</b> Everything here is bought once, never a subscription. The card company takes a fixed fee and a share of every payment, however small, so every price is the item plus ${eur(fee)} for the checkout. Buy several things in one go and that ${eur(fee)} is paid once: a bundle costs exactly its items added up plus one checkout, and what it saves is the checkouts it skips, nothing more.</div>` : ""}
-    <p class="muted small shopintro">Scoring a round, keeping a league and inviting people are free, and always will be. What is sold is how the output looks and how much it says. Tap anything to see it on ${D.own ? "your own round" : "a round"} before you buy.${cat.open ? "" : " <b>Nothing is gated yet.</b>"}${cat.stripe ? "" : " Buying is not open yet."}</p>
+    <p class="muted small shopintro">Scoring a round, keeping a league and inviting people are free, and always will be. What is sold is how the output looks and how much it says. Tap anything to see it on the showcase round before you buy.${cat.open ? "" : " <b>Nothing is gated yet.</b>"}${cat.stripe ? "" : " Buying is not open yet."}</p>
     <div class="now pass"><div class="k">Everything</div><div class="name">${esc(pass.blurb)}</div>
       <div class="live">Bought one at a time the ${words(rest.length)} things below come to <b>${eur(oneByOne)}</b>. Together they are <b>${eur(pass.price)}</b>: the same ${words(rest.length)}, one checkout instead of ${words(rest.length)}.${fee ? ` The ${eur(oneByOne - pass.price)} difference is ${words(rest.length - 1)} checkout fees, nothing else.` : ""}</div>
       ${pass.owned ? `<span class="cta">Yours</span>` : `<button class="cta" data-act="buy" data-sku="pass" ${cat.stripe ? "" : "disabled"}>Buy the pass · ${eur(pass.price)}</button>`}</div>
@@ -116,41 +116,21 @@ async function checkout(sku, btn = null) {
 }
 
 // ---------------------------------------------------------------- what the previews are drawn on
-/** The last finished round on this phone, the fullest league, or the sample where there is neither. */
+/** The showcase league and its last round, the Midsummer Cup: never a round of your own, so nothing here is private. */
 function previewData() {
-  const courses = S.courses();
-  const done = S.rounds().filter(r => r.status === "done").sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-  const Ms = done.map(r => safeCompute(compute, r)).filter(M => M && M.players.length);
-  const M = Ms.find(M => M.players.length >= 2) || Ms[0] || null;
-  let league = null;
-  for (const g of S.leagues()) {
-    const R = leagueResults(g);
-    if (R.Ms.length >= 2 && (!league || R.Ms.length > league.Ms.length)) league = { g, Ms: R.Ms, members: R.members, rounds: leagueRounds(g.id), own: true };
-  }
-  const c = sampleCourse(courses);
-  return { M: M || (c && sampleRound(c)), own: !!M, league: league || (c && sampleLeague(c)), sample: c && sampleLeague(c) };
+  const league = showcaseLeague();
+  return { M: league.Ms[league.Ms.length - 1], league };
 }
 
-function onWhat(sku, D) {
-  if (ON_LEAGUE.includes(sku)) {
-    return D.league && D.league.own
-      ? { short: "your league", line: `Drawn on ${esc(D.league.g.name)}, your league with the most rounds.` }
-      : { short: "a sample league", line: "Drawn on a sample league of six players and four Sundays. Once a league of yours has two finished rounds, it is drawn on that." };
-  }
-  return D.own
-    ? { short: "your round", line: `Drawn on ${esc(D.M.name)}, your last round.` }
-    : { short: "a sample round", line: "Drawn on a sample round. Once you have finished a round of your own, it is drawn on that." };
+function onWhat(sku) {
+  return ON_LEAGUE.includes(sku)
+    ? { short: "the showcase league", line: "Drawn on the showcase league: the same four players over four Sundays at Heron's Reach, a course invented for the shop." }
+    : { short: "the showcase round", line: "Drawn on the showcase round: four players over eighteen holes at Heron's Reach, a course invented for the shop." };
 }
 
-const cardPlayer = M => { const me = S.me(); return (me && M.players.find(p => p.id === me.id)) || M.gross_board[0]; };
-const statsPlayer = St => { const me = S.me(); return (me && St.players.find(p => p.id === me.id)) || St.players[0]; };
-
-/** A league that actually has something to rank the given way; the sample stands in when yours has not met yet. */
-function leagueFor(D, kinds) {
-  const L = D.league;
-  if (L && L.own && kinds.every(k => standingsFor(L.g, L.Ms, L.members, k).rows.length >= 2)) return L;
-  return D.sample;
-}
+// The card and the player poster are the Stableford winner's: the fullest story on the day.
+const cardPlayer = M => M.stbl_board[0];
+const statsPlayer = (St, M) => St.players.find(p => p.id === cardPlayer(M).id) || St.players[0];
 
 /** The images an item makes, as jobs the way the images screen builds them; the first is the list's thumbnail. */
 function jobsFor(sku, T, D) {
@@ -169,18 +149,13 @@ function jobsFor(sku, T, D) {
       { label: "The same corner once the mark is gone", crop: true, make: () => { setMarked(false); try { return stablefordLeaderboard(M, T, tier); } finally { setMarked(was); } } }];
   }
   if (sku === "matchplay" || sku === "grandprix") {
-    const kinds = sku === "matchplay" ? ["match", "soccer"] : ["gp"];
-    const L = leagueFor(D, kinds);
-    return L ? kinds.map(k => ({ label: STANDINGS_TITLES[k], make: () => standingsPoster(standingsFor(L.g, L.Ms, L.members, k), L.g, T, k) })) : [];
+    const kinds = sku === "matchplay" ? ["match", "soccer"] : ["gp"], L = D.league;
+    return kinds.map(k => ({ label: STANDINGS_TITLES[k], make: () => standingsPoster(standingsFor(L.g, L.Ms, L.members, k), L.g, T, k) }));
   }
   if (sku === "season") {
-    const L = D.league;
-    if (!L) return [];
-    const St = leagueStats(L.Ms, L.members), p = statsPlayer(St);
-    const N = L.own ? ninesForPoster(L.rounds, L.members) : [];
+    const L = D.league, St = leagueStats(L.Ms, L.members), p = statsPlayer(St, M);
     return [
       { label: "How this league scores", make: () => statsFieldPoster(St, L.g, T) },
-      ...(N.length ? [{ label: "The nines walked", make: () => statsNinesPoster(N, L.g, T) }] : []),
       ...(p ? [{ label: `One image a player: ${p.name}`, make: () => statsPlayerPoster(St, p, L.g, T) }] : [])];
   }
   if (sku.startsWith("skin:")) return [
@@ -191,7 +166,7 @@ function jobsFor(sku, T, D) {
 
 // ---------------------------------------------------------------- drawing, once per item and look
 const cache = new Map();   // key -> { url, blob }: a poster drawn once stays drawn for the session
-const keyFor = (sku, T, D, i) => `${sku}|${T.name}|${E.boardTier()}|${E.cardTier()}|${marked()}|${D.M && D.M.id}|${D.league && D.league.g.id}|${D.league && D.league.Ms.length}|${i}`;
+const keyFor = (sku, T, i) => `${sku}|${T.name}|${E.boardTier()}|${E.cardTier()}|${marked()}|${i}`;
 
 const blobOf = (cv, type, quality) => cv.convertToBlob ? cv.convertToBlob({ type, quality }) : new Promise(res => cv.toBlob(res, type, quality));
 function shrink(src, w) {
@@ -230,7 +205,7 @@ async function fillList(D) {
     const job = jobsFor(sku, T, D)[0];
     if (!job) { el.innerHTML = ""; continue; }
     // the list shows the whole poster even where the sheet shows a corner of it: a corner blown up to a tile is just text
-    const t = await rendered(keyFor(sku, T, D, job.crop ? "list" : 0), job.crop ? { ...job, crop: false } : job);
+    const t = await rendered(keyFor(sku, T, job.crop ? "list" : 0), job.crop ? { ...job, crop: false } : job);
     if (!el.isConnected) return;
     el.innerHTML = t ? `<img src="${t.url}" alt="">` : "";
   }
@@ -259,9 +234,9 @@ async function itemSheet(c, cat, D) {
   if (!c) return;
   const T = makeTheme(appTheme());
   const jobs = jobsFor(c.sku, T, D);
-  const body = `<p class="muted small">${onWhat(c.sku, D).line}${jobs.length ? "" : " Nothing to draw yet."}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>${c.owned ? "" : feeNote(c.price, cat)}`;
+  const body = `<p class="muted small">${onWhat(c.sku).line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>${c.owned ? "" : feeNote(c.price, cat)}`;
   const actions = [...(c.owned ? [] : buyActions(`Buy · ${eur(c.price)}`, "buy", cat)), { label: "Close", value: "no" }];
-  const v = await sheet({ title: c.name, lead: c.blurb, body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(c.sku, T, D, i)) });
+  const v = await sheet({ title: c.name, lead: c.blurb, body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(c.sku, T, i)) });
   if (v === "buy") await checkout(c.sku);
 }
 
@@ -293,14 +268,14 @@ async function skinSheet(name, cat, D) {
   const bundle = cat.skus.find(c => c.sku === "skins"), coll = collectionOf(cat, t.family || "other"), fam = FAMILIES.find(f => f.key === (t.family || "other"));
   const jobs = jobsFor(`skin:${name}`, T, D);
   const body = `<p class="muted small">The app itself, as it opens every time:</p>${mockHtml(t, D.M)}
-    <p class="muted small">${onWhat("skin", D).line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>${owned ? "" : feeNote(cat.skinPrice, cat)}`;
+    <p class="muted small">${onWhat("skin").line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>${owned ? "" : feeNote(cat.skinPrice, cat)}`;
   const wearing = appTheme().name === name;
   const actions = owned
     ? [{ label: wearing ? "The app wears this now" : "Wear it", value: "wear", kind: "primary" }, { label: "Close", value: "no" }]
     : [...buyActions(`Buy this skin · ${eur(cat.skinPrice)}`, "buy", cat),
       ...(coll && !coll.owned && fam ? buyActions(`${fam.name}, all ${coll.themes.length} · ${eur(coll.price)}`, "coll", cat) : []),
       ...(bundle && !bundle.owned ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : []), { label: "Close", value: "no" }];
-  const v = await sheet({ title: `The ${name} skin`, lead: t.blurb || "", body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(`skin:${name}`, T, D, i)) });
+  const v = await sheet({ title: `The ${name} skin`, lead: t.blurb || "", body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(`skin:${name}`, T, i)) });
   if (v === "buy") return checkout(`skin:${name}`);
   if (v === "coll") return checkout(coll.sku);
   if (v === "bundle") return checkout("skins");
@@ -312,18 +287,29 @@ async function skinSheet(name, cat, D) {
   }
 }
 
-/** One family: every look in it drawn small, and the set bought in one go. */
+/** The Stableford leaderboard under every look in a grid, each drawn in its own theme, one after the other. */
+async function fillGrid(el, ts, D) {
+  for (const t of ts) {
+    if (!el.isConnected) return;
+    const T = makeTheme(t), job = jobsFor(`skin:${t.name}`, T, D)[0];
+    const r = job && await rendered(keyFor(`skin:${t.name}`, T, 0), job);   // the key the skin's own sheet uses, so it is drawn once
+    const slot = el.querySelector(`.board[data-look="${CSS.escape(t.name)}"]`);
+    if (slot) slot.innerHTML = r ? `<img src="${r.url}" alt="The Stableford leaderboard in ${esc(t.name)}">` : "";
+  }
+}
+
+/** One family: every look in it drawn small, the app and the board in each, and the set bought in one go. */
 async function collectionSheet(key, cat, D) {
   const fam = FAMILIES.find(f => f.key === key), ts = themesIn(key);
   if (!fam || !ts.length) return;
   const c = collectionOf(cat, key), owned = ownsAll(cat) || !!(c && c.owned), bundle = cat.skus.find(x => x.sku === "skins");
   const tag = t => cat.freeThemes.includes(t.name) ? "free" : ownsSkin(cat, t.name) ? "yours" : "";
-  const body = `<p class="muted small">${ts.length} looks, on the posters, the cards and the app itself. Tap one to see it up close.</p>
-    <div class="skingrid">${ts.map(t => `<button data-act="skin:${t.name}" data-sheet-act>${mockHtml(t, D.M, true)}<span>${esc(t.name)}${tag(t) ? ` <small class="muted">· ${tag(t)}</small>` : ""}</span></button>`).join("")}</div>
+  const body = `<p class="muted small">${ts.length} looks, each on the app itself and on the showcase round's Stableford leaderboard. Tap one to see it up close.</p>
+    <div class="skingrid">${ts.map(t => `<button data-act="skin:${t.name}" data-sheet-act>${mockHtml(t, D.M, true)}<span class="board" data-look="${esc(t.name)}"><span class="skeleton"></span></span><span>${esc(t.name)}${tag(t) ? ` <small class="muted">· ${tag(t)}</small>` : ""}</span></button>`).join("")}</div>
     ${owned || !c ? "" : feeNote(c.price, cat)}`;
   const actions = [...(owned || !c ? [] : buyActions(`Buy all ${ts.length} · ${eur(c.price)}`, "buy", cat)),
     ...(bundle && !bundle.owned && !ownsAll(cat) ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : []), { label: "Close", value: "no" }];
-  const v = await sheet({ title: fam.name, lead: fam.blurb, body, actions });
+  const v = await sheet({ title: fam.name, lead: fam.blurb, body, actions, onOpen: el => fillGrid(el, ts, D) });
   if (v === "buy") return checkout(c.sku);
   if (v === "bundle") return checkout("skins");
   if (v && v.startsWith("skin:")) return skinSheet(v.slice(5), cat, D);
