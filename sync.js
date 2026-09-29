@@ -189,6 +189,33 @@ function drainHeld() {
   return changed;
 }
 
+/**
+ * After a read from the start, drops what the server did not send: rows this account may no longer see, or
+ * never should have -- a phone that synced on the shared key before its first sign-in held every contact in
+ * the database. A round with anything unpushed stays whole; so does any other row still in the queue.
+ */
+function sweep(seen) {
+  const dirty = S.dirty();
+  const queued = (table, key) => !!(dirty[table] || {})[key];
+  const roundQueued = id => ["rounds", "round_entries", "scores", "hole_stats"].some(t => Object.keys(dirty[t] || {}).some(k => k === id || k.startsWith(id + "|")));
+  let dropped = 0;
+  const prune = (list, keep) => { const left = list.filter(keep); dropped += list.length - left.length; list.splice(0, list.length, ...left); };
+  prune(S.state.players, p => seen.players.has(p.id) || queued("players", p.id));
+  prune(S.state.rounds, r => seen.rounds.has(r.id) || roundQueued(r.id));
+  for (const r of S.state.rounds) {
+    const keep = e => seen.round_entries.has(`${r.id}|${e.playerId}`) || roundQueued(r.id);
+    prune(r.entries, keep);
+    prune(r.removed, keep);
+  }
+  prune(S.state.leagues, g => seen.leagues.has(g.id) || queued("leagues", g.id));
+  prune(S.state.leagueRounds, x => seen.league_rounds.has(`${x.league_id}|${x.round_id}`) || queued("league_rounds", `${x.league_id}|${x.round_id}`));
+  prune(S.state.leagueMembers, x => seen.league_members.has(`${x.league_id}|${x.account_id}`));
+  prune(S.state.roundShares, x => seen.round_shares.has(`${x.round_id}|${x.account_id}`));
+  prune(S.state.pch, x => seen.player_course_handicap.has(`${x.player_id}|${x.course}|${x.tee}`) || queued("player_course_handicap", `${x.player_id}|${x.course}|${x.tee}`));
+  if (dropped) console.info(`sync: dropped ${dropped} rows this account is not sent`);
+  return dropped > 0;
+}
+
 function keyOf(table, row) {
   if (table === "league_rounds") return `${row.league_id}|${row.round_id}`;
   if (table === "league_members") return `${row.league_id}|${row.account_id}`;
@@ -200,9 +227,11 @@ function keyOf(table, row) {
   return row.id;
 }
 
-const CFG_KEY = "hagolf-sync-config", CURSOR_KEY = "hagolf-sync-cursors";
+const CFG_KEY = "hagolf-sync-config", CURSOR_KEY = "hagolf-sync-cursors", ACCOUNT_KEY = "hagolf-sync-account";
 
 function cursors() { try { return JSON.parse(localStorage.getItem(CURSOR_KEY)) || {}; } catch (e) { return {}; } }
+/** Whom the phone reads as: the account id, or "" on the shared key. */
+const accountId = () => A.account() ? A.account().id : "";
 export const sync = { status: "off", error: null, lastPull: null, config: null, pushing: false, pulling: false, timer: null };
 window.__hagolfSync = sync;  // read by the tests
 let listeners = [];
@@ -353,17 +382,20 @@ async function doPull(again = false) {
   sync.status = "syncing";
   emit({ status: true });
   const cur = cursors();  // one cursor per table: a row landing in an already-read table during the pull is not skipped
+  const full = !Object.keys(cur).length, seen = {};   // a read from the start says what this account may see, in full
   const leaguesBefore = S.myLeagueIds();
   const sharesBefore = S.sharedWithMe();
   let changed = drainHeld();
   try {
     for (const [table, t] of Object.entries(TABLES)) {
       let since = cur[table] || "1970-01-01T00:00:00Z", page;
+      seen[table] = new Set();
       do {
         page = await rest(`${table}?select=*&server_ts=gt.${encodeURIComponent(since)}&order=server_ts.asc&limit=${PAGE}`);
         const dirtyKeys = S.dirty()[table] || {};
         for (const row of page) {
           since = row.server_ts;
+          if (full) seen[table].add(keyOf(table, row));
           if (dirtyKeys[keyOf(table, row)]) { S.state.held.push({ table, row }); changed = true; continue; }  // mine is unpushed: decide after the push
           if (t.apply(row)) changed = true;
         }
@@ -375,6 +407,8 @@ async function doPull(again = false) {
     for (const row of orphans) { if (TABLES.scores.apply(row)) changed = true; }
     const orphanStats = S.state.orphanStats.splice(0);
     for (const row of orphanStats) { if (TABLES.hole_stats.apply(row)) changed = true; }
+    if (full && sweep(seen)) changed = true;
+    if (full) localStorage.setItem(ACCOUNT_KEY, accountId());
     if (changed || orphans.length || S.state.orphanScores.length) S.afterPull();
     // A card just handed to me is older than every cursor, so it is fetched by name rather than by re-reading
     // everything: shares are far more common than joining a league, and one is four small requests.
@@ -450,6 +484,8 @@ export function start() {
   sync.status = "idle";
   // an empty phone that still has pull bookmarks (the app was reinstalled, or the data was cleared) would otherwise never see anything
   if (!S.state.players.length && !S.state.rounds.length && Object.keys(cursors()).length) { console.warn("sync: empty phone with old cursors, fetching everything again"); localStorage.removeItem(CURSOR_KEY); }
+  // Read as somebody else, or as nobody on the shared key: read again from the start, and drop what this account is not sent.
+  if (localStorage.getItem(ACCOUNT_KEY) !== accountId()) localStorage.removeItem(CURSOR_KEY);
   pushAndPull();
   sync.timer = setInterval(() => { if (document.visibilityState === "visible") pushAndPull(); }, 20000);
 }
