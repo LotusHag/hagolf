@@ -16,6 +16,7 @@ import { ninesForPoster, leagueRounds } from "./stats.js";
 import { sampleRound, sampleLeague, sampleCourse } from "../sample.js";
 
 const eur = c => `€${(c / 100).toFixed(2).replace(".", ",")}`;
+const words = n => ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"][n] || String(n);
 const ON_LEAGUE = ["matchplay", "grandprix", "season"];
 const GROUPS = [
   { title: "The mark", intro: "Every free poster and card carries a small hagolf.app mark in the corner.", skus: ["nomark"] },
@@ -37,28 +38,31 @@ export async function shop(state) {
   const all = cat.skus.some(c => (c.sku === "pass" || c.sku === "skins") && c.owned);
   const item = sku => cat.skus.find(c => c.sku === sku);
   const pass = item("pass"), bundle = item("skins");
-  const oneByOne = cat.skus.filter(c => c.sku !== "pass").reduce((a, c) => a + c.price, 0);
+  const fee = cat.fee || 0, plus = c => fee ? `<div class="muted small fees-line">${eur(c.value ?? c.price - fee)} + ${eur(fee)} checkout</div>` : "";
+  const rest = cat.skus.filter(c => c.sku !== "pass"), oneByOne = rest.reduce((a, c) => a + c.price, 0);
+  const skinsAlone = (cat.paidSkins || 0) * cat.skinPrice;
   const skinOwned = name => all || cat.skins.includes(name);
   const swatch = t => `style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK}"`;
 
   const itemHtml = c => `<div class="card shopitem" data-sku="${esc(c.sku)}">
     <button class="shopthumb" data-act="peek" data-sku="${esc(c.sku)}" aria-label="See ${esc(c.name)} on ${onWhat(c.sku, D).short}"><span class="skeleton"></span></button>
-    <div class="body row"><button class="plain" data-act="peek" data-sku="${esc(c.sku)}"><div class="name">${esc(c.name)}</div><div class="muted small">${esc(c.blurb)}</div><div class="peek">See it on ${onWhat(c.sku, D).short} ›</div></button>
+    <div class="body row"><button class="plain" data-act="peek" data-sku="${esc(c.sku)}"><div class="name">${esc(c.name)}</div><div class="muted small">${esc(c.blurb)}</div>${plus(c)}<div class="peek">See it on ${onWhat(c.sku, D).short} ›</div></button>
       ${c.owned ? `<span class="pill done">Yours</span>` : `<button class="btn small primary" data-act="buy" data-sku="${esc(c.sku)}" ${cat.stripe ? "" : "disabled"}>${eur(c.price)}</button>`}</div></div>`;
   const skinTile = t => `<button class="tchip skin" data-act="peek" data-sku="skin:${t.name}" ${swatch(t)}>
     <span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(t.name)}<small>${cat.freeThemes.includes(t.name) ? "Free" : skinOwned(t.name) ? "Yours" : eur(cat.skinPrice)}</small></button>`;
 
   page("Shop", `
+    ${fee ? `<div class="banner fees"><b>Why the prices are what they are.</b> Everything here is bought once, never a subscription. The card company takes a fixed fee and a share of every payment, however small, so every price is the item plus ${eur(fee)} for the checkout. Buy several things in one go and that ${eur(fee)} is paid once: a bundle costs exactly its items added up plus one checkout, and what it saves is the checkouts it skips, nothing more.</div>` : ""}
     <p class="muted small shopintro">Scoring a round, keeping a league and inviting people are free, and always will be. What is sold is how the output looks and how much it says. Tap anything to see it on ${D.own ? "your own round" : "a round"} before you buy.${cat.open ? "" : " <b>Nothing is gated yet.</b>"}${cat.stripe ? "" : " Buying is not open yet."}</p>
     <div class="now pass"><div class="k">Everything</div><div class="name">${esc(pass.blurb)}</div>
-      <div class="live">One by one the rest comes to <b>${eur(oneByOne)}</b>. The pass is <b>${eur(pass.price)}</b>, once.</div>
+      <div class="live">Bought one at a time the ${words(rest.length)} things below come to <b>${eur(oneByOne)}</b>. Together they are <b>${eur(pass.price)}</b>: the same ${words(rest.length)}, one checkout instead of ${words(rest.length)}.${fee ? ` The ${eur(oneByOne - pass.price)} difference is ${words(rest.length - 1)} checkout fees, nothing else.` : ""}</div>
       ${pass.owned ? `<span class="cta">Yours</span>` : `<button class="cta" data-act="buy" data-sku="pass" ${cat.stripe ? "" : "disabled"}>Buy the pass · ${eur(pass.price)}</button>`}</div>
     ${GROUPS.map(g => `<h2>${g.title}</h2><p class="muted small shopintro">${g.intro}</p>${g.skus.map(item).filter(Boolean).map(itemHtml).join("")}`).join("")}
     <h2>Skins</h2>
     <p class="muted small shopintro">A skin dresses the app itself as well as every poster and card. ${esc(cat.freeThemes.join(" and "))} are free. Tap one to see it.</p>
     <div class="card shopitem" data-sku="skins">
       <button class="shopthumb swrow" data-act="peek" data-sku="skins" aria-label="See every skin">${DATA.themes.map(t => `<i ${swatch(t)}></i>`).join("")}</button>
-      <div class="body row"><button class="plain" data-act="peek" data-sku="skins"><div class="name">${esc(bundle.name)}</div><div class="muted small">${esc(bundle.blurb)}</div><div class="peek">See all ${DATA.themes.length} ›</div></button>
+      <div class="body row"><button class="plain" data-act="peek" data-sku="skins"><div class="name">${esc(bundle.name)}</div><div class="muted small">${esc(bundle.blurb)}</div>${plus(bundle)}${fee && cat.paidSkins ? `<div class="muted small fees-line">One at a time the ${words(cat.paidSkins)} paid skins come to ${eur(skinsAlone)}; together, one checkout instead of ${words(cat.paidSkins)}.</div>` : ""}<div class="peek">See all ${DATA.themes.length} ›</div></button>
         ${bundle.owned ? `<span class="pill done">Yours</span>` : `<button class="btn small primary" data-act="buy" data-sku="skins" ${cat.stripe ? "" : "disabled"}>${eur(bundle.price)}</button>`}</div></div>
     <div class="skins">${DATA.themes.map(skinTile).join("")}</div>
     <p class="foot">Bought once, on the web, never inside an app store. Yours on every phone you sign in on.</p>`, { back: "#me", sub: "Bought once, yours on every phone" });
@@ -219,13 +223,14 @@ async function fillPrevs(el, jobs, keyOf) {
   }
 }
 const buyActions = (label, value, cat) => cat.stripe ? [{ label, value, kind: "primary" }] : [];
+const feeNote = (price, cat) => cat.fee ? `<p class="muted small">${eur(price - cat.fee)} for the item, ${eur(cat.fee)} for the checkout. Bought once, yours for ever.</p>` : "";
 
 // ---------------------------------------------------------------- the sheets
 async function itemSheet(c, cat, D) {
   if (!c) return;
   const T = makeTheme(appTheme());
   const jobs = jobsFor(c.sku, T, D);
-  const body = `<p class="muted small">${onWhat(c.sku, D).line}${jobs.length ? "" : " Nothing to draw yet."}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>`;
+  const body = `<p class="muted small">${onWhat(c.sku, D).line}${jobs.length ? "" : " Nothing to draw yet."}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>${c.owned ? "" : feeNote(c.price, cat)}`;
   const actions = [...(c.owned ? [] : buyActions(`Buy · ${eur(c.price)}`, "buy", cat)), { label: "Close", value: "no" }];
   const v = await sheet({ title: c.name, lead: c.blurb, body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(c.sku, T, D, i)) });
   if (v === "buy") await checkout(c.sku);
@@ -251,7 +256,7 @@ async function skinSheet(name, cat, D) {
   const bundle = cat.skus.find(c => c.sku === "skins");
   const jobs = jobsFor(`skin:${name}`, T, D);
   const body = `<p class="muted small">The app itself, as it opens every time:</p>${mockHtml(t, D.M)}
-    <p class="muted small">${onWhat("skin", D).line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>`;
+    <p class="muted small">${onWhat("skin", D).line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>${owned ? "" : feeNote(cat.skinPrice, cat)}`;
   const wearing = appTheme().name === name;
   const actions = owned
     ? [{ label: wearing ? "The app wears this now" : "Wear it", value: "wear", kind: "primary" }, { label: "Close", value: "no" }]
@@ -270,7 +275,7 @@ async function skinSheet(name, cat, D) {
 async function bundleSheet(cat, D) {
   const bundle = cat.skus.find(c => c.sku === "skins");
   const body = `<p class="muted small">All ${DATA.themes.length} looks, on the posters, the cards and the app itself. Tap one to see it up close.</p>
-    <div class="skingrid">${DATA.themes.map(t => `<button data-act="skin:${t.name}" data-sheet-act>${mockHtml(t, D.M, true)}<span>${esc(t.name)}</span></button>`).join("")}</div>`;
+    <div class="skingrid">${DATA.themes.map(t => `<button data-act="skin:${t.name}" data-sheet-act>${mockHtml(t, D.M, true)}<span>${esc(t.name)}</span></button>`).join("")}</div>${bundle.owned ? "" : feeNote(bundle.price, cat)}`;
   const actions = [...(bundle.owned ? [] : buyActions(`Buy every skin · ${eur(bundle.price)}`, "buy", cat)), { label: "Close", value: "no" }];
   const v = await sheet({ title: bundle.name, lead: bundle.blurb, body, actions });
   if (v === "buy") return checkout("skins");

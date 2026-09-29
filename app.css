@@ -604,6 +604,8 @@ a.kv:active { background: var(--card2); }
 
 /* ---- the shop: every item shown working on your own round before it is bought */
 .shopintro { margin: 4px 4px 10px; }
+.banner.fees { cursor: default; margin: 8px 0 12px; line-height: 1.45; }
+.fees-line { margin-top: 3px; }
 .now.pass { margin: 10px 0 6px; }
 .now button.cta { border: 0; color: inherit; cursor: pointer; font-family: inherit; }
 .shopitem { padding: 0; overflow: hidden; }
