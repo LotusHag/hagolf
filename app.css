@@ -11,7 +11,7 @@
   --bg: #F6F6F4; --card: #FFFFFF; --card2: #F0F0EE; --line: #E6E6E3; --line2: #C9C9C7;
   --ink: #17181A; --ink2: #4B4E52; --ink3: #6E7378;
   --green: #1E6B44; --green-dark: #185636; --green-soft: #D8E3DB; --green-ink: #FFFFFF;
-  --gold: #E5A80B; --gold-soft: #F4EBD3; --gold-ink: #674C05;
+  --gold: #E5A80B; --gold-soft: #F4EBD3; --gold-ink: #674C05; --green-hi: #F5DC9D;
   --under: #1F8A5B; --par: #5B6A61; --bogey: #D9931A; --double: #C8433A; --pick: #8A6D3B;
   --danger: #C8433A; --danger-soft: #F0E1DE; --ok: #2E8B57;
   --bronze: #D9A46A; --on-bronze: #17181A; --on-ink: #FFFFFF; --on-double: #FFFFFF; --on-gold: #17181A;
@@ -140,7 +140,8 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .now .k { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; opacity: .8; font-weight: 700; }
 .now .name { font-size: 20px; margin-top: 2px; }
 .now .live { color: inherit; opacity: .95; margin-top: 8px; font-size: 14px; }
-.now .live b { color: var(--gold); }
+/* gold only where gold can be read on the accent panel; build.py walks it to the panel ink where it cannot */
+.now .live b { color: var(--green-hi); }
 .now .cta { display: inline-block; margin-top: 12px; background: rgba(255,255,255,.18); border-radius: 3px; padding: 7px 14px; font-weight: 700; font-size: 14px; }
 .mecard { display: block; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; margin: 10px 0; color: var(--ink); }
 .mecard .big { font-size: 40px; font-weight: 600; line-height: 1; }
