@@ -23,6 +23,7 @@ export async function loadFonts(fonts) {
 export function makeTheme(t) {
   const T = { ...t };
   T.OUTCOMES = [["Birdie or better", T.UNDER], ["Par", T.PAR], ["Bogey", T.BOGEY], ["Double or worse", T.DOUBLE]];
+  derive(T);
   return T;
 }
 
@@ -30,6 +31,76 @@ function lum(hex) {
   const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
     .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
   return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+
+export const contrast = (a, b) => {
+  const x = lum(a), y = lum(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+};
+
+// ---------------------------------------------------------------- mixing, so a theme can be asked for more colours
+const chans = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const hexa = c => "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("").toUpperCase();
+/** `t` of b into a, straight in sRGB: close enough for a tint or a hairline, and it needs no colour library. */
+export const mix = (a, b, t) => { const x = chans(a), y = chans(b); return hexa(x.map((v, i) => v + (y[i] - v) * t)); };
+
+function toHsl(h) {
+  const [r, g, b] = chans(h).map(v => v / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  const l = (mx + mn) / 2;
+  let hue = 0;
+  if (d) hue = mx === r ? ((g - b) / d + (g < b ? 6 : 0)) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [hue * 60, d ? d / (1 - Math.abs(2 * l - 1)) : 0, l];
+}
+
+function fromHsl(hue, sat, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * sat, hp = (((hue % 360) + 360) % 360) / 60, x = c * (1 - Math.abs(hp % 2 - 1));
+  const t = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(hp) % 6];
+  const m = l - c / 2;
+  return hexa(t.map(v => (v + m) * 255));
+}
+
+/**
+ * The tokens a theme file does not write down, mixed from the ones it does, so all hundred looks have them
+ * in their own colours rather than in a colour borrowed from somewhere else. A theme that names any of
+ * these keeps what it named: this only fills the gaps, exactly as build.py fills the screen's `ui` palette.
+ *
+ * `ACCENT_2` is the one that is invented rather than mixed -- the accent's hue turned most of the way round
+ * the wheel, set at the lightness of the theme's own chart colour so it belongs to the same page, then
+ * walked towards the ink until it clears the background. Everything else is a straight blend.
+ */
+const gap = (a, b) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return Math.min(d, 360 - d); };
+
+function derive(T) {
+  const dark = lum(T.BG) < 0.35;
+  const put = (k, v) => { if (T[k] === undefined || T[k] === null) T[k] = v; };
+  put("WASH", mix(T.BG, T.ACCENT, dark ? 0.18 : 0.10));     // a block's own surface, a breath of the accent
+  put("WASH_2", mix(T.BG, T.BAR, dark ? 0.18 : 0.10));
+  put("RULE_2", mix(T.LINE, T.INK_3, 0.45));                // a hairline one step stronger, for a grid
+  if (!T.ACCENT_2) {
+    const [hue, sat] = toHsl(T.ACCENT), [barHue, , barL] = toHsl(T.BAR);
+    if (sat < 0.12) {
+      T.ACCENT_2 = mix(T.BAR, T.INK, 0.45);   // a theme with no colour in its accent gets a step, not a hue
+    } else {
+      // The turn that lands furthest from BOTH the colours the theme already uses, so the third colour is
+      // a third colour and not a second shade of the chart one.
+      let best = null;
+      for (const off of [155, 120, 190, 90, 225, 60, 260]) {
+        const h = hue + off, score = Math.min(gap(h, hue), gap(h, barHue));
+        if (!best || score > best.score) best = { h, score };
+      }
+      // knocked back in saturation and a touch towards the muted ink: the third colour has to be told
+      // apart from the other two, not to shout over the accent the theme actually chose
+      let c = mix(fromHsl(best.h, Math.max(0.26, sat * 0.7), barL), T.INK_3, 0.14);
+      for (let k = 0; k < 8 && contrast(c, T.BG) < 2.6; k++) c = mix(c, T.INK, 0.12);
+      T.ACCENT_2 = c;
+    }
+  }
+  // Five chart colours in one order, for a chart whose rows are categories rather than a ranking. They stay
+  // inside the two the theme already chose, stepped towards the page and towards the ink, because six rows
+  // in six hues would say one of them is good and one of them is bad when neither is true. The outcome
+  // colours are never in here either: those four mean score against par and nothing else, everywhere.
+  put("SERIES", [T.ACCENT, T.BAR, mix(T.BAR, T.BG, 0.42), mix(T.ACCENT, T.BG, 0.45), mix(T.BAR, T.INK, 0.38)]);
 }
 
 export function on(T, fill) {
@@ -43,7 +114,7 @@ export function on(T, fill) {
  * rows, so the ten collections are told apart at a glance without any of them stopping being the same poster.
  * Everything here is chrome: no number, no column and no scorecard glyph changes with the family.
  */
-const HOUSE = {
+const CHROME = {
   club:      { rule: "double", chip: "pill",   radius: 1.3,  band: "tint", kicker: "caps", caps: true,  section: "tick" },
   broadcast: { rule: "slab",   chip: "square", radius: 0.15, band: "tint", kicker: "tag",  caps: true,  section: "under" },
   editor:    { rule: "thin",   chip: "box",    radius: 0.35, band: "rule", kicker: "text", caps: false, section: "tick" },
@@ -55,12 +126,73 @@ const HOUSE = {
   colours:   { rule: "dots",   chip: "box",    radius: 1.7,  band: "tint", kicker: "tag",  caps: true,  section: "tick" },
   national:  { rule: "flags",  chip: "square", radius: 0.5,  band: "edge", kicker: "caps", caps: true,  section: "plain" },
 };
-const PLAIN = { rule: "line", chip: "box", radius: 1, band: "tint", kicker: "caps", caps: true, section: "plain" };
+
+/**
+ * The other half of a family's house style: not how a shape is drawn but where it goes on the page.
+ *
+ *  `page`     the sheet itself -- how wide, and in how many columns the blocks flow (sheet.js PAGES)
+ *  `flow`     the order blocks are laid in: as the poster listed them, charts before tables, or the other way
+ *  `tiles`    where the headline numbers sit and what they look like: a row of panels, a thin strip, a list
+ *             down the side, or up inside the header band where the summary text would otherwise be
+ *  `surface`  what a block sits on: the panel tint, a wash of the accent, or nothing at all
+ *  `palette`  one chart colour for every bar, one from SERIES per row, or the two accents alternating
+ *  `prose`    how much writing survives: every word, the first two sentences, or none but the labels
+ *  `legends`  whether a colour key is drawn next to a chart that has one
+ *  `density`  a multiplier on row heights, so a sparse family breathes and a dense one fits more
+ */
+const LAYOUT = {
+  club:      { page: "tall",     flow: "asis",        tiles: "row",    surface: "panel", palette: "one",    prose: "full",  legends: true,  density: 1 },
+  broadcast: { page: "wide",     flow: "charts",      tiles: "header", surface: "panel", palette: "duo",    prose: "short", legends: true,  density: 0.95 },
+  editor:    { page: "broad",    flow: "tables",      tiles: "list",   surface: "none",  palette: "series", prose: "full",  legends: true,  density: 0.92 },
+  seasons:   { page: "portrait", flow: "charts",      tiles: "row",    surface: "wash",  palette: "series", prose: "full",  legends: true,  density: 1.08 },
+  print:     { page: "portrait", flow: "tables",      tiles: "list",   surface: "none",  palette: "one",    prose: "full",  legends: true,  density: 1 },
+  retro:     { page: "poster",   flow: "charts",      tiles: "row",    surface: "wash",  palette: "duo",    prose: "short", legends: true,  density: 1.12 },
+  night:     { page: "wide",     flow: "charts",      tiles: "header", surface: "wash",  palette: "series", prose: "none",  legends: true,  density: 1 },
+  minimal:   { page: "tall",     flow: "asis",        tiles: "strip",  surface: "none",  palette: "one",    prose: "none",  legends: false, density: 1.05 },
+  colours:   { page: "broad",    flow: "charts",      tiles: "row",    surface: "wash",  palette: "series", prose: "short", legends: true,  density: 1 },
+  national:  { page: "tall",     flow: "tables",      tiles: "row",    surface: "panel", palette: "duo",    prose: "full",  legends: true,  density: 1 },
+};
+
+const HOUSE = Object.fromEntries(Object.keys(CHROME).map(k => [k, { ...CHROME[k], ...LAYOUT[k] }]));
+const PLAIN = { rule: "line", chip: "box", radius: 1, band: "tint", kicker: "caps", caps: true, section: "plain",
+  page: "tall", flow: "asis", tiles: "row", surface: "panel", palette: "one", prose: "full", legends: true, density: 1 };
 
 /** The house style a theme draws in. A theme with no family, or one this build does not know, gets the plain one. */
 export const house = T => (T && HOUSE[T.family]) || PLAIN;
 /** Upper case where the family sets its titles in caps, as typed where it does not. */
 export const caps = (T, s) => house(T).caps ? String(s).toUpperCase() : String(s);
+
+/**
+ * How much of a written explanation this family keeps. `full` is every word, `short` its first two
+ * sentences -- the rule and nothing else -- and `none` drops it, leaving the labels to do the work.
+ * The first sentence of every footer in this app says the rule, which is what makes the cut safe.
+ */
+export function prose(T, text) {
+  const level = house(T).prose;
+  if (!text || level === "none") return "";
+  if (level !== "short") return text;
+  const m = String(text).match(/^[\s\S]*?\.(?:\s+[\s\S]*?\.)?(?=\s|$)/);
+  return m ? m[0].trim() : text;
+}
+
+/** A small note beside a chart or a column head: dropped by the families that keep no prose. */
+export const note = (T, s) => house(T).prose === "none" ? "" : s;
+
+/** The colour a chart row takes: one series colour for everything, one each, or the two accents in turn. */
+export function seriesColor(T, i, good) {
+  const p = house(T).palette;
+  if (good !== undefined) return good ? T.ACCENT : T.BAR;        // a comparison always reads accent-good
+  if (p === "series") return T.SERIES[i % T.SERIES.length];
+  if (p === "duo") return i % 2 ? T.ACCENT_2 : T.BAR;
+  return T.BAR;
+}
+
+/** What a block of a poster sits on: the panel tint, a wash of the accent, or the page itself. */
+export function surface(fig, x, y, w, h, r = 0.1) {
+  const s = house(fig.T).surface;
+  if (s === "none") return;
+  fig.rbox(x, y, w, h, s === "wash" ? fig.T.WASH : fig.T.PANEL, r);
+}
 
 export class Fig {
   constructor(wIn, hIn, T, dpi = DPI) {

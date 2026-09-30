@@ -1,5 +1,5 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
-import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule } from "./draw.js";
+import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule, house } from "./draw.js";
 import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, statReadings, STRIP_KEYS, NO_SCORE } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -130,6 +130,21 @@ function extrasStrip(fig, topIn, hIn, readings) {
 }
 
 /**
+ * How much of a card the theme's family takes.
+ *
+ * A card is not a poster: the scorecard is a grid with one column a hole, so it cannot be reflowed into two
+ * columns and the sheet cannot be narrowed far without breaking it. What the family does get to say is how
+ * wide the paper is, whether the two panels under the scorecard stand side by side or one above the other,
+ * and how much of the story is told -- the card's own version of the prose levels the posters use. The
+ * story is never dropped altogether, because unlike a footer it is the point of the card rather than a
+ * note about it.
+ */
+const CARD_W = { portrait: 0.92, tall: 1, poster: 1.08, broad: 1.06, wide: 1.14 };
+const STORY_LINES = { full: 7, short: 5, none: 3 };
+const SIDE_IN = 2.3, STACK_IN = 1.72;
+const STORY_TOP = 0.53, STORY_LINE = 0.34, STORY_WRAP = 0.13;   // inches: the title gap, an entry, a turned line
+
+/**
  * `basic` is the free card: who, what they went round in, and the scorecard with its notation. `full` adds what
  * the round was like -- against the field per hole, where the strokes went, and the story. The basic card stops
  * after the scorecard, so the sheet itself is shorter rather than a full card with holes in it.
@@ -141,7 +156,20 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   // own height and everything under the scorecard slides down by exactly that much, so nothing else moves.
   const strip = basic || !extras ? [] : stripReadings(p.statline);
   const EX = strip.length ? 1.35 : 0;
-  const W_IN = n <= 9 ? 12 : 15, H_IN = basic ? 5.25 : 10.9 + EX;
+  const H = house(T);
+  // A narrow family stands the two panels under the scorecard one above the other instead of side by side,
+  // and every family tells as much of the story as its prose level allows. Both change the height, which is
+  // summed here once, before the figure exists, so nothing below has to know which way it went.
+  const stacked = H.page === "portrait";
+  const storyN = STORY_LINES[H.prose] ?? 7;
+  const midIn = stacked ? SIDE_IN + STACK_IN : SIDE_IN;
+  const W_IN = Math.round((n <= 9 ? 12 : 15) * (CARD_W[H.page] ?? 1) * 10) / 10;
+  const told = basic ? [] : story(M, p, { extras }).slice(0, storyN);
+  const storyW = (1 - 2 * MARGIN) * W_IN * 0.984;
+  const probe = new Fig(W_IN, 1, T, 20);
+  const wrapped = told.map(ln => probe.wrap(ln, storyW, 9.5));
+  const storyIn = STORY_TOP + wrapped.reduce((a, ls) => a + STORY_LINE + (ls.length - 1) * STORY_WRAP, 0);
+  const H_IN = basic ? 5.25 : 8.05 + EX + (midIn - SIDE_IN) + storyIn + 0.2;
   const fig = new Fig(W_IN, H_IN, T, 150);
   const rect = (topIn, hIn, x0 = MARGIN, x1 = 1 - MARGIN) => [x0, 1 - (topIn + hIn) / H_IN, x1 - x0, hIn / H_IN];
   const Mx = MARGIN * W_IN;
@@ -262,7 +290,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   const vs = p.vsrest;
   const lo = Math.min(0, ...vsPlayed), hi = Math.max(0, ...vsPlayed);
   const span = Math.max(1, hi - lo), lim = span;
-  const axb = fig.axes(rect(5.3 + EX, 2.3, MARGIN, 0.60), [0.3, n + 0.7], [lo - span * 0.42, hi + span * 0.45]);
+  const axb = fig.axes(rect(5.3 + EX, SIDE_IN, MARGIN, stacked ? 1 - MARGIN : 0.60), [0.3, n + 0.7], [lo - span * 0.42, hi + span * 0.45]);
   section(axb, 0.3, hi + span * 0.36, "Strokes against the rest of the field, per hole");
   axb.line(0.4, 0, n + 0.6, 0, T.LINE, 0.8);
   const bw = n <= 9 ? 0.6 : 0.7;
@@ -282,8 +310,10 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   fig.text(Mx, 7.72 + EX, "Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.",
     { size: 7.5, color: T.INK_3, va: "top" });
 
-  // where the strokes went
-  const axw = fig.axes(rect(5.3 + EX, 2.3, 0.64), [0, 1], [0, 1]);
+  // where the strokes went: beside the chart, or under it on a narrow card
+  const axw = stacked
+    ? fig.axes(rect(5.3 + SIDE_IN + 0.12 + EX, STACK_IN - 0.12, MARGIN, 1 - MARGIN), [0, 1], [0, 1])
+    : fig.axes(rect(5.3 + EX, SIDE_IN, 0.64), [0, 1], [0, 1]);
   section(axw, 0, 0.955, "Shots to par, by section");
   const d = p.deltas;
   const rows = [];
@@ -305,26 +335,29 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
     const hs = range(0, n).filter(h => PAR[h] === k);
     if (hs.length) group(`Par ${k}s (${hs.length})`, hs);
   }
-  let y = 0.82;
-  for (const [label, v, cnt] of rows) {
-    axw.text(0, y, label, { size: 9, color: T.INK_2, va: "center" });
-    axw.text(0.62, y, fmtToPar(v), { size: 11, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
-    axw.text(0.68, y, `${fmtSigned(v / cnt, 1)} per hole`, { size: 7.5, color: T.INK_3, va: "center" });
-    y -= 0.115;
-  }
+  // Beside the chart this is one narrow column; under it the block is the width of the card, so the same
+  // rows go in two, which keeps the label and its figure the same distance apart either way.
+  const wcols = stacked ? 2 : 1, per = Math.ceil(rows.length / wcols), cw = 1 / wcols;
+  rows.forEach(([label, v, cnt], i) => {
+    const x0 = Math.floor(i / per) * cw, y0 = 0.82 - (i % per) * 0.115;
+    axw.text(x0, y0, label, { size: 9, color: T.INK_2, va: "center" });
+    axw.text(x0 + 0.62 * cw, y0, fmtToPar(v), { size: 11, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
+    axw.text(x0 + 0.68 * cw, y0, `${fmtSigned(v / cnt, 1)} per hole`, { size: 7.5, color: T.INK_3, va: "center" });
+  });
+  let y = 0.82 - per * 0.115;
   axw.text(0, y - 0.02, "Results against par" + (p.nr ? ` (${p.holes_played} holes played)` : ""), { size: 8, color: T.INK_3, va: "center" });
   outcomeBar(axw, 0, y - 0.13, 1.0, 0.075, p.counts, n, 0.006, true, 8);
 
-  // story
-  const axf = fig.axes(rect(8.05 + EX, 2.65), [0, 1], [0, 1]);
-  section(axf, 0, 0.96, "The story of the round");
-  y = 0.80;
-  const maxW = axf.wIn - 0.016 * axf.wIn;
-  for (const ln of story(M, p, { extras }).slice(0, 7)) {
-    const lines = fig.wrap(ln, maxW, 9.5);
-    axf.rbox(0.0, y - 0.035, 0.006, 0.07, T.ACCENT, 0);
-    axf.text(0.016, y, lines.join("\n"), { size: 9.5, color: T.INK_2, va: "center", lineSpacing: 1.3 });
-    y -= 0.13 + (lines.length - 1) * 0.05;
+  // story. The axes is only as tall as the entries that survived the family's prose level, so the block is
+  // laid out in inches from its own top and never spreads three lines over the room seven would have taken.
+  const axf = fig.axes(rect(8.05 + EX + (midIn - SIDE_IN), storyIn), [0, 1], [0, 1]);
+  const down = v => 1 - v / storyIn;           // inches from the top of the block, in its own units
+  section(axf, 0, down(0.1), "The story of the round");
+  let at = STORY_TOP;
+  for (const lines of wrapped) {
+    axf.rbox(0.0, down(at + 0.09), 0.006, 0.185 / storyIn, T.ACCENT, 0);
+    axf.text(0.016, down(at), lines.join("\n"), { size: 9.5, color: T.INK_2, va: "center", lineSpacing: 1.3 });
+    at += STORY_LINE + (lines.length - 1) * STORY_WRAP;
   }
 
   drawMark(fig, 0.06);  // the card has no footer; the story block ends 0.2in above the edge, so the mark sits under it
