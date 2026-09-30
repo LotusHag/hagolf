@@ -680,6 +680,27 @@ a.kv:active { background: var(--card2); }
 .fbar { position: absolute; bottom: 0; left: 22%; right: 22%; background: var(--green); border-radius: 4px 4px 0 0; }
 .fval { position: absolute; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--ink2); }
 .fcol small { font-size: 10px; white-space: nowrap; }
+/* The season: one line a player over every card, with the one being followed picked out and the rest left
+   as context behind it. Nine colours and a key do not fit a phone; one line and a name do. */
+.season { display: block; width: 100%; height: auto; overflow: visible; }
+.season .sgrid { stroke: var(--line); stroke-width: 1; }
+.season .sline { fill: none; stroke: var(--line2); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.season .sline.on { stroke: var(--green); stroke-width: 2.6; }
+.season .sfield { fill: none; stroke: var(--ink3); stroke-width: 1.6; stroke-dasharray: 5 4; stroke-linecap: round; }
+.season .sonly { fill: var(--line2); stroke: none; }
+.season .sonly.on { fill: var(--green); }
+.season .sdot { fill: var(--green); }
+.season text { font-size: 9px; fill: var(--ink3); }
+/* The extras table carries what each figure is out of under it, because a rate over four holes and one over
+   four hundred are not the same claim and a column head cannot footnote a cell. */
+.xtab td b { display: block; font-size: 16px; line-height: 1.15; }
+.xtab td small { display: block; font-size: 10px; color: var(--ink3); }
+.stand.nowrap th, .stand.nowrap td { white-space: nowrap; }
+/* A table with more columns than a phone is wide scrolls sideways rather than breaking every name over
+   three lines; it bleeds into the page gutter so the edge of it is visibly there to be pushed. */
+.tscroll { overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.tscroll::-webkit-scrollbar { display: none; }
+.tscroll .stand { width: auto; min-width: 100%; }
 .stand tr.tot td { border-top: 2px solid var(--line2); font-weight: 600; }
 .partab th, .partab td.l { white-space: nowrap; }
 .tapes.mine b:first-child { color: var(--green); }

@@ -50,7 +50,7 @@ export const hiOk = hi => hi >= -10 && hi <= 54;
 
 /** Screen state that survives a redraw but not a reload. Keyed per screen where a screen has several instances. */
 export const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, h2hBasis: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, roundsFilter: "all", plSort: {},
-  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
+  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
 
 // ---------------------------------------------------------------- icons
 const I = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}${extra}</svg>`;

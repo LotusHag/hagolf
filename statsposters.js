@@ -6,9 +6,9 @@
 // four posters come out as a narrow sheet of paper for one collection and a two-column landscape for
 // another. A block only has to survive being handed a narrower column than it expected, or declare the
 // narrowest one it can take and be given a full-width row instead.
-import { house, caps, note, outcomeBar, legend, rowBand, seriesColor, surface } from "./draw.js";
-import { sheet, block, blockAxes, heading, headingIn, dense } from "./sheet.js";
-import { fmtToPar, fmtSigned, fix, statReadings, statPairs, STRIP_KEYS, RATE_MIN } from "./model.js";
+import { house, caps, note, outcomeBar, legend, rowBand, seriesColor } from "./draw.js";
+import { sheet, block, blockAxes, heading, headingIn, dense, panel, bandRows, bigIn, barSpan } from "./sheet.js";
+import { fmtToPar, fmtSigned, fix, statReadings, statPairs, leagueProgress, STRIP_KEYS, RATE_MIN } from "./model.js";
 
 /** The screen's six buckets folded onto the four the poster palette names. */
 export function four(counts) {
@@ -45,8 +45,13 @@ function distributionBlock(T, counts, label) {
     outcomeBar(ax, 0, 0.24, w, 0.42, c4, total, 0.03, true, 11);
     T.OUTCOMES.forEach((o, k) => {
       if (!c4[k]) return;
+      const seg = c4[k] / total * w;
       const cx = (c4.slice(0, k).reduce((a, b) => a + b, 0) + c4[k] / 2) / total * w;
-      ax.text(cx, 0.17, `${share(c4[k], total)}%`, { size: 9, color: T.INK_3, ha: "center", va: "top" });
+      // a share under a sliver lands on top of its neighbour's, and two percentages in one place are worse
+      // than one missing: the segment is still counted inside the bar and named in the key
+      if (seg >= ax.textWidth(`${share(c4[k], total)}%`, 9) + 0.12) {
+        ax.text(cx, 0.17, `${share(c4[k], total)}%`, { size: 9, color: T.INK_3, ha: "center", va: "top" });
+      }
     });
   });
 }
@@ -146,11 +151,12 @@ function roundChartBlock(T, rounds, label, perHole) {
   const fld = r => r.fieldPts === null ? null : (perHole ? r.fieldPts / r.n : r.fieldPts);
   const any = rounds.some(r => r.fieldPts !== null);
   const best = Math.max(...rounds.map(val));
-  return block("chart", 3.0, () => hIn + headingIn, (fig, x, top, w) => {
-    heading(fig, x, top, w, label, any ? note(T, "the column behind each bar is the rest of the field that day") : "");
+  return block("chart", 3.0, () => hIn + headingIn, (fig, x, top, w0) => {
+    heading(fig, x, top, w0, label, any ? note(T, "the column behind each bar is the rest of the field that day") : "");
     const y = top + headingIn;
     const cap = Math.max(...rounds.map(r => Math.max(val(r), fld(r) || 0)), 1) * 1.18;
-    const ax = blockAxes(fig, x, y, w, hIn, [-0.6, rounds.length - 0.4], [-cap * 0.17, cap]);
+    const span = barSpan(w0, rounds.length, 1.6), w = span.w;
+    const ax = blockAxes(fig, x + span.x, y, w, hIn, [-0.6, rounds.length - 0.4], [-cap * 0.17, cap]);
     const bw = barWidth(w, rounds.length, 0.62, 0.95);
     rounds.forEach((r, i) => {
       const f = fld(r);
@@ -160,6 +166,71 @@ function roundChartBlock(T, rounds, label, perHole) {
       ax.text(i, -cap * 0.035, shortDate(r.date), { size: 8.5, color: T.INK_3, ha: "center", va: "top" });
     });
     ax.line(-0.6, 0, rounds.length - 0.4, 0, T.LINE, 0.8);
+  });
+}
+
+/**
+ * The season left to right: one column a card, one line a player, and the field's own average behind them
+ * all. This is the only block that answers "is this league getting better or just older", which no average
+ * over the whole season can, because an average has no direction.
+ *
+ * Names sit at the right end of each line and are pushed apart where two lines finish level, since a chart
+ * of nine lines is only readable if each one says whose it is.
+ */
+function progressBlock(T, P, label, tail) {
+  const hIn = 2.5 * dense(T);
+  const vals = [...P.players.flatMap(p => p.points), ...P.field].filter(v => v !== null);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo || 1) * 0.16;
+  const n = P.cards.length;
+  // A first name, unless two players share one, in which case both of them carry their whole name: a chart
+  // with two lines both labelled "Gijs" has labelled neither.
+  const firsts = {};
+  for (const p of P.players) firsts[p.name.split(" ")[0]] = (firsts[p.name.split(" ")[0]] || 0) + 1;
+  const shortName = p => firsts[p.name.split(" ")[0]] > 1 ? p.name : p.name.split(" ")[0];
+  return block("chart", 4.0, () => hIn + headingIn, (fig, x0, top, w) => {
+    heading(fig, x0, top, w, label, note(T, tail));
+    // The names live in a gutter of their own, and the plot keeps a sane pitch rather than stretching two
+    // cards across a foot of paper. Both are centred together, so a short season sits in the middle.
+    const nameW = Math.min(1.5, w * 0.2);
+    const plotW = Math.min(w - nameW, Math.max(2.0, n * 1.5));
+    const x = x0 + Math.max(0, (w - plotW - nameW) / 2);
+    const y = top + headingIn;
+    const ax = blockAxes(fig, x, y, plotW, hIn, [-0.35, n - 1 + 0.35], [lo - pad * 1.9, hi + pad]);
+    // the grid is one hairline a card with its date under it: no y axis, because the lines carry the numbers
+    P.cards.forEach((c, i) => {
+      ax.line(i, lo - pad * 1.2, i, hi + pad, T.LINE, 0.6);
+      ax.fitText(i, lo - pad * 1.35, shortDate(c.date), 0.95, { size: 8.5, color: T.INK_3, ha: "center", va: "top" });
+    });
+    // the field first, so a player's own line is always the one on top of it
+    const run = (pts, col, lw, dash) => {
+      for (let k = 1; k < pts.length; k++) ax.line(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1], col, lw, dash);
+    };
+    const seen = xs => xs.map((v, k) => [k, v]).filter(([, v]) => v !== null);
+    run(seen(P.field), T.INK_3, 1.6, [5, 4]);
+    const ends = [];
+    P.players.forEach((p, i) => {
+      // The one chart where colour is identity rather than decoration, so it takes the five series colours
+      // whatever the family would otherwise paint a chart in: nine lines in one colour is nine lines lost.
+      const col = T.SERIES[i % T.SERIES.length], pts = seen(p.points);
+      run(pts, col, 2.0);
+      for (const [k, v] of pts) fig.disc(ax.X(k), ax.Y(v), 0.075, col);
+      const [lastX, lastV] = pts[pts.length - 1];
+      if (pts.length === 1) fig.disc(ax.X(lastX), ax.Y(lastV), 0.11, col);
+      ends.push({ name: shortName(p), col, at: ax.X(lastX), from: ax.Y(lastV), y: ax.Y(lastV) });
+    });
+    // Pushed apart down the gutter so two players who finish level still get a name each, and joined to their
+    // own last point by a hairline, since a name that has been moved says nothing about which line it names.
+    const step = 0.145;
+    ends.sort((a, b) => a.y - b.y);
+    for (let k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + step);
+    const drop = Math.max(0, ends.length ? ends[ends.length - 1].y - (y + hIn) : 0);
+    const lx = x + plotW + 0.14;
+    for (const e of ends) {
+      e.y -= drop;
+      fig.line(e.at + 0.06, e.from, lx - 0.06, e.y, T.LINE, 0.7);
+      fig.fitText(lx, e.y, e.name, nameW - 0.2, 9.5, 6.5, { family: "display", color: e.col, va: "center" });
+    }
   });
 }
 
@@ -203,16 +274,15 @@ function statTableBlock(T, rows, cols, { title, tail = "" } = {}) {
  * the field cannot answer never goes in the headline row, the header or a comparison -- it goes here, and
  * only when there is something to put in it. Always a full-width row of its own, whatever the page.
  */
-function bandBlock(T, title, items) {
+function bandBlock(T, title, items, tail = "") {
   const hIn = 0.9 * dense(T);
-  return block("note", 99, () => hIn + headingIn, (fig, x, top, w) => {
-    heading(fig, x, top, w, title, "");
-    const y = top + headingIn, step = w / items.length;
-    items.forEach(([big, label], i) => {
-      const bx = x + i * step;
-      surface(fig, bx + 0.04, y, step - 0.08, hIn, 0.08);
-      fig.text(bx + step / 2, y + hIn * 0.46, String(big), { size: 26, family: "display", color: fig.T.INK, ha: "center", va: "center" });
-      fig.text(bx + step / 2, y + hIn - 0.12, caps(fig.T, label), { size: 8.5, family: "display", color: fig.T.INK_3, ha: "center", va: "bottom" });
+  const rowsIn = w => bandRows(items, w).length * (hIn + 0.1) - 0.1;
+  return block("note", 99, w => rowsIn(w) + headingIn, (fig, x, top, w) => {
+    heading(fig, x, top, w, title, note(T, tail));
+    const y = top + headingIn;
+    bandRows(items, w).forEach((row, r) => {
+      const step = w / row.length, ry = y + r * (hIn + 0.1);
+      row.forEach(([big, label], i) => panel(fig, x + i * step, ry, step, hIn, big, label, null, { bigSize: bigIn(step, 26), capSize: 8.5 }));
     });
   });
 }
@@ -225,9 +295,14 @@ function statColumns(lines, opts) {
   return STRIP_KEYS.map(k => seen.get(k)).filter(Boolean);
 }
 
-/** The player against the rest of the league on the readings both sides kept. Empty when they share none. */
+/**
+ * The player against the rest of the league on the readings both sides kept. Headline readings only: the
+ * deep ones run to a dozen rows on their own and would turn a band at the foot into a second poster.
+ * Empty when the two sides share nothing.
+ */
 function extrasPairs(p, opts) {
   return statPairs(p.statline, p.rest && p.rest.statline, opts)
+    .filter(r => !r.deep)
     .map(r => [r.title, r.value, r.theirs, r.fmt, r.lower]);
 }
 
@@ -241,6 +316,7 @@ const BANDS = ["Hardest third", "Middle third", "Easiest third"];
  */
 export function statsFieldPoster(St, group, T, { extras = false } = {}) {
   const F = St.field;
+  const P = leagueProgress(St.rounds);
   const band = extras && F.statline.any ? statReadings(F.statline, { per18: true }).filter(r => !r.deep).slice(0, 5) : [];
   const rows = [
     ...Object.keys(F.byPar).sort().map(k => [`Par ${k}`, F.byPar[k].vspar, `${fix(F.byPar[k].pts, 2)} pts  ·  ${F.byPar[k].holes} holes`]),
@@ -249,6 +325,7 @@ export function statsFieldPoster(St, group, T, { extras = false } = {}) {
   const foot = `Every hole the league's own players have walked: ${F.holes} holes over ${F.rounds} rounds on ${F.cards} cards. ` +
     `Points are Stableford, so 2 a hole is playing to handicap. The thirds split the holes by stroke index, so the hardest third of a ` +
     `nine is its three lowest-index holes; those are also where the strokes are given, which is why they usually pay the most points. ` +
+    (P.cards.length > 1 ? `The season runs left to right, one column a card and one line a player, with the whole field dashed behind them${P.perHole ? `; this league mixes nine- and eighteen-hole rounds, so that chart counts points a hole` : ""}. ` : "") +
     `Only the league's own players count, so a guest never moves a figure.` +
     (F.statline.any ? ` The readings along the bottom are only from the players who keep them, over the ${F.statline.holes} holes they kept them for, so they say nothing about the rest of the field.` : "");
   return sheet(T, {
@@ -265,6 +342,9 @@ export function statsFieldPoster(St, group, T, { extras = false } = {}) {
   }, [
     distributionBlock(T, F.counts, "Every hole walked"),
     barRowsBlock(T, rows, { title: "How the holes play", noteHead: "average against par", fmtv: v => fmtSigned(v, 2) }),
+    P.cards.length > 1 && P.players.length
+      ? progressBlock(T, P, P.perHole ? "The season, points a hole" : "The season, card by card", "one line a player, oldest card on the left")
+      : null,
     playerBarsBlock(T, St.players, "Who scores what", `${St.players.length} players`),
     band.length ? bandBlock(T, "Putts, fairways and the rest", band.map(r => [r.big, r.label.split(" · ")[0]])) : null,
   ]);
@@ -290,19 +370,20 @@ export function statsNinesPoster(N, group, T) {
 
   // one bar per loop: what a card on it is worth, with what it is gone round in underneath
   const chartIn = 2.35 * dense(T);
-  const loops = block("chart", Math.max(3.2, 1.15 * N.length), () => chartIn + headingIn, (fig, x, top, w) => {
-    heading(fig, x, top, w, "Average points a card", "");
+  const loops = block("chart", Math.max(3.2, 1.15 * N.length), () => chartIn + headingIn, (fig, x, top, w0) => {
+    heading(fig, x, top, w0, "Average points a card", "");
     const cap = Math.max(...N.map(l => l.avgPts), 1) * 1.3;
-    const ax = blockAxes(fig, x, top + headingIn, w, chartIn, [-0.6, N.length - 0.4], [-cap * 0.28, cap]);
+    const span = barSpan(w0, N.length, 2.8), w = span.w;
+    const ax = blockAxes(fig, x + span.x, top + headingIn, w, chartIn, [-0.6, N.length - 0.4], [-cap * 0.28, cap]);
     const bw = barWidth(w, N.length, 0.55, 1.15);
     const best = Math.max(...N.map(l => l.avgPts));
     N.forEach((l, i) => {
       ax.rbox(i - bw / 2, 0, bw, l.avgPts, l.avgPts === best && N.length > 1 ? T.ACCENT : T.BAR, 0.03);
       ax.text(i, l.avgPts + cap * 0.02, fix(l.avgPts), { size: 20, family: "display", color: T.INK, ha: "center", va: "bottom" });
-      ax.text(i, -cap * 0.04, l.name, { size: 12, family: "display", color: T.INK, ha: "center", va: "top" });
-      ax.text(i, -cap * 0.125, l.avgGross === null ? "no full card" : `${fix(l.avgGross)} gross, ${fmtToPar(l.avgTopar)}`,
-        { size: 9.5, color: T.INK_2, ha: "center", va: "top" });
-      ax.text(i, -cap * 0.195, `${l.cards} card${l.cards === 1 ? "" : "s"}  ·  par ${l.par}`, { size: 9, color: T.INK_3, ha: "center", va: "top" });
+      ax.fitText(i, -cap * 0.04, l.name, 1.0, { size: 12, family: "display", color: T.INK, ha: "center", va: "top" });
+      ax.fitText(i, -cap * 0.125, l.avgGross === null ? "no full card" : `${fix(l.avgGross)} gross, ${fmtToPar(l.avgTopar)}`,
+        1.0, { size: 9.5, color: T.INK_2, ha: "center", va: "top" });
+      ax.fitText(i, -cap * 0.195, `${l.cards} card${l.cards === 1 ? "" : "s"}  ·  par ${l.par}`, 1.0, { size: 9, color: T.INK_3, ha: "center", va: "top" });
     });
     ax.line(-0.6, 0, N.length - 0.4, 0, T.LINE, 0.8);
   });
@@ -347,6 +428,7 @@ export function statsNinesPoster(N, group, T) {
 export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
   const R = p.rest;
   const band = extras ? extrasPairs(p, { per18: true }) : [];
+  const mineX = extras && p.statline.any ? statReadings(p.statline, { per18: true }).filter(r => !r.deep) : [];
   const perHole = new Set(p.rounds.map(r => r.n)).size > 1;
   const first = p.name.split(" ")[0];
   const vs = [];
@@ -374,7 +456,8 @@ export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
     : `${first} has not yet shared a round in this league with anyone else, so there is nothing to measure against. `) +
     (perHole ? "This league mixes nine- and eighteen-hole rounds, so the round chart counts points a hole. " : "") +
     "Only the league's own players count, so a guest never moves a figure." +
-    (band.length ? ` The last block is only the holes where ${first} and somebody else both wrote the same thing down, which is why it counts fewer holes than everything above it.` : "");
+    (band.length ? ` The last block is only the holes where ${first} and somebody else both wrote the same thing down, which is why it counts fewer holes than everything above it.`
+      : mineX.length ? ` The last block is ${first}'s own putts and fairways over the ${p.statline.holes} holes that answered them. Nobody else in this league has kept the same readings, so there is nothing to set them against.` : "");
   const right = [`${fix(p.avgPts)} points a round`,
     [p.wins ? `${p.wins} win${p.wins === 1 ? "" : "s"}` : "", p.avgPlace ? `${ordinal(Math.round(p.avgPlace))} on average in this league` : ""].filter(Boolean).join("  ·  ")];
 
@@ -393,7 +476,12 @@ export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
     distributionBlock(T, p.counts, "Every hole in this league"),
     vs.length ? pairRowsBlock(T, vs, { title: "Against the field", noteHead: `${first}  ·  the rest of the league`, labelW: 2.6 }) : null,
     p.played > 1 ? roundChartBlock(T, p.rounds, perHole ? "Points a hole, round by round" : "Points round by round", perHole) : null,
-    band.length ? bandBlock(T, "Putts, fairways and the rest", band.map(([label, mine, , fmtv]) => [fmtv(mine), label])) : null,
+    // The extras the same way as everything else on this sheet: against the rest of the league where there is
+    // a rest of the league to set them against, and simply as their own figures where there is not.
+    band.length
+      ? { ...pairRowsBlock(T, band, { title: "Putts, fairways and the rest", noteHead: `${first}  ·  the rest of the league`, labelW: 2.6 }), minW: 99 }
+      : mineX.length ? bandBlock(T, "Putts, fairways and the rest", mineX.map(r => [r.big, r.label.split(" · ")[0]]),
+        `${first} over ${p.statline.holes} hole${p.statline.holes === 1 ? "" : "s"}`) : null,
   ]);
 }
 

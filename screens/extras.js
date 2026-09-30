@@ -35,9 +35,9 @@ export function statLine(x) {
   const bits = [];
   if (x.putts) bits.push(`${x.putts.total} putts`);
   if (x.fairway) bits.push(`${x.fairway.hit}/${x.fairway.holes} fairways`);
-  if (x.gir) bits.push(`${x.gir.hit}/${x.gir.holes} greens`);
+  if (x.gir) bits.push(`${x.gir.hit}/${x.gir.holes} GIR`);
   if (x.scramble && x.scramble.saved) bits.push(`${x.scramble.saved} scrambled`);
-  if (x.sand) bits.push(`${x.sand.saved}/${x.sand.holes} sand`);
+  if (x.sand && x.sand.holes >= 3) bits.push(`${x.sand.saved}/${x.sand.holes} sand`);
   if (x.penalty) bits.push(plural(x.penalty.total, "penalty shot"));
   return bits.join(" · ");
 }
@@ -70,9 +70,9 @@ export const SG_TIP = `<p>The published version of this compares every shot with
 <p>A hole picked up is left out, and the putting split only counts holes where both cards wrote putts down.</p>`;
 
 export const STATS_TIP = `<p>These come off your own card, and only the ones you switched on. Nothing here is guessed at.</p>
-<p><b>Greens in regulation</b> is the green reached with two strokes still left for par, and is never asked for either: your strokes less your putts is where the ball was, so counting putts answers it. It is arithmetic, not an opinion, which is why there is no chip for it.</p>
+<p><b>GIR</b>, greens in regulation, is the green reached with two strokes still left for par, and is never asked for either: your strokes less your putts is where the ball was, so counting putts answers it. It is arithmetic, not an opinion, which is why there is no chip for it.</p>
 <p><b>Scrambling</b> is the holes where you missed the green and still made par or better. <b>Up and down</b> is the stricter question: green missed, then on and holed in two, which needs your putts as well. <b>Sand saves</b> are scrambling out of a bunker. None of the three is ever asked for.</p>
-<p>Every figure counts only the holes that answered it, so switching something on halfway through a season skews nothing. A percentage waits until there are eight attempts behind it; under that you get the fraction itself, because one sand save out of one is not a hundred per cent of anything.</p>`;
+<p>Every figure counts only the holes that answered it, so switching something on halfway through a season skews nothing. A percentage waits until there are eight attempts behind it; under that you get the fraction itself, because one sand save out of one is not a hundred per cent of anything. Under a handful of attempts a reading is left out altogether: one bunker all season is a bunker, not a sand-save record.</p>`;
 
 export function statHolesOf(rounds, pid) {
   const out = [];

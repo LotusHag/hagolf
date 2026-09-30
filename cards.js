@@ -50,8 +50,9 @@ export function story(M, p, { extras = true } = {}) {
     }
     const struck = [x.fairway ? `${x.fairway.hit} of ${x.fairway.holes} fairways` : "",
       x.gir ? `${x.gir.hit} of ${x.gir.holes} greens in regulation` : ""].filter(Boolean).join(" and ");
+    // One bunker is not a sand-save record, so it is left to the scorecard rather than written up as one.
     const saved = [x.scramble ? `${x.scramble.saved} of the ${x.scramble.holes} green${plural(x.scramble.holes)} missed` : "",
-      x.sand ? `${x.sand.saved} of ${x.sand.holes} bunker${plural(x.sand.holes)}` : ""].filter(Boolean).join(" and ");
+      x.sand && x.sand.holes >= 3 ? `${x.sand.saved} of ${x.sand.holes} bunkers` : ""].filter(Boolean).join(" and ");
     if (struck || saved) said.push([struck, saved ? `par or better from ${saved}` : ""].filter(Boolean).join("; ") + ".");
     if (x.penalty) said.push(`${x.penalty.total} penalty shot${plural(x.penalty.total)}, already in the scores above.`);
     out.push(said.join(" "));
@@ -119,13 +120,16 @@ function extrasStrip(fig, topIn, hIn, readings) {
   const T = fig.T, W = fig.w - 2 * MARGIN * fig.w;
   const ax = fig.axes([MARGIN, 1 - (topIn + hIn) / fig.h, 1 - 2 * MARGIN, hIn / fig.h], [0, W], [0, hIn]);
   section(ax, 0, hIn - 0.1, "Putts, fairways and the rest", 10);
-  const boxH = hIn - 0.34, w = W / readings.length;
+  // Four readings stretched over fifteen inches are four numbers adrift in four fields, so the band keeps a
+  // box width and stands in the middle of the card when there are fewer readings than it has room for.
+  const used = Math.min(W, readings.length * 2.1), x0 = (W - used) / 2;
+  const boxH = hIn - 0.34, w = used / readings.length, inner = w - 0.18;
   readings.forEach((r, i) => {
-    const x = i * w;
+    const x = x0 + i * w;
     ax.rbox(x + 0.03, 0, w - 0.06, boxH, T.PANEL, 0.06);
-    ax.text(x + w / 2, boxH * 0.80, caps(T, r.short), { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center" });
-    ax.text(x + w / 2, boxH * 0.40, r.big, { size: r.big.length > 5 ? 16 : 22, family: "display", color: T.INK, ha: "center", va: "center" });
-    if (r.sub) ax.text(x + w / 2, boxH * 0.14, r.sub, { size: 8, color: T.INK_3, ha: "center", va: "center" });
+    ax.fitText(x + w / 2, boxH * 0.80, caps(T, r.short), inner, { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center", min: 6 });
+    ax.fitText(x + w / 2, boxH * 0.40, r.big, inner, { size: r.big.length > 5 ? 16 : 22, family: "display", color: T.INK, ha: "center", va: "center", min: 11 });
+    if (r.sub) ax.fitText(x + w / 2, boxH * 0.14, r.sub, inner, { size: 8, color: T.INK_3, ha: "center", va: "center", min: 5.5 });
   });
 }
 
@@ -199,13 +203,15 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   }
   const tiles = [grossTile, netTile,
     ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}`]];
-  if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"} than the rest`]);
+  if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
   const axt = fig.axes(rect(0.28, 1.0, basic ? 0.62 : 0.50), [0, tiles.length], [0, 1]);
   tiles.forEach(([lab, big, small], k) => {
     axt.rbox(k + 0.05, 0.0, 0.9, 1.0, T.PANEL, 0.06);
-    axt.text(k + 0.5, 0.8, caps(T, lab), { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center" });
-    axt.text(k + 0.5, 0.47, big, { size: big.length < 6 ? 24 : 17, family: "display", color: big === "NR" ? T.INK_3 : T.INK, ha: "center", va: "center" });
-    axt.text(k + 0.5, 0.15, small, { size: 8, color: T.INK_3, ha: "center", va: "center" });
+    // 0.9 of a tile wide, less a hair of padding: every one of the three lines is shrunk to that rather than
+    // set at a size that happens to fit the shortest caption and runs out of the box on the longest
+    axt.fitText(k + 0.5, 0.8, caps(T, lab), 0.82, { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center", min: 6 });
+    axt.fitText(k + 0.5, 0.47, big, 0.82, { size: big.length < 6 ? 24 : 17, family: "display", color: big === "NR" ? T.INK_3 : T.INK, ha: "center", va: "center", min: 12 });
+    axt.fitText(k + 0.5, 0.15, small, 0.82, { size: 8, color: T.INK_3, ha: "center", va: "center", min: 5.5 });
   });
 
   // scorecard
@@ -341,8 +347,8 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   rows.forEach(([label, v, cnt], i) => {
     const x0 = Math.floor(i / per) * cw, y0 = 0.82 - (i % per) * 0.115;
     axw.text(x0, y0, label, { size: 9, color: T.INK_2, va: "center" });
-    axw.text(x0 + 0.62 * cw, y0, fmtToPar(v), { size: 11, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
-    axw.text(x0 + 0.68 * cw, y0, `${fmtSigned(v / cnt, 1)} per hole`, { size: 7.5, color: T.INK_3, va: "center" });
+    axw.text(x0 + 0.70 * cw, y0, fmtToPar(v), { size: 11, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
+    axw.text(x0 + 0.76 * cw, y0, `${fmtSigned(v / cnt, 1)} per hole`, { size: 7.5, color: T.INK_3, va: "center" });
   });
   let y = 0.82 - per * 0.115;
   axw.text(0, y - 0.02, "Results against par" + (p.nr ? ` (${p.holes_played} holes played)` : ""), { size: 8, color: T.INK_3, va: "center" });

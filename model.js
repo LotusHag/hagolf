@@ -597,6 +597,13 @@ export function statSummary(holes) {
       holes: sand.length, saved: sand.filter(h => h.topar !== null && h.topar <= 0).length,
       pct: ratio(sand.filter(h => h.topar !== null && h.topar <= 0).length, sand.length),
     },
+    // What a green is worth, in strokes: the same question `fromFairway` asks of the tee shot, one club
+    // further on. Both sides need enough holes behind them or the gap is one bad hole rather than a habit.
+    fromGir: greensScored.length < 4 || missed.length < 4 ? null : {
+      hit: { holes: greensScored.length, topar: mean(greensScored.map(h => h.topar)) },
+      miss: { holes: missed.length, topar: mean(missed.map(h => h.topar)) },
+      edge: mean(missed.map(h => h.topar)) - mean(greensScored.map(h => h.topar)),
+    },
     penalty: !pen.length ? null : { holes: pen.length, total: pen.reduce((a, h) => a + h.penaltyShots, 0) },
   };
 }
@@ -617,8 +624,16 @@ export const fmtPct = v => v === null || v === undefined ? "–" : `${Math.round
  */
 export const RATE_MIN = 8;
 
-/** The five the personal card has room for, in the order they are drawn. */
-export const STRIP_KEYS = ["putts", "gir", "fairway", "upDown", "sand", "scramble", "penalty"];
+/**
+ * How few attempts make a rate not worth drawing at all. Under `RATE_MIN` a rate is still a fact worth
+ * reading -- 5 of 7 fairways says something -- but under this it says nothing anybody wants to look at: one
+ * greenside bunker all season is a bunker, not a sand-save percentage, and a tile reading "0/1 sand" is a
+ * hole in the page where a statistic should be. Each reading names its own floor.
+ */
+const SHOW_MIN = 5;
+
+/** The readings the personal card's strip and a poster's columns take, headline only, in the order drawn. */
+export const STRIP_KEYS = ["putts", "gir", "fairway", "puttsOnGir", "scramble", "penalty"];
 
 /**
  * One summary read out as a list of readings, so the tiles on screen, the strip on a card and the rows on a
@@ -636,8 +651,8 @@ export function statReadings(x, { per18 = false } = {}) {
   // `pair` marks a reading that means something set against somebody else's: a rate or an average, never a
   // raw count. One player's 7 three-putts against a whole league's 17 is not a comparison, it is two
   // different questions, and a bar drawn between them says the wrong thing in the right colours.
-  const rate = (key, part, of, { title, label, short, group, deep = false, lower = false }) => {
-    if (!of) return;
+  const rate = (key, part, of, { title, label, short, group, deep = false, lower = false, min = SHOW_MIN }) => {
+    if (!of || of < min) return;
     const pct = part / of, enough = of >= RATE_MIN;
     out.push({ key, group, deep, lower, pair: true, title, short, n: of, value: pct, fmt: fmtPct,
       big: enough ? fmtPct(pct) : `${part}/${of}`,
@@ -657,16 +672,19 @@ export function statReadings(x, { per18 = false } = {}) {
       fmt: v => per18 ? fix(v, 1) : String(Math.round(v)) });
     if (p.one) num("onePutt", p.one, { title: "One-putts", label: `one-putt${s(p.one)}`, short: "One-putts", group: "putting", deep: true, n: p.holes });
     if (p.three) num("threePutt", p.three, { title: "Three-putts", label: `three-putt${s(p.three)}`, short: "Three-putts", group: "putting", deep: true, lower: true, n: p.holes });
-    if (p.onGir !== null) num("puttsOnGir", p.onGir, {
+    // an average over one green is that green, not a putting record
+    if (p.onGir !== null && p.onGirHoles >= SHOW_MIN) num("puttsOnGir", p.onGir, {
       title: "Putts per green", label: "putts per green", short: "Per green", group: "putting", lower: true, pair: true,
       n: p.onGirHoles, sub: `${p.onGirHoles} green${s(p.onGirHoles)}`, fmt: v => fix(v, 2) });
   }
-  if (x.gir) rate("gir", x.gir.hit, x.gir.holes, { title: "Greens in regulation", label: "greens", short: "Greens", group: "striking" });
+  if (x.gir) rate("gir", x.gir.hit, x.gir.holes, { title: "Greens in regulation", label: "greens in regulation", short: "GIR", group: "striking", min: 4 });
   if (x.fairway) {
-    rate("fairway", x.fairway.hit, x.fairway.holes, { title: "Fairways hit", label: "fairways", short: "Fairways", group: "striking" });
+    rate("fairway", x.fairway.hit, x.fairway.holes, { title: "Fairways hit", label: "fairways hit", short: "Fairways", group: "striking", min: 4 });
     const L = x.fairway.misses.left, R = x.fairway.misses.right;
-    if (L || R) num("fairwayMiss", null, {
-      title: "Where the tee shot misses", short: "Misses", group: "striking", big: `${L}← ${R}→`,
+    // A count of each side, never a headline: it has no single number to compare and it is the widest thing
+    // a tile is ever asked to hold, so it goes where there is room for it.
+    if (L + R >= 4) num("fairwayMiss", null, {
+      title: "Where the tee shot misses", short: "Misses", group: "striking", deep: true, big: `${L}L · ${R}R`,
       label: L === R ? "missed both ways" : `misses mostly ${L > R ? "left" : "right"}`,
       sub: `${L} left · ${R} right` });
   }
@@ -680,14 +698,24 @@ export function statReadings(x, { per18 = false } = {}) {
       big: edge(f.edge), label: "greens gained by hitting the fairway",
       sub: `${fmtPct(f.hit.pct)} from it, ${fmtPct(f.miss.pct)} from the rough`, fmt: edge });
   }
-  if (x.birdies) rate("birdies", x.birdies.made, x.birdies.holes, { title: "Greens turned into birdies", label: "birdie conversion", short: "Birdies", group: "striking", deep: true });
+  if (x.fromGir) {
+    const g = x.fromGir;
+    const edge = v => fix(v, 2);
+    num("fromGir", g.edge, {
+      title: "What a green is worth", short: "Green worth", group: "striking", deep: true, pair: true,
+      big: edge(g.edge), label: "strokes saved by hitting the green",
+      sub: `${fmtSigned(g.hit.topar, 2)} on it, ${fmtSigned(g.miss.topar, 2)} off`, fmt: edge });
+  }
+  if (x.birdies) rate("birdies", x.birdies.made, x.birdies.holes, { title: "Greens turned into birdies", label: "birdie conversion", short: "Birdies", group: "striking", deep: true, min: 6 });
   if (x.girByPar) for (const par of Object.keys(x.girByPar)) {
     const g = x.girByPar[par];
-    if (g.holes >= 4) rate(`girPar${par}`, g.hit, g.holes, { title: `Greens on par ${par}s`, label: `greens on par ${par}s`, short: `Par ${par}s`, group: "striking", deep: true });
+    rate(`girPar${par}`, g.hit, g.holes, { title: `Greens in regulation on par ${par}s`, label: `GIR on par ${par}s`, short: `GIR par ${par}s`, group: "striking", deep: true, min: 6 });
   }
   if (x.scramble) rate("scramble", x.scramble.saved, x.scramble.holes, { title: "Scrambling", label: "scrambling", short: "Scramble", group: "saves" });
-  if (x.upDown) rate("upDown", x.upDown.made, x.upDown.holes, { title: "Up and down", label: "up and down", short: "Up & down", group: "saves" });
-  if (x.sand) rate("sand", x.sand.saved, x.sand.holes, { title: "Sand saves", label: "sand saves", short: "Sand", group: "saves" });
+  // Up and down asks almost the same question as scrambling and sand saves ask it of a handful of holes, so
+  // neither belongs beside the readings every card can answer. They are worth keeping and worth folding away.
+  if (x.upDown) rate("upDown", x.upDown.made, x.upDown.holes, { title: "Up and down", label: "up and down", short: "Up & down", group: "saves", deep: true });
+  if (x.sand) rate("sand", x.sand.saved, x.sand.holes, { title: "Sand saves", label: "sand saves", short: "Sand", group: "saves", deep: true, min: 6 });
   if (x.penalty) num("penalty", x.penalty.total, {
     title: "Penalty shots", label: `penalty shot${s(x.penalty.total)}`, short: "Penalties", group: "trouble",
     lower: true, n: x.penalty.holes, sub: `over ${x.penalty.holes} hole${s(x.penalty.holes)}` });
@@ -1269,6 +1297,55 @@ export function leagueStats(results, memberIds) {
     bounce: sum(rounds.map(r => r.chances)) ? sum(rounds.map(r => r.backs)) / sum(rounds.map(r => r.chances)) : null,
   };
   return { rounds, holes, field, players };
+}
+
+/**
+ * How a league has moved: one column a card in date order, and what everyone scored on it, so a season reads
+ * left to right instead of as a pile of averages. `rounds` is leagueStats().rounds, so guests are already out.
+ *
+ * Points a hole where the league mixes nine- and eighteen-hole rounds and points a round where it does not:
+ * an eighteen beside a nine on one axis is two different questions drawn as one line.
+ *
+ * `mode` is what each point means. "each" is what they scored that day, which is the season as it happened,
+ * spikes and all; "running" is their average up to and including that day, which is the same season with the
+ * one-off good round argued down -- a line that only moves when the player does. Both run over the same
+ * columns, so the two can be swapped under one chart.
+ *
+ * A player who missed a card has no point on it and their line carries straight over the gap, because the
+ * alternative is either a hole in the line or a score they never made.
+ */
+export function leagueProgress(rounds, { mode = "each" } = {}) {
+  const perHole = new Set(rounds.map(r => r.n)).size > 1;
+  const val = r => perHole ? r.pts / r.n : r.pts;
+  const byCard = new Map();
+  for (const r of rounds) {
+    const k = r.card ?? r.id;
+    if (!byCard.has(k)) byCard.set(k, { key: k, date: r.date, where: r.where, loop: r.loop, n: r.n, rows: [] });
+    byCard.get(k).rows.push(r);
+  }
+  const cards = [...byCard.values()].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const names = new Map();
+  for (const r of rounds) names.set(r.pid, r.player);
+  const series = id => {
+    const seen = [];
+    return cards.map(c => {
+      // a player who went round twice on one card counts once, as the day they had
+      const mine = c.rows.filter(r => id === null || r.pid === id);
+      if (!mine.length) return null;
+      const v = mean(mine.map(val));
+      seen.push(...(mode === "running" ? mine.map(val) : [v]));
+      return mode === "running" ? mean(seen) : v;
+    });
+  };
+  const players = [...names.keys()].map(id => {
+    const points = series(id);
+    return { id, name: names.get(id), points, played: points.filter(v => v !== null).length,
+      first: points.findIndex(v => v !== null), last: points.reduce((a, v, i) => v === null ? a : i, -1) };
+  }).filter(p => p.played).sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
+  return {
+    perHole, mode, players, field: series(null),
+    cards: cards.map(c => ({ key: c.key, date: c.date, where: c.where, loop: c.loop, n: c.n, players: c.rows.length })),
+  };
 }
 
 // ---------------------------------------------------------------- one player against another

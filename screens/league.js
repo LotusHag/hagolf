@@ -208,6 +208,8 @@ export function league(gid) {
     if (act === "rivalbasis") { ui.rivalBasis[gid] = b_.dataset.b; return league(gid); }
     if (act === "ninetab") { ui.nineTab[gid] = b_.dataset.slug; return league(gid); }
     if (act === "statswho") { ui.statsWho[gid] = b_.dataset.id; return league(gid); }
+    if (act === "seasonmode") { ui.seasonMode[gid] = b_.dataset.m; return league(gid); }
+    if (act === "seasonwho") { ui.seasonWho[gid] = b_.dataset.id; return league(gid); }
     if (act === "plsort") { ui.plSort[gid] = b_.dataset.s; return league(gid); }
     if (act === "pstats") { ui.statsWho[gid] = b_.dataset.id; ui.leagueTab[gid] = "stats"; return league(gid); }
     if (act === "ph2h") { ui.h2h[gid] = { a: b_.dataset.id, b: members.find(m => m !== b_.dataset.id) }; ui.leagueTab[gid] = "h2h"; return league(gid); }

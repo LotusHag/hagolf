@@ -94,17 +94,69 @@ function place(run, cols, colW, gap, x0, y0, probe) {
   return { placed, height: Math.max(...colH) };
 }
 
-/** The headline numbers up in the header band, where the summary line would otherwise be. */
+/**
+ * The headline numbers up in the header band, where the summary line would otherwise be. They are laid out
+ * from the right, so the band is only as wide as they need; what it must not do is run back under the title,
+ * which is what the budget below keeps it clear of.
+ */
 function headerTiles(fig, items) {
   const T = fig.T;
+  const budget = (fig.w * (1 - 2 * MARGIN)) * 0.62;
+  const per = budget / items.length;
   let x = fig.w - MARGIN * fig.w;
   for (let i = items.length - 1; i >= 0; i--) {
     const [big, label, colr] = items[i];
-    const w = Math.max(fig.measure(String(big), 20, "display"), fig.measure(caps(T, label), 7.5, "display"));
-    fig.text(x, 0.38, String(big), { size: 20, family: "display", color: colr || T.INK, ha: "right", va: "top" });
-    fig.text(x, 0.76, caps(T, label), { size: 7.5, family: "display", color: T.INK_3, ha: "right", va: "top" });
+    const bs = fig.fitOne(String(big), per - 0.34, 20, 11, { family: "display" });
+    const ls = fig.fitOne(caps(T, label), per - 0.34, 7.5, 5.5, { family: "display" });
+    const w = Math.max(fig.measure(String(big), bs, "display"), fig.measure(caps(T, label), ls, "display"));
+    fig.text(x, 0.38, String(big), { size: bs, family: "display", color: colr || T.INK, ha: "right", va: "top" });
+    fig.text(x, 0.76, caps(T, label), { size: ls, family: "display", color: T.INK_3, ha: "right", va: "top" });
     x -= w + 0.34;
   }
+}
+
+/**
+ * One panel of a band of them: a figure over its caption, both shrunk to the box rather than allowed to run
+ * out of it. Every headline row, every foot band and the strip on a player's card go through this, so a long
+ * caption behaves the same way wherever it turns up.
+ */
+export function panel(fig, x, y, w, h, big, label, colr = null, { bigSize = 30, capSize = 9, tint = true } = {}) {
+  const T = fig.T;
+  if (tint) surface(fig, x + 0.04, y, w - 0.08, h, 0.08);
+  const inner = w - 0.22;
+  fig.text(x + w / 2, y + h * 0.48, String(big),
+    { size: fig.fitOne(String(big), inner, bigSize, 11, { family: "display" }), family: "display", color: colr || T.INK, ha: "center", va: "center" });
+  fig.text(x + w / 2, y + h - 0.14, caps(T, label),
+    { size: fig.fitOne(caps(T, label), inner, capSize, 5.5, { family: "display" }), family: "display", color: T.INK_3, ha: "center", va: "bottom" });
+}
+
+/**
+ * How large the figure in a panel that wide should be set. Three headline numbers across a landscape sheet at
+ * the size four of them would take are three numbers adrift in three fields; the type grows with the room it
+ * is given rather than leaving it empty.
+ */
+export const bigIn = (stepIn, base = 30) => Math.min(base * 1.28, Math.max(base * 0.8, stepIn * 9));
+
+/**
+ * How many panels a row of `w` inches should hold. A band of ten readings across one sheet gives every caption
+ * an inch and a half and none of them survive it, so the band wraps instead: the page grows by a row rather
+ * than the words shrinking into nothing.
+ */
+export function bandRows(items, w, { minIn = 1.55 } = {}) {
+  const per = Math.max(1, Math.min(items.length, Math.floor(w / minIn)));
+  const rows = [];
+  for (let i = 0; i < items.length; i += per) rows.push(items.slice(i, i + per));
+  return rows;
+}
+
+/**
+ * Where a row of `n` bars should actually be drawn inside a block `w` inches wide, as an offset and a width.
+ * Two bars across a sheet of paper are not a chart, they are two rectangles a foot apart: a chart with few
+ * bars keeps its pitch and stands in the middle of its block rather than stretching to both edges.
+ */
+export function barSpan(w, n, maxPitchIn) {
+  const use = Math.min(w, n * maxPitchIn);
+  return { x: (w - use) / 2, w: use };
 }
 
 /** An axes filling a block's rectangle, in whatever data units that block thinks in. */
@@ -141,9 +193,11 @@ export function tilesBlock(T, items) {
       items.forEach(([big, label, colr], i) => {
         const cx = x + step * (i + 0.5);
         if (i) fig.line(x + step * i, y + 0.12, x + step * i, y + 0.5 * d, fig.T.LINE, 0.8);
-        const bw = fig.measure(String(big), 15, "display");
-        fig.text(cx - bw / 2 - 0.06, y + 0.31 * d, String(big), { size: 15, family: "display", color: colr || fig.T.INK, ha: "right", va: "center" });
-        fig.text(cx - bw / 2 + 0.02, y + 0.33 * d, label, { size: 8, color: fig.T.INK_3, va: "center" });
+        // the figure and its label share one line, so they are measured together and shrunk together
+        const bs = fig.fitOne(String(big), step * 0.45, 15, 9, { family: "display" });
+        const bw = fig.measure(String(big), bs, "display");
+        fig.text(cx - bw / 2 - 0.06, y + 0.31 * d, String(big), { size: bs, family: "display", color: colr || fig.T.INK, ha: "right", va: "center" });
+        fig.text(cx - bw / 2 + 0.02, y + 0.33 * d, label, { size: fig.fitOne(label, step - bw - 0.16, 8, 5.5, {}), color: fig.T.INK_3, va: "center" });
       });
     });
   }
@@ -153,19 +207,19 @@ export function tilesBlock(T, items) {
       items.forEach(([big, label, colr], i) => {
         const yy = y + rowIn * (i + 0.5);
         fig.line(x, y + rowIn * (i + 1), x + w, y + rowIn * (i + 1), fig.T.LINE, 0.6);
-        fig.text(x, yy, caps(fig.T, label), { size: 9, family: "display", color: fig.T.INK_3, va: "center" });
-        fig.text(x + w, yy, String(big), { size: 17, family: "display", color: colr || fig.T.INK, ha: "right", va: "center" });
+        const bs = fig.fitOne(String(big), w * 0.4, 17, 11, { family: "display" });
+        fig.text(x + w, yy, String(big), { size: bs, family: "display", color: colr || fig.T.INK, ha: "right", va: "center" });
+        fig.text(x, yy, caps(fig.T, label),
+          { size: fig.fitOne(caps(fig.T, label), w - fig.measure(String(big), bs, "display") - 0.2, 9, 5.5, { family: "display" }), family: "display", color: fig.T.INK_3, va: "center" });
       });
     });
   }
+  // A row of panels, wrapped where there are more headline numbers than the sheet is wide enough to set.
   const hIn = TILE_H * d;
-  return block("tiles", 3.2, () => hIn, (fig, x, y, w) => {
-    const step = w / items.length;
-    items.forEach(([big, label, colr], i) => {
-      const bx = x + i * step;
-      surface(fig, bx + 0.04, y, step - 0.08, hIn, 0.08);
-      fig.text(bx + step / 2, y + hIn * 0.48, String(big), { size: 30, family: "display", color: colr || fig.T.INK, ha: "center", va: "center" });
-      fig.text(bx + step / 2, y + hIn - 0.14, caps(fig.T, label), { size: 9, family: "display", color: fig.T.INK_3, ha: "center", va: "bottom" });
+  return block("tiles", 3.2, w => bandRows(items, w, { minIn: 1.7 }).length * (hIn + 0.1) - 0.1, (fig, x, y, w) => {
+    bandRows(items, w, { minIn: 1.7 }).forEach((row, r) => {
+      const step = w / row.length, ry = y + r * (hIn + 0.1);
+      row.forEach(([big, label, colr], i) => panel(fig, x + i * step, ry, step, hIn, big, label, colr, { bigSize: bigIn(step) }));
     });
   });
 }

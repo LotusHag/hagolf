@@ -252,8 +252,17 @@ export class Fig {
 
   /** Shrinks the size until the text fits maxW inches. */
   fitText(x, y, s, maxW, size, minSize, opts) {
-    while (size > minSize && this.measure(s, size, opts.family, opts.weight) > maxW) size -= 1;
-    this.text(x, y, s, { ...opts, size });
+    this.text(x, y, s, { ...opts, size: this.fitOne(s, maxW, size, minSize, opts) });
+    return size;
+  }
+
+  /**
+   * The largest size at or under `size` that draws `s` inside `maxW` inches, in half-point steps. Nothing
+   * below `minSize`: a caption set at four points is no more readable than one that ran over the edge, so a
+   * caller that cannot make its text fit should shorten it rather than shrink it further.
+   */
+  fitOne(s, maxW, size, minSize = 6.5, { family = "text", weight } = {}) {
+    while (size > minSize && this.measure(s, size, family, weight) > maxW) size -= 0.5;
     return size;
   }
 
@@ -369,6 +378,11 @@ export class Ax {
   down() { return this.ylim[1] > this.ylim[0] ? -1 : 1; }
 
   text(xd, yd, s, opts) { return this.fig.text(this.X(xd), this.Y(yd), s, opts); }
+  /** The same, shrunk to fit `maxWd` data units, so a long caption never leaves the box it labels. */
+  fitText(xd, yd, s, maxWd, opts = {}) {
+    const size = this.fig.fitOne(s, Math.abs(this.DX(maxWd)), opts.size ?? 10, opts.min ?? 6.5, opts);
+    return this.fig.text(this.X(xd), this.Y(yd), s, { ...opts, size });
+  }
   textWidth(s, size, family = "text") { return this.fig.measure(s, size, family) / this.wIn * (this.xlim[1] - this.xlim[0]); }
   /** Box from data coordinates (x, y bottom-left, w, h) as matplotlib draws it. */
   rbox(xd, yd, wd, hd, fc, r = 0.12, opts) {
@@ -521,7 +535,12 @@ export function outcomeBar(ax, x, y, w, h, counts, total, gap = 0.04, label = tr
     if (c <= 0) return;
     const seg = unit * c;
     ax.rbox(cx + gap / 2, y, seg - gap, h, col, 0.05);
-    if (label) ax.text(cx + seg / 2, y + h / 2, String(c), { size: seg > 2.2 * gap + 0.25 ? fontsize : fontsize - 1.5, family: "display", color: on(T, col), ha: "center", va: "center" });
+    // A sliver one hole wide has no room for its own count, and a "1" hanging over the segments either side
+    // of it is worse than no label at all: the share is written under the bar anyway.
+    const size = seg > 2.2 * gap + 0.25 ? fontsize : fontsize - 1.5;
+    if (label && ax.textWidth(String(c), size, "display") <= seg - gap) {
+      ax.text(cx + seg / 2, y + h / 2, String(c), { size, family: "display", color: on(T, col), ha: "center", va: "center" });
+    }
     cx += seg;
   });
 }

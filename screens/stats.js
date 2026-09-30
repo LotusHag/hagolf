@@ -1,8 +1,8 @@
 // What a pile of rounds says: the field, one player, their rivals, and the nines they walked.
 import * as S from "../store.js";
 import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, subtabs, safeCompute, ui } from "../ui.js";
-import { compute, computeNine, leagueStats, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, NO_SCORE } from "../model.js";
-import { statBlock, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
+import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE } from "../model.js";
+import { statBlock, statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
 import { H2H_BASES, basisUnit, leagueResults } from "./formats.js";
 import { nineName } from "./play.js";
 
@@ -63,6 +63,104 @@ function formChart(rs, who) {
     <p class="muted small center" style="margin:8px 0 0">${esc(who)}'s points ${mixed ? "a hole" : "in each round"}, oldest first.${any ? " Grey is what the rest of the field scored that day." : ""} Tap a round for its card.</p></div>`;
 }
 
+// ---------------------------------------------------------------- the season, left to right
+const SEASON_TIP = `<p>Every card this league has played, oldest on the left, and what each player scored on it. This is the only chart here with a direction: an average over a whole season cannot say whether the league is getting better or simply getting older.</p>
+  <p><b>Each card</b> is the day as it happened, spikes and all. <b>Running average</b> is everyone's average up to and including that day, so a line only moves when the player does and one freak round stops looking like a turning point.</p>
+  <p>The dashed line is the whole field. A player who missed a card has no point on it and their line carries straight over the gap, because the alternative is a score they never made. Tap a name to follow one player; where the league mixes nines and eighteens the chart counts points a hole.</p>`;
+
+/**
+ * The league over time: one line a player, one column a card. On a phone there is no room for nine colours
+ * and a key to go with them, so one line is picked out and the rest are the context behind it -- which is
+ * also the question being asked, "where am I in this", rather than "what colour is everybody".
+ */
+function seasonChart(St, gid, meId) {
+  const mode = ui.seasonMode[gid] === "running" ? "running" : "each";
+  const P = leagueProgress(St.rounds, { mode });
+  if (P.cards.length < 2 || !P.players.length) return "";
+  // Grey lines and nothing picked out is a chart nobody can read, so one is always followed until the reader
+  // says otherwise: their own, or the player at the top of the league where they are not in it.
+  const fallback = P.players.some(p => p.id === meId) ? meId : ((St.players[0] || {}).id || "");
+  const pick = P.players.some(p => p.id === ui.seasonWho[gid]) ? ui.seasonWho[gid]
+    : ui.seasonWho[gid] === "" ? "" : fallback;
+  const n = P.cards.length;
+  const vals = [...P.players.flatMap(p => p.points), ...P.field].filter(v => v !== null);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  const W = 340, H = 168, padL = 5, padR = 5, padT = 10, padB = 22;
+  const X = i => padL + (i / (n - 1)) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - lo) / span) * (H - padT - padB);
+  const seen = xs => xs.map((v, k) => [k, v]).filter(([, v]) => v !== null);
+  const poly = pts => pts.map(([i, v]) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const unit = P.perHole ? "points a hole" : "points a round";
+  const fmtv = v => P.perHole ? fix(v, 2) : fix(v);
+  // a date under every column where they fit, the ends and a few between where they do not
+  const everyN = Math.ceil(n / 6);
+  const dates = P.cards.map((c, i) => (i % everyN === 0 || i === n - 1)
+    ? `<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === n - 1 ? "end" : "middle"}">${esc(shortDate(c.date))}</text>` : "").join("");
+  const lines = P.players.map(p => {
+    const pts = seen(p.points), on = p.id === pick;
+    // One card so far is a point, not a line, and a polyline of one point draws nothing at all
+    const only = pts.length === 1
+      ? `<circle class="sline${on ? " on" : ""} sonly" cx="${X(pts[0][0]).toFixed(1)}" cy="${Y(pts[0][1]).toFixed(1)}" r="3"></circle>` : "";
+    return `<polyline class="sline${on ? " on" : ""}" points="${poly(pts)}"><title>${esc(p.name)}</title></polyline>${only}${
+      on ? pts.map(([i, v]) => `<circle class="sdot" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3"><title>${esc(p.name)} · ${esc(shortDate(P.cards[i].date))} · ${fmtv(v)}</title></circle>`).join("") : ""}`;
+  });
+  // the picked line drawn last, so it is over the others rather than under them
+  const order = P.players.map((p, i) => i).sort((a, b) => (P.players[a].id === pick ? 1 : 0) - (P.players[b].id === pick ? 1 : 0));
+  const chosen = P.players.find(p => p.id === pick);
+  const chip = (id, label) => `<button class="pchip ${id === pick ? "on" : ""}" data-act="seasonwho" data-id="${esc(id)}">${esc(label)}</button>`;
+  return `${h2tip("The season, card by card", SEASON_TIP)}
+    ${subtabs([["each", "Each card"], ["running", "Running average"]].map(([k, l]) =>
+      `<button data-act="seasonmode" data-m="${k}" class="${k === mode ? "on" : ""}">${l}</button>`).join(""), true)}
+    <div class="card">
+      <svg class="season" viewBox="0 0 ${W} ${H}" role="img" aria-label="Every card this league has played, oldest on the left, one line a player and the whole field dashed behind them">
+        ${P.cards.map((c, i) => `<line class="sgrid" x1="${X(i).toFixed(1)}" y1="${padT}" x2="${X(i).toFixed(1)}" y2="${H - padB}"></line>`).join("")}
+        <polyline class="sfield" points="${poly(seen(P.field))}"><title>The whole field</title></polyline>
+        ${order.map(i => lines[i]).join("")}
+        ${dates}
+      </svg>
+      <p class="muted small" style="margin:8px 0 0">${chosen ? `<b>${esc(chosen.name)}</b> picked out of` : "One line a player,"} ${plural(P.players.length, "player")}, the field dashed behind them, in ${esc(unit)}${mode === "running" ? " averaged from the first card up to each one" : ""}. ${plural(n, "card")}, ${esc(shortDate(P.cards[0].date))} to ${esc(shortDate(P.cards[n - 1].date))}.</p>
+    </div>
+    <div class="chips-wrap scroll" style="margin-top:8px">${chip("", "Nobody")}${P.players.map(p => chip(p.id, p.name)).join("")}</div>`;
+}
+
+// ---------------------------------------------------------------- putts, fairways and the rest, on screen
+/** One player's extras set against the rest of the league, or on their own where nobody else keeps them. */
+function extrasCompare(p, first) {
+  const x = p.statline;
+  if (!x || !x.any) return "";
+  const opts = { per18: true };
+  const pairs = statPairs(x, p.rest && p.rest.statline, opts).filter(r => !r.deep);
+  const intro = `${esc(first)} over ${plural(x.holes, "hole")} in this league.`;
+  if (!pairs.length) return statBlock(x, `${intro} Nobody else here has kept the same readings, so there is nothing to set them against.`, opts);
+  const deep = statTiles(x, { ...opts, deep: true });
+  return `<div class="card tapes mine">${pairs.map(r => tapeRow(r.title.toLowerCase(), r.value, r.theirs, r.lower, r.fmt)).join("")}</div>
+    <p class="muted small" style="margin:6px 4px 0">${esc(first)} on the left, everyone else in this league on the right. Each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>
+    ${deep ? `<details class="card morestats"><summary class="small">More of the same, for fun</summary>${deep}</details>` : ""}`;
+}
+
+/** Every player who keeps them, one row each, so a league can see its fairways and its greens in one place. */
+function extrasTable(St) {
+  const opts = { per18: true };
+  const who = St.players.filter(p => p.statline && p.statline.any);
+  if (!who.length) return "";
+  const seen = new Map();
+  for (const x of [St.field, ...who]) for (const r of statReadings(x.statline, opts)) if (!r.deep && !seen.has(r.key)) seen.set(r.key, r);
+  const cols = STRIP_KEYS.map(k => seen.get(k)).filter(Boolean);
+  if (!cols.length) return "";
+  const by = p => Object.fromEntries(statReadings(p.statline, opts).map(r => [r.key, r]));
+  const lead = cols[0];
+  const rows = who.map(p => ({ id: p.id, name: p.name, by: by(p) })).sort((a, b) => {
+    const x = a.by[lead.key], y = b.by[lead.key];
+    if (!x || !y) return (x ? 0 : 1) - (y ? 0 : 1) || a.name.localeCompare(b.name);
+    return (lead.lower ? x.value - y.value : y.value - x.value) || a.name.localeCompare(b.name);
+  });
+  const cell = r => r ? `<b class="num">${esc(r.big)}</b><small>${esc(r.sub)}</small>` : `<span class="muted">&ndash;</span>`;
+  return `${h2tip("Player by player", `<p>Only what was written down. Every figure counts the holes that answered it and no others, so a player who started keeping putts halfway through a season is measured over the holes they kept them for, and the small number under each reading says which holes those were.</p>
+      <p>A percentage waits until there are eight attempts behind it; under that it stays the fraction it is.</p>`)}
+    <div class="tscroll"><table class="stand xtab nowrap"><thead><tr><th class="l">Player</th>${cols.map(c => `<th>${esc(c.short)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map(r => `<tr><td class="l">${esc(r.name)}</td>${cols.map(c => `<td>${cell(r.by[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
 function parRow(label, x) {
   if (!x || !x.holes) return "";
   return `<tr><td class="l">${label}</td><td>${x.holes}</td><td>${fix(x.avg, 2)}</td><td>${fmtSigned(x.vspar, 2)}</td><td class="acc">${fix(x.pts, 2)}</td><td>${pct(x.counts[0] + x.counts[1], x.holes)}%</td></tr>`;
@@ -77,7 +175,25 @@ const parRows = x => Object.keys(x.byPar).sort().map(k => parRow(`Par ${k}`, x.b
 const everyHoleRow = x => `<tr class="tot"><td class="l">Every hole</td><td>${x.holes}</td><td>${fix(x.avg, 2)}</td><td>${fmtSigned(x.vspar, 2)}</td><td class="acc">${fix(x.pts, 2)}</td><td>${pct(x.counts[0] + x.counts[1], x.holes)}%</td></tr>`;
 const BANDS = ["Hardest third", "Middle third", "Easiest third"];
 
-function fieldStats(St, nines = "") {
+/**
+ * Who is moving and who is steady. Every figure here needs more than one round behind it, so the table only
+ * appears once somebody has played a second one, and a player with a single round sits out of it rather than
+ * being given a spread of nought.
+ */
+function formTable(St) {
+  const rows = St.players.filter(p => p.played > 1);
+  if (rows.length < 1) return "";
+  const mixed = mixedLengths(St.rounds);
+  return `${h2tip("Form and consistency", `<p><b>Avg</b> is points a round across the season. <b>Spread</b> is how far a typical round sits either side of that average, so a small number is a player you can predict.</p>
+      <p><b>Last 3</b> is the average of their last three rounds, which is form rather than record, and <b>trend</b> compares the first half of their rounds with the second half: plus means the second half was better.</p>
+      ${mixed ? `<p>This league mixes nine- and eighteen-hole rounds, so read these as points a card rather than points a round.</p>` : ""}`)}
+    <div class="tscroll"><table class="stand nowrap"><thead><tr><th class="l">Player</th><th>Rounds</th><th>Avg</th><th>Spread</th><th>Last 3</th><th>Trend</th></tr></thead>
+      <tbody>${rows.map(p => `<tr><td class="l">${esc(p.name)}</td><td>${p.played}</td><td class="acc">${fix(p.avgPts)}</td>
+        <td>${p.consistency === null ? "&ndash;" : fix(p.consistency)}</td><td>${p.form === null ? "&ndash;" : fix(p.form)}</td>
+        <td>${p.trend === null ? "&ndash;" : fmtSigned(p.trend)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function fieldStats(St, nines = "", gid = "", meId = null) {
   const F = St.field;
   const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span><span class="muted">${esc(firstName(r.player))} · ${value} · ${esc(shortDate(r.date))}</span></a>` : "";
   const dist = [...St.players].sort((a, b) => pct(parOrBetter(b), b.holes) - pct(parOrBetter(a), a.holes) || a.name.localeCompare(b.name))
@@ -85,7 +201,9 @@ function fieldStats(St, nines = "") {
   return `
     <div class="card statcard"><div class="dwrap">${donut(F.counts, `${pct(parOrBetter(F), F.holes)}%`, "par or better")}${donutKey(F.counts, F.rounds, "round")}</div>
       <p class="muted small" style="margin:10px 0 0">Every hole this league has played: ${plural(F.holes, "hole")} over ${plural(F.rounds, "round")} on ${plural(F.cards, "card")}. A round is worth ${fix(F.avgPts)} points, and a hole is played in ${fmtSigned(F.vspar, 2)} against par.</p></div>
-    ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(F.statline, `Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.`, { per18: true })}` : ""}
+    ${seasonChart(St, gid, meId)}
+    ${formTable(St)}
+    ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(F.statline, `Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.`, { per18: true })}${extrasTable(St)}` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip("everyone in this league together"))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(F)}${everyHoleRow(F)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
@@ -146,7 +264,7 @@ function playerStats(St, p, nines = "", gid = "") {
       ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
     </div>`}
     ${sgLeague(gid, p.id)}
-    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(p.statline, `${esc(first)} over ${plural(p.statline.holes, "hole")} in this league.`, { per18: true })}` : ""}
+    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${extrasCompare(p, first)}` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
@@ -328,6 +446,8 @@ export function leagueStatsBody(g, Ms, members) {
     <button class="pchip ${who ? "" : "on"}" data-act="statswho" data-id="">The field<small>${plural(St.field.cards, "card")}</small></button>
     ${St.players.map(p => `<button class="pchip ${p.id === who ? "on" : ""}" data-act="statswho" data-id="${esc(p.id)}">${esc(p.name)}<small>${plural(p.played, "round")}</small></button>`).join("")}</div>`;
   const p = who ? St.players.find(x => x.id === who) : null;
-  const body = p ? playerStats(St, p, ninesPlayerBlock(rounds, p.id, firstName(p.name)), g.id) : fieldStats(St, ninesFieldBlock(g.id, rounds, S.me()));
+  const mine = S.me();
+  const body = p ? playerStats(St, p, ninesPlayerBlock(rounds, p.id, firstName(p.name)), g.id)
+    : fieldStats(St, ninesFieldBlock(g.id, rounds, mine), g.id, mine && mine.id);
   return `${chips}<div class="statsbody">${body}<a class="btn" href="#statsposter/${g.id}" style="margin-top:16px">Make stats images ›</a></div>`;
 }
