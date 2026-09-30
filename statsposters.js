@@ -1,6 +1,6 @@
 // Posters for a league's statistics: the field, the nines, one player. App-only, so there is no Python
 // twin; the drawing helpers and the four-outcome poster palette are the same ones the round posters use.
-import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, section, outcomeBar, legend } from "./draw.js";
+import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, section, outcomeBar, legend, caps, rowBand } from "./draw.js";
 import { fmtToPar, fmtSigned, fix } from "./model.js";
 
 /** The screen's six buckets folded onto the four the poster palette names. */
@@ -39,7 +39,7 @@ function tiles(fig, topIn, hIn, items) {
     const x = M + i * w;
     fig.rbox(x + 0.04, topIn, w - 0.08, hIn, T.PANEL, 0.08);
     fig.text(x + w / 2, topIn + hIn * 0.48, String(it[0]), { size: 30, family: "display", color: it[2] || T.INK, ha: "center", va: "center" });
-    fig.text(x + w / 2, topIn + hIn - 0.14, it[1].toUpperCase(), { size: 9, family: "display", color: T.INK_3, ha: "center", va: "bottom" });
+    fig.text(x + w / 2, topIn + hIn - 0.14, caps(T, it[1]), { size: 9, family: "display", color: T.INK_3, ha: "center", va: "bottom" });
   });
   return topIn + hIn;
 }
@@ -83,7 +83,7 @@ function barRows(fig, topIn, rows, { title, fmtv = v => fix(v, 2), noteHead = ""
   ax.line(zero, 0.15, zero, -rows.length + 0.1, T.LINE, 0.8);
   rows.forEach(([label, value, note, good], i) => {
     const y = -i - 0.5;
-    if (i % 2 === 1) ax.rbox(0, y - 0.42, W, 0.84, T.PANEL, 0.06);
+    rowBand(ax, 0, y - 0.42, W, 0.84, i, 0.06);
     ax.text(0.05, y, label, { size: 12, family: "display", color: T.INK, va: "center" });
     const x = at(value);
     const colr = good === undefined ? T.BAR : (good ? T.ACCENT : T.BAR);
@@ -110,7 +110,7 @@ function pairRows(fig, topIn, rows, { title, noteHead = "", labelW = 2.5 } = {})
   const numW = 0.95, trackX0 = labelW + numW, trackX1 = W - numW;
   rows.forEach(([label, mine, theirs, fmtv, lower], i) => {
     const y = -i - 0.5;
-    if (i % 2 === 1) ax.rbox(0, y - 0.42, W, 0.84, T.PANEL, 0.06);
+    rowBand(ax, 0, y - 0.42, W, 0.84, i, 0.06);
     ax.text(0.05, y, label, { size: 12, family: "display", color: T.INK, va: "center" });
     // both readings shifted clear of zero first, so a figure under par still fills the right way
     const sh = 1 - Math.min(mine, theirs, 0), a = mine + sh, b = theirs + sh;
@@ -138,7 +138,7 @@ function playerBars(fig, topIn, players, label, note) {
   const size = ax.fitSize(players.map(p => p.name), nameW - 0.15, 14);
   players.forEach((p, i) => {
     const y = -i - 0.5;
-    if (i % 2 === 1) ax.rbox(0, y - 0.46, W, 0.92, T.PANEL, 0.06);
+    rowBand(ax, 0, y - 0.46, W, 0.92, i, 0.06);
     ax.text(0.05, y, p.name, { size, family: "display", color: T.INK, va: "center" });
     const c4 = four(p.counts);
     outcomeBar(ax, nameW, y - 0.15, W - 1.9 - nameW, 0.3, c4, sumc(c4), 0.03, true, 9);
@@ -261,11 +261,11 @@ export function statsNinesPoster(N, group, T) {
   const nameW = 3.0, colW = (W - nameW) / N.length;
   const size = ax.fitSize(table.map(r => r.name), nameW - 0.15, 14);
   ax.text(0.05, 0.45, "PLAYER", { size: 9.5, family: "display", color: T.INK_3, va: "center" });
-  N.forEach((l, i) => ax.text(nameW + colW * (i + 0.5), 0.45, l.name.toUpperCase(), { size: 9.5, family: "display", color: T.INK_3, ha: "center", va: "center" }));
+  N.forEach((l, i) => ax.text(nameW + colW * (i + 0.5), 0.45, caps(T, l.name), { size: 9.5, family: "display", color: T.INK_3, ha: "center", va: "center" }));
   ax.line(0, 0.1, W, 0.1, T.LINE, 0.8);
   table.forEach((r, i) => {
     const y = -i - 0.5;
-    if (i % 2 === 1) ax.rbox(0, y - 0.46, W, 0.92, T.PANEL, 0.06);
+    rowBand(ax, 0, y - 0.46, W, 0.92, i, 0.06);
     ax.text(0.05, y, r.name, { size, family: "display", color: T.INK, va: "center" });
     const best = Math.max(...r.cells.filter(Boolean).map(c => c.avgPts), -1);
     const many = r.cells.filter(Boolean).length > 1;

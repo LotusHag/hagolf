@@ -1,5 +1,5 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
-import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on } from "./draw.js";
+import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule } from "./draw.js";
 import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, NO_SCORE } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -121,7 +121,7 @@ export function renderCard(M, p, T, tier = "full") {
   const Mx = MARGIN * W_IN;
 
   // header
-  fig.text(Mx, 0.30, M.name.toUpperCase(), { size: 12, family: "display", color: T.ACCENT, va: "top" });
+  kicker(fig, Mx, 0.30, M.name);
   fig.fitText(Mx, 0.52, p.name, (0.50 - MARGIN - 0.02) * W_IN, 34, 10, { family: "display", color: T.INK, va: "top" });
   const bits = [`Handicap index ${fmtIndex(p.hi)}`, `course handicap ${fmtHcp(p.ch)}`];
   if (M.allowance !== 100) bits.push(`playing handicap ${fmtHcp(p.ph)} at ${M.allowance}%`);
@@ -130,7 +130,7 @@ export function renderCard(M, p, T, tier = "full") {
   const metaW = (0.50 - MARGIN - 0.02) * W_IN;
   const metaLines = fig.wrap(bits.join("  ·  "), metaW, 10);
   fig.text(Mx, 1.12, metaLines.slice(0, 2).join("\n"), { size: metaLines.length > 1 ? 8.5 : 10, color: T.INK_3, va: "top", lineSpacing: 1.35 });
-  fig.line(Mx, 1.45, W_IN - Mx, 1.45, T.ACCENT, 1.6);
+  headerRule(fig, 1.45);
 
   // stat tiles
   const vsPlayed = p.vsrest.filter(v => v !== null);
@@ -149,7 +149,7 @@ export function renderCard(M, p, T, tier = "full") {
   const axt = fig.axes(rect(0.28, 1.0, basic ? 0.62 : 0.50), [0, tiles.length], [0, 1]);
   tiles.forEach(([lab, big, small], k) => {
     axt.rbox(k + 0.05, 0.0, 0.9, 1.0, T.PANEL, 0.06);
-    axt.text(k + 0.5, 0.8, lab.toUpperCase(), { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center" });
+    axt.text(k + 0.5, 0.8, caps(T, lab), { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center" });
     axt.text(k + 0.5, 0.47, big, { size: big.length < 6 ? 24 : 17, family: "display", color: big === "NR" ? T.INK_3 : T.INK, ha: "center", va: "center" });
     axt.text(k + 0.5, 0.15, small, { size: 8, color: T.INK_3, ha: "center", va: "center" });
   });
@@ -168,7 +168,7 @@ export function renderCard(M, p, T, tier = "full") {
   const ROWS = { hole: [0.55, 1.0], strokes: [1.55, 0.5], score: [2.05, 1.35], net: [3.4, 0.6], points: [4.0, 0.6] };
   const cell = k => ROWS[k][0] + ROWS[k][1] / 2;
   for (const [k, label] of [["strokes", "Strokes"], ["score", "Score"], ["net", "Net"], ["points", "Points"]]) {
-    axs.text(0, cell(k), label.toUpperCase(), { size: 8.5, family: "display", color: T.INK_3, va: "center" });
+    axs.text(0, cell(k), caps(T, label), { size: 8.5, family: "display", color: T.INK_3, va: "center" });
   }
   const [y0, h0] = ROWS.score;
   axs.rbox(LX - 0.05, y0, ncol + 0.1, h0, T.PANEL, 0.06);

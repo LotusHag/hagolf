@@ -3,7 +3,7 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, h2tip, roundWhere, safeCompute, saveFiles } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, h2tip, roundClub, roundLoop, safeCompute, saveFiles } from "../ui.js";
 import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained } from "../model.js";
 import { statTiles, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
 import { playerRounds, ninesPlayed } from "./stats.js";
@@ -86,7 +86,8 @@ export async function person(id) {
     const M = safeCompute(compute, r);
     const them = M ? M.players.find(p => p.id === id || contacts.some(c => c.id === p.id)) : null;
     const us = M && mine ? M.players.find(p => p.id === mine.id) : null;
-    return `<a href="#review/${r.id}"><div><div class="name">${esc(roundWhere(r))}</div><div class="muted small">${esc(fmtDate(r.date))}${them ? ` · ${esc(firstName(name))} ${them.pts} pts` : ""}${us ? ` · you ${us.pts} pts` : ""}</div></div><span class="chev">›</span></a>`;
+    const loop = roundLoop(r);
+    return `<a href="#review/${r.id}"><div><div class="name">${esc(roundClub(r))}</div><div class="muted small">${loop ? `${esc(loop)} · ` : ""}${esc(fmtDate(r.date))}${them ? ` · ${esc(firstName(name))} ${them.pts} pts` : ""}${us ? ` · you ${us.pts} pts` : ""}</div></div><span class="chev">›</span></a>`;
   };
   page(name, `
     <div class="person">${avatar(name, "big")}<div class="who"><div class="name">${esc(name)}</div><div class="handle">${f ? `@${esc(f.handle || "")}${f.hi !== null && f.hi !== undefined ? ` · index ${fmtIndex(Number(f.hi))}` : ""}` : incoming ? "wants to be your friend" : outgoing ? "request sent" : "not a friend yet"}</div></div></div>
@@ -120,7 +121,7 @@ export async function person(id) {
       if (act === "sharecard") {
         const rs = S.rounds().filter(r => r.status === "done" && S.iPlayed(r)).slice(0, 30);
         if (!rs.length) return toast("No finished card of yours to share yet");
-        const v = await sheet({ title: `Share a card with ${firstName(name)}`, body: `<div class="list">${rs.map(r => `<button data-act="${esc(r.id)}" data-sheet-act><div><div class="name">${esc(roundWhere(r))}</div><div class="muted small">${esc(fmtDate(r.date))}</div></div><span class="chev">›</span></button>`).join("")}</div>`, actions: [{ label: "Cancel", value: "no" }] });
+        const v = await sheet({ title: `Share a card with ${firstName(name)}`, body: `<div class="list">${rs.map(r => `<button data-act="${esc(r.id)}" data-sheet-act><div><div class="name">${esc(roundClub(r))}</div><div class="muted small">${roundLoop(r) ? `${esc(roundLoop(r))} · ` : ""}${esc(fmtDate(r.date))}</div></div><span class="chev">›</span></button>`).join("")}</div>`, actions: [{ label: "Cancel", value: "no" }] });
         if (v && v !== "no") { await F.shareRound(v, [id]); toast("Shared"); }
       }
     } catch (e) { toast(e.message, 5000); }
@@ -147,7 +148,8 @@ export function player(id) {
   const list = rs.map(({ r, M, x }) => {
     const H = halves(M, x);
     const split = H && H.length > 1 ? `<div class="nines">${H.map(h => `<span><b>${esc(nineName(h.slug))}</b> ${h.gross === null ? "–" : `${h.gross} ${fmtToPar(h.topar)}`} · ${h.pts} pts</span>`).join("")}</div>` : "";
-    return `<div class="rround card"><a href="#review/${r.id}" style="display:block"><div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(roundWhere(r))}</div>
+    return `<div class="rround card"><a href="#review/${r.id}" style="display:block"><div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(roundClub(r))}</div>
+        ${roundLoop(r) ? `<div class="loop">${esc(roundLoop(r))}</div>` : ""}
         <div class="res"><span class="big num">${x.pts}<small>pts</small></span><span class="muted">${ordinal(x.splace)} of ${M.field}${x.gross !== null ? ` · gross ${x.gross} ${fmtToPar(x.topar)}` : " · no return"}</span></div>${split}
         ${x.statline.any ? `<div class="muted small">${esc(statLine(x.statline))}</div>` : ""}</a>
       <button class="btn small" data-act="my-card" data-rid="${r.id}" data-pid="${p.id}">Save card</button></div>`;

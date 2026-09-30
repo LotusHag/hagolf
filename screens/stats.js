@@ -55,7 +55,7 @@ function formChart(rs, who) {
   const top = Math.max(...rs.map(r => Math.max(val(r), fld(r) || 0)), 0.01);
   const cols = rs.map(r => {
     const h = (val(r) / top) * 88, f = fld(r) === null ? null : (fld(r) / top) * 88;
-    const title = `${fmtDate(r.date)} · ${whereName(r.where)} · ${r.pts} points over ${plural(r.n, "hole")}${r.fieldPts === null ? "" : `, the rest of the field ${fix(r.fieldPts)}`}`;
+    const title = `${fmtDate(r.date)} · ${r.where}${r.loop ? ` · ${whereName(r.loop)}` : ""} · ${r.pts} points over ${plural(r.n, "hole")}${r.fieldPts === null ? "" : `, the rest of the field ${fix(r.fieldPts)}`}`;
     return `<a class="fcol" href="#review/${r.id}" title="${esc(title)}"><div class="fplot">${rs.length <= 10 ? `<b class="fval num" style="bottom:calc(${h}% + 2px)">${mixed ? fix(val(r), 2) : r.pts}</b>` : ""}
         ${f === null ? "" : `<i class="fghost" style="height:${f}%"></i>`}<i class="fbar" style="height:${h}%"></i></div><small>${esc(shortDate(r.date))}</small></a>`;
   }).join("");

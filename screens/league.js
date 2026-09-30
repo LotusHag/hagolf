@@ -5,7 +5,7 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, courseBy, roundStatus, resumeHash, roundWhere, subtabs, tip, h2tip, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, app, ICONS, iconBtn } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, subtabs, tip, h2tip, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, app, ICONS, iconBtn } from "../ui.js";
 import { headToHead, leagueStats, fmtToPar, fmtSigned, fmtIndex, fix } from "../model.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable } from "./formats.js";
 import { leagueStatsBody, tapeRow, distBar, inlineKey, parOrBetter, pct, basisPicker } from "./stats.js";
@@ -177,13 +177,14 @@ export function league(gid) {
       const q = [fmtDate(r.date), where, r.name, ...r.entries.map(e => e.name)].join(" ").toLowerCase();
       const canToggle = S.iPlayed(r) || runs;
       return `<div class="lround card" data-q="${esc(q)}"><a href="#review/${r.id}">
-          <div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(where)}</div>
+          <div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(roundClub(r))}</div>
+          ${roundLoop(r) ? `<div class="loop">${esc(roundLoop(r))}</div>` : ""}
           ${top ? `<div class="res"><span class="pill done">${esc(firstName(top.name))} ${top.pts} pts</span>${mine ? `<span class="muted small">you ${mine.pts} pts, ${ordinal(mine.splace)} of ${M.field}</span>` : `<span class="muted small">${plural(M.field, "player")}</span>`}</div>`
             : `<div class="who">${r.entries.map(e => `<span class="${me && e.playerId === me.id ? "me" : ""}">${esc(firstName(e.name))}</span>`).join("")}</div>`}</a>
         ${canToggle ? `<button class="btn small ${on ? "" : "primary"}" data-act="toggle-round" data-rid="${r.id}" data-on="${on ? 0 : 1}">${on ? "Remove from league" : "Add to league"}</button>` : ""}</div>`;
     };
     body = `<button class="btn primary big" data-act="new-in-league">+ Start a round in this league</button>
-      ${open.length ? `<div class="list" style="margin-top:12px">${open.map(r => `<a href="${resumeHash(r)}"><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(roundStatus(r))}</div></div><span class="chev">›</span></a>`).join("")}</div>` : ""}
+      ${open.length ? `<div class="list" style="margin-top:12px">${open.map(r => `<a href="${resumeHash(r)}"><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(roundWhere(r))} · ${esc(roundStatus(r))}</div></div><span class="chev">›</span></a>`).join("")}</div>` : ""}
       <h2>Counting in this league</h2>
       ${inL.length ? `<p class="muted small" style="margin:-4px 4px 10px">${plural(inL.length, "round")}${g.bestN ? `, of which each player's best ${g.bestN} count` : ""}.</p>${inL.map(r => cardOf(r, true)).join("")}` : `<p class="muted small" style="margin:-4px 4px 10px">No rounds yet. Add a finished one below, or start a new one.</p>`}
       <h2>Add a round you played</h2>

@@ -1,5 +1,5 @@
 // Port of golf/posters.py: gross leaderboard, Stableford leaderboard, both boards on one sheet, how the holes played; plus season standings.
-import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, section, posChip, outcomeBar, legend, on } from "./draw.js";
+import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, section, posChip, outcomeBar, legend, on, caps, rowBand } from "./draw.js";
 import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE } from "./model.js";
 
 const ROW_IN = 0.5;
@@ -31,13 +31,13 @@ function drawTable(ax, cols, rows, W) {
       const reserve = rows.some(r => r.penalty_total) ? 0.8 : 0;
       c.size = ax.fitSize(rows.map(r => r.name), c.x1 - c.x0 - reserve, 15);
     }
-    ax.text(cx(c), 0.55, c.title.toUpperCase(), { size: 9, family: "display", color: T.INK_3, ha: c.ha, va: "center" });
+    ax.text(cx(c), 0.55, caps(T, c.title), { size: 9, family: "display", color: T.INK_3, ha: c.ha, va: "center" });
     if (c.legend) legend(ax, c.x0, 0.95, c.legend, 7, 0.16, 0.14, 0.1);
   }
   ax.line(0, 0.1, W, 0.1, T.LINE, 0.8);
   rows.forEach((row, i) => {
     const y = -i - 0.5;
-    if (i % 2 === 1) ax.rbox(0, y - 0.46, W, 0.92, T.PANEL, 0.08);
+    rowBand(ax, 0, y - 0.46, W, 0.92, i);
     for (const c of cols) c.draw(ax, c, y, row);
   });
 }

@@ -933,7 +933,7 @@ export function headToHead(results, a, b, basis = "net") {
       const sa = roundScore(pa, basis), sb = roundScore(pb, basis);
       const winner = va === null && vb === null ? "tie" : va === null ? "b" : vb === null ? "a"
         : va < vb ? "a" : vb < va ? "b" : "tie";
-      rounds.push({ id: pa.roundId ?? M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name,
+      rounds.push({ id: pa.roundId ?? M.id, name: M.name, date: M.date, where: M.course.name, loop: M.course.loop || "",
         ptsA: pa.pts, ptsB: pb.pts, grossA: pa.gross, grossB: pb.gross, netA: pa.net, netB: pb.net,
         scoreA: sa, scoreB: sb,
         margin: va === null || vb === null ? null : Math.abs(va - vb),
@@ -1008,7 +1008,7 @@ export function statHoles(results, memberIds) {
   const out = [];
   for (const M of leagueCards(results)) {
     const rank = siRanks(M.si);
-    const where = M.course.loop || M.course.name;
+    const where = M.course.name;
     for (const p of M.players) {
       if (p.id === null || !members.has(p.id)) continue;
       for (let h = 0; h < M.n; h++) {
@@ -1059,7 +1059,7 @@ function roundLine(M, p, others, place, of) {
   const half = Math.floor(n / 2);  // points a hole in each half: a nine and an eighteen only average together per hole
   const otherTopar = others.map(q => q.topar).filter(v => v !== null);
   return {
-    id: p.roundId ?? M.id, card: M.key ?? M.id, name: M.name, date: M.date, where: M.course.loop || M.course.name, n,
+    id: p.roundId ?? M.id, card: M.key ?? M.id, name: M.name, date: M.date, where: M.course.name, loop: M.course.loop || "", n,
     pid: p.id, player: p.name, pts: p.pts, gross: p.gross, topar: p.topar, net: p.net, ph: p.ph,
     place, of, splace: p.splace, field: M.field, counts, holes: p.holes_played,
     penalties: p.penalty_total, counted10: p.filled.filter(Boolean).length,

@@ -45,5 +45,6 @@ export function route() {
   ui.expanded = name === "review" ? ui.expanded : null;
   if (name !== "review") ui.reviewOrder = {};
   if (name !== "people" && name !== "play") { ui.search = ""; ui.found = null; }
+  if (name !== "new") ui.courseQ = "";   // the country chip is a preference and stays; the search box is not
   (screens[name] || home)(...args.map(decodeURIComponent));
 }

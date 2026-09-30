@@ -5,7 +5,7 @@ import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
 import * as Y from "../sync.js";
-import { page, bind, esc, go, toast, plural, firstName, fmtDate, ago, courseBy, ICONS, emptyState } from "../ui.js";
+import { page, bind, esc, go, toast, plural, firstName, fmtDate, ago, courseBy, courseTitle, ICONS, emptyState } from "../ui.js";
 
 const ICON_OF = { round_added: "card", round_shared: "card", card_public: "link", league_invite: "mail", league_joined: "users", league_round: "trophy",
   claim_pending: "shield", claim_made: "shield", claim_confirmed: "check", friend_request: "friend", friend_accepted: "people" };
@@ -21,7 +21,8 @@ function hrefOf(n) {
 /** The sentence a line says. */
 function textOf(n) {
   const who = n.actor_name ? esc(firstName(n.actor_name)) : "Someone";
-  const where = n.course ? esc((courseBy(n.course) || {}).loop || (courseBy(n.course) || {}).name || n.name) : esc(n.name || "");
+  const c = n.course ? courseBy(n.course) : null;
+  const where = c ? esc(courseTitle(c)) : esc(n.name || "");
   switch (n.kind) {
     case "round_added": return `<b>${who}</b> added a round you played: ${where}${n.date ? `, ${esc(fmtDate(n.date))}` : ""}`;
     case "round_shared": return `<b>${who}</b> shared a card with you: ${where}${n.date ? `, ${esc(fmtDate(n.date))}` : ""}`;

@@ -6,7 +6,7 @@ import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, alertSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, FAMILIES, themesIn } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, alertSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, roundWhere, FAMILIES, themesIn } from "../ui.js";
 import { fmtIndex, STAT_KINDS, STAT_KEYS } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
@@ -181,7 +181,7 @@ function data() {
       <div class="two"><button class="btn" data-act="export-me">Download my data</button><button class="btn danger" data-act="erase-me">Delete my account</button></div></div>` : ""}
     <h2>For the desktop kit</h2>
     <p class="muted small" style="margin:-4px 4px 8px">A round as a tournament.yaml file for the desktop scripts.</p>
-    <div class="list">${done.slice(0, 20).map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(fmtDate(r.date))}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
+    <div class="list">${done.slice(0, 20).map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(roundWhere(r))} · ${esc(fmtDate(r.date))}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
     ${S.state.quarantine.length ? `<h2>Refused by the server</h2><div class="card"><div class="muted small">${S.state.quarantine.slice(-5).map(q => `${esc(q.table)} · ${esc(q.reason)}`).join("<br>")}</div><button class="btn small danger" data-act="clear-q" style="margin-top:8px">Clear this list</button></div>` : ""}`);
   bind(async ev => {
     const b = ev.target.closest("[data-act]");

@@ -50,7 +50,7 @@ export const hiOk = hi => hi >= -10 && hi <= 54;
 
 /** Screen state that survives a redraw but not a reload. Keyed per screen where a screen has several instances. */
 export const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, h2hBasis: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, roundsFilter: "all", plSort: {},
-  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {}, boardFmt: null, authMethods: ["google"], search: "", found: null, pending: null };
+  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
 
 // ---------------------------------------------------------------- icons
 const I = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}${extra}</svg>`;
@@ -97,7 +97,7 @@ let toastTimer = null;
 /**
  * One screen. A top-level screen (tabs given) carries the brand, the bell and the gear; a sub-screen carries a back arrow
  * and a title. `actions` are extra header buttons, `bar` a fixed action bar instead of the tabs, `bare` the
- * gate (no chrome at all).
+ * gate (no chrome at all). A screen with no `back` and a `tabs` key is top level and gets the centred masthead.
  */
 export function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false, actions = "", bell = true } = {}) {
   const y = keepScroll ? window.scrollY : 0;
@@ -105,10 +105,16 @@ export function page(title, body, { back = "#home", bar = "", sub = "", tabs = n
   const nav = tabs ? `<nav class="tabs">${TABS.filter(([k]) => k !== "shop" || Y.enabled()).map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "people" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
   const bellBtn = bell && A.signedIn() ? `<a class="iconbtn ${location.hash === "#updates" ? "on" : ""}" href="#updates" aria-label="Updates">${ICONS.bell}${badge ? `<span class="n">${badge}</span>` : N.unread() ? `<span class="n quiet">${N.unread()}</span>` : ""}</a>` : "";
   const gearBtn = tabs ? `<a class="iconbtn ${tabs === "me" ? "on" : ""}" href="#me" aria-label="Me and settings">${ICONS.settings}</a>` : "";
-  app.innerHTML = bare ? `<main class="bare">${body}</main>` : `
-    <header class="top">${back ? `<a class="back" href="${back}" aria-label="Back">‹</a>` : "<span class='back none'></span>"}
+  // a top-level screen (a tab, nothing to go back to) carries the masthead: the title centred between the
+  // bell and the gear. Everything reached from one keeps the back arrow and a title on the left.
+  const head = !back && tabs
+    ? `<header class="top mast"><div class="acts">${bellBtn}</div>
+      <div class="ttl">${brand ? `<div class="wordmark">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
+      <div class="acts end">${actions}${gearBtn}</div></header>`
+    : `<header class="top">${back ? `<a class="back" href="${back}" aria-label="Back">‹</a>` : "<span class='back none'></span>"}
       <div class="ttl">${brand ? `<div class="brand">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
-      <div class="acts">${actions}${bellBtn}${gearBtn}</div></header>
+      <div class="acts">${actions}${bellBtn}${gearBtn}</div></header>`;
+  app.innerHTML = bare ? `<main class="bare">${body}</main>` : `${head}
     <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
     ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
   window.scrollTo(0, y);
@@ -386,7 +392,10 @@ export function resumeHash(r) {
   if (r.status === "scoring") return `#score/${r.id}/${S.holeOf(r)}`;
   return `#review/${r.id}`;
 }
-export const roundWhere = r => { const c = courseBy(r.course); return c ? (c.loop || c.name) : r.name; };
+// A round is read as club first, loop second: "18 holes" or "Oost" alone says nothing about where you were.
+export const roundClub = r => { const c = courseBy(r.course); return c ? c.name : r.name; };
+export const roundLoop = r => { const c = courseBy(r.course); return c && c.loop ? c.loop : ""; };
+export const roundWhere = r => { const c = courseBy(r.course); return c ? courseTitle(c) : r.name; };
 export function noCourse(r, back = "#play") {
   page(r.name || "Round", `<div class="banner warn">This round's course (${esc(r.course)}) is not on this phone yet. It arrives with the next sync.</div>`, { back });
 }

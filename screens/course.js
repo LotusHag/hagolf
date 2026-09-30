@@ -2,7 +2,7 @@
 // saved; a card is photographed one at a time and laid end to end.
 import * as S from "../store.js";
 import * as Y from "../sync.js";
-import { page, bind, esc, go, toast, plural, sum, courseTitle, tip, ICONS } from "../ui.js";
+import { page, bind, esc, go, toast, plural, sum, courseTitle, tip, ICONS, ui } from "../ui.js";
 import { coursesFromClub, validateCourse, slugify, fmtIndex } from "../model.js";
 import { parseHI, hiOk } from "../ui.js";
 import { here, askWhereIAm } from "./play.js";
@@ -254,6 +254,7 @@ function ncSave() {
   made.forEach(c => S.addCourse(c.slug, c));
   toast(`${plural(made.length, "course")} saved on every phone`);
   nc.draft = null; nc.found = null; nc.step = "where"; nc.q = "";
+  ui.courseScope = "all";   // a club just added must be visible, whichever country the picker was filtered to
   go("#new");
 }
 
