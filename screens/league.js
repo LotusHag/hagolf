@@ -5,7 +5,7 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, subtabs, tip, h2tip, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, app, ICONS, iconBtn } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, subtabs, tip, h2tip, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, ICONS, iconBtn } from "../ui.js";
 import { headToHead, leagueStats, fmtToPar, fmtSigned, fmtIndex, fix } from "../model.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable } from "./formats.js";
 import { leagueStatsBody, tapeRow, distBar, inlineKey, parOrBetter, pct, basisPicker } from "./stats.js";
@@ -239,12 +239,14 @@ export function league(gid) {
 function settingsTab(g, formats) {
   const runs = runsIt(g);
   const member = S.myMembership(g.id);
+  // A way of ranking this account does not hold is not on the list; what it is missing is one button under it.
+  // A format the league already runs on stays, bought or not: the gate is on choosing, not on what was chosen.
+  const mine = S.FORMATS.filter(f => E.formatAllowed(f) || formats.includes(f));
+  const missing = [...new Set(S.FORMATS.filter(f => !mine.includes(f)).map(f => E.FORMAT_SKU[f]))];
   return `${runs ? `<form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
-      <div class="fmtlist">${S.FORMATS.map(f => {
-        const lock = !E.formatAllowed(f) && !formats.includes(f);
-        return `<label class="${lock ? "muted" : ""}"><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""} ${lock ? "disabled" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${lock ? `<a href="#shop">In the shop</a> · ` : ""}${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`;
-      }).join("")}</div>
+      <div class="fmtlist">${mine.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
+      ${missing.length ? shopBtn("More ways of ranking in the shop", missing) : ""}
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
       <label>Theme <span class="muted">(what this league wears on screen and in its images)</span></label>
       <div class="themes" style="margin-top:8px">${themeRadios("ltheme", leagueTheme(g) ? g.theme : "", { theme: appTheme(), label: "App theme" })}</div>

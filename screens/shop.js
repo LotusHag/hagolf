@@ -26,6 +26,35 @@ const GROUPS = [
 const TABS_ = [["all", "All"], ["mark", "The mark"], ["images", "Images"], ["ranking", "Ranking"], ["themes", "Themes"]];
 let tab = "all";   // the tab last looked at stays chosen for the session
 
+// The catalogue is asked for once a session and kept, so a picker that opens the shop over itself opens at
+// once rather than after a round trip. The Shop tab itself always asks again: it is the screen a purchase
+// comes back to.
+let held = null;
+const catalogue = (fresh = false) => (held = fresh || !held ? A.api("/shop/catalogue").catch(e => { held = null; throw e; }) : held);
+
+/**
+ * The shop over whatever asked for it. A picker that has hidden what the account does not hold offers this
+ * instead of a link to the Shop tab, so nothing half-filled in is lost on the way there and back. `skus` is
+ * what to open on: one goes straight to that item's own sheet, several to a list of them.
+ */
+export async function shopOver(skus) {
+  if (!A.account()) return toast("Sign in first: what you buy follows your account", 5000);
+  let cat;
+  try { cat = await catalogue(); } catch (e) { return toast(e.message, 5000); }
+  const D = previewData();
+  const item = sku => cat.skus.find(c => c.sku === sku);
+  const missing = [].concat(skus).filter(s => s === "themes" ? !ownsAll(cat) : !(item(s) || {}).owned);
+  const open = sku => sku === "themes" ? bundleSheet(cat, D) : itemSheet(item(sku), cat, D);
+  if (!missing.length) return toast("You have all of that already");
+  if (missing.length === 1) return open(missing[0]);
+  const row = sku => sku === "themes"
+    ? `<button class="collrow" data-act="${sku}" data-sheet-act>${familyStrip(DATA.themes)}<span><b>Every theme</b><small class="muted">${DATA.themes.length} looks</small></span><i>›</i></button>`
+    : `<button class="collrow" data-act="${sku}" data-sheet-act><span><b>${esc(item(sku).name)}</b><small class="muted">${esc(item(sku).blurb)}</small></span><i>›</i></button>`;
+  const v = await sheet({ title: "In the shop", lead: "Shown on the showcase round first. Nothing here is needed to play.",
+    body: `<div class="collrows">${missing.map(row).join("")}</div>` });
+  if (v) return open(v);
+}
+
 export async function shop(state) {
   if (TABS_.some(([k]) => k === state)) tab = state;
   if (state === "thanks") {
@@ -35,8 +64,9 @@ export async function shop(state) {
   }
   if (!A.account()) return page("Shop", `<div class="banner"><a href="#welcome">Sign in</a> first: what you buy follows your account to every phone.</div>`, { back: "", tabs: "shop" });
   page("Shop", `<p class="muted center" style="margin-top:30px">Loading…</p>`, { back: "", tabs: "shop" });
+  await A.recheck(0);   // opened *because* something may have just become theirs: read the account, not the cache
   let cat;
-  try { cat = await A.api("/shop/catalogue"); } catch (e) { return page("Shop", `<div class="banner warn">${esc(e.message)}</div>`, { back: "", tabs: "shop" }); }
+  try { cat = await catalogue(true); } catch (e) { return page("Shop", `<div class="banner warn">${esc(e.message)}</div>`, { back: "", tabs: "shop" }); }
   const D = previewData();
   const all = cat.skus.some(c => (c.sku === "pass" || c.sku === "themes") && c.owned);
   const item = sku => cat.skus.find(c => c.sku === sku);

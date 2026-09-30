@@ -162,7 +162,6 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .mast .wordmark { margin-left: 5px; font-family: "Oswald", sans-serif; font-weight: 500; font-size: 17px; letter-spacing: 5px; text-transform: uppercase; color: var(--ink); }
 .mast h1 { font-size: 17px; letter-spacing: 3px; text-transform: uppercase; }
 
-.cardline { margin: 13px 0 0; text-align: center; }
 .caps { font-size: 10px; font-weight: 700; letter-spacing: 2.2px; text-transform: uppercase; color: var(--ink3); }
 
 .inplay { text-align: center; padding: 22px 0 0; }
@@ -171,6 +170,12 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .inplay .k.quiet { color: var(--ink3); }
 .inplay h1 { margin: 9px 0 0; font-family: "Oswald", sans-serif; font-weight: 500; font-size: 31px; line-height: 1.05; letter-spacing: .4px; text-transform: uppercase; }
 .inplay .where { margin: 7px 0 0; font-size: 13px; color: var(--ink3); }
+/* the figures under the player's own hero: the card chrome stripped back to the ruled strip the board uses */
+.herostats { background: none; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; margin: 20px 0 0; padding: 13px 2px; }
+.herostats .stats { margin: 0; gap: 10px; }
+.herostats .stats div { flex: 1; align-items: center; }
+.herostats .stats b { font-family: "Oswald", sans-serif; font-weight: 500; font-size: 24px; line-height: 1; }
+.herostats .stats small { margin-top: 5px; }
 
 .board { margin-top: 22px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .board > div { display: flex; align-items: baseline; gap: 14px; padding: 12px 2px; border-top: 1px solid var(--line); }
@@ -426,6 +431,8 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .tfam > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
 .tfam[open] > summary::after { transform: rotate(-90deg); }
 .tfam > .tgrid { padding: 2px 0 12px; }
+.shopmore { margin-top: 4px; }
+.fmtlist + .shopmore { margin-top: 10px; }
 .fstrip { display: flex; width: 56px; height: 28px; border-radius: 2px; overflow: hidden; flex: none; }
 .fstrip i { flex: 1; display: block; background: var(--tbg); position: relative; }
 .fstrip i::after { content: ""; position: absolute; left: 25%; right: 25%; top: 62%; height: 18%; background: var(--tacc); }

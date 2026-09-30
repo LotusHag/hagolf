@@ -1,7 +1,7 @@
 // The images: a round's boards and cards, a league's standings, and its stats, in any look the account holds.
 import * as S from "../store.js";
 import * as E from "../entitlements.js";
-import { page, bind, esc, go, toast, plural, courseBy, noCourse, themeChips, bindChips, themeNamed, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, app } from "../ui.js";
+import { page, bind, esc, go, toast, plural, courseBy, noCourse, themeChips, bindChips, themeNamed, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, shopBtn, app } from "../ui.js";
 import { compute, leagueStats } from "../model.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster } from "../posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster, statsExtrasPoster } from "../statsposters.js";
@@ -20,14 +20,14 @@ export function graphics(rid) {
   const leagues = S.leaguesOfRound(rid);
   const themeLeague = leagues.find(leagueTheme);
   const themes = [themeForRound(rid).name];
+  // An image the account cannot make is not offered at all; what it is missing is one button under the list.
+  const missing = [...(E.boardTier() === "full" ? [] : ["boards"]), ...(E.cardTier() === "full" ? [] : ["card"])];
   const body = `
     <h2>Which images</h2>
     <div class="card checks">
       <label><input type="checkbox" name="g" value="stbl" checked> Stableford leaderboard</label>
       <label><input type="checkbox" name="g" value="gross"> Gross leaderboard</label>
-      ${E.boardTier() === "full"
-        ? `<label><input type="checkbox" name="g" value="both"> Both boards on one sheet</label><label><input type="checkbox" name="g" value="holes"> How the holes played</label>`
-        : `<label class="muted"><input type="checkbox" disabled> Both boards on one sheet <a href="#shop" class="small">· in the shop</a></label><label class="muted"><input type="checkbox" disabled> How the holes played <a href="#shop" class="small">· in the shop</a></label>`}
+      ${E.boardTier() === "full" ? `<label><input type="checkbox" name="g" value="both"> Both boards on one sheet</label><label><input type="checkbox" name="g" value="holes"> How the holes played</label>` : ""}
       <label><input type="checkbox" name="g" value="cards"> Player cards <span class="muted">&nbsp;(${M.field})</span></label>
       <details><summary class="muted small">Only some players' cards</summary>${M.players.map(p => `<label><input type="checkbox" name="card" value="${esc(p.name)}" checked> ${esc(p.name)}</label>`).join("")}</details>
       ${M.stats_on && E.cardTier() === "full"
@@ -35,6 +35,7 @@ export function graphics(rid) {
         : ""}
       <button class="btn small" type="button" data-act="tick-all">Everything, every theme</button>
     </div>
+    ${missing.length ? shopBtn("More images in the shop", missing) : ""}
     <h2>Theme</h2>
     ${themeLeague ? `<p class="muted small" style="margin:-2px 4px 8px">${esc(themeLeague.name)} is set to ${esc(themeLeague.theme)}.</p>` : ""}
     <div class="themes">${themeChips(themes)}</div>
@@ -50,7 +51,7 @@ export function graphics(rid) {
     }
     if (b.dataset.act !== "generate") return;
     const want = [...document.querySelectorAll("input[name=g]:checked")].map(i => i.value);
-    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(E.canTheme);
+    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(n => E.canTheme(n) || themes.includes(n));
     const cardNames = [...document.querySelectorAll("input[name=card]:checked")].map(i => i.value);
     const cx = document.querySelector("input[name=cx]");
     const cardOpts = { extras: !!(cx && cx.checked) };
@@ -85,7 +86,7 @@ export function leaguePoster(gid) {
   bindChips(app.querySelector(".themes"));
   bind(async ev => {
     if (!ev.target.closest("[data-act=generate]")) return;
-    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(E.canTheme);
+    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(n => E.canTheme(n) || themes.includes(n));
     if (!chosen.length) return toast("Pick at least one theme");
     const want = formats.length > 1 ? [...document.querySelectorAll("input[name=sf]:checked")].map(i => i.value) : formats;
     if (!want.length) return toast("Pick at least one set of standings");
@@ -102,7 +103,11 @@ export function statsPoster(gid) {
   const { Ms, members } = leagueResults(g);
   const St = leagueStats(Ms, members);
   if (!St.rounds.length) return page("Stats images", `<p class="muted center" style="margin:30px 0">No finished rounds in this league yet.</p>`, { back: `#league/${gid}` });
-  if (!E.seasonAllowed()) return page("Stats images", `<div class="banner"><b>The season pack</b> makes these: how the league scores, the nines walked, and one image a player. <a href="#shop">In the shop ›</a></div>`, { back: `#league/${gid}`, sub: g.name });
+  if (!E.seasonAllowed()) {
+    page("Stats images", `<div class="banner"><b>The season pack</b> makes these: how the league scores, the nines walked, and one image a player.</div>
+      ${shopBtn("See what it makes", "season")}`, { back: `#league/${gid}`, sub: g.name });
+    return;
+  }
   const N = ninesForPoster(leagueRounds(gid), members);
   const anyX = St.field.statline.any;
   const who = St.players.some(p => p.id === ui.statsWho[gid]) ? ui.statsWho[gid] : "";
@@ -128,7 +133,7 @@ export function statsPoster(gid) {
     if (b.dataset.act !== "generate") return;
     const want = [...document.querySelectorAll("input[name=si]:checked")].map(i => i.value);
     const pids = [...document.querySelectorAll("input[name=sp]:checked")].map(i => i.value);
-    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(E.canTheme);
+    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(n => E.canTheme(n) || themes.includes(n));
     const sx = document.querySelector("input[name=sx]");
     const opts = { extras: !!(sx && sx.checked) };
     if (sx) S.setStatsOnImages(opts.extras);

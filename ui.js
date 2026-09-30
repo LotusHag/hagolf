@@ -91,7 +91,7 @@ export const ICONS = {
   golf: I(`<circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/>`),
   shop: I(`<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`),
 };
-export const TABS = [["home", "#home", "Home", "home"], ["play", "#play", "Play", "play"], ["leagues", "#leagues", "Leagues", "leagues"], ["people", "#people", "People", "people"], ["shop", "#shop", "Shop", "shop"]];
+export const TABS = [["home", "#home", "Home", "home"], ["play", "#play", "Rounds", "play"], ["leagues", "#leagues", "Leagues", "leagues"], ["people", "#people", "People", "people"], ["shop", "#shop", "Shop", "shop"]];
 
 // ---------------------------------------------------------------- the page shell
 let toastTimer = null;
@@ -343,31 +343,42 @@ export function tchip(input, t, label, on) {
   return `<label class="tchip ${on ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK}">
     ${input}<span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(label)}</label>`;
 }
-const LOCKED = " · in the shop";
 export const FAMILIES = DATA.families || [{ key: "other", name: "Every look", blurb: "" }];
 export const themesIn = key => DATA.themes.filter(t => (t.family || "other") === key);
 /** A strip of one sliver per look, the family seen at a glance. */
 export const familyStrip = themes => `<span class="fstrip">${themes.map(t => `<i style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT}"></i>`).join("")}</span>`;
+// A picker shows what this account may use and nothing else: a look it does not hold is absent, not a padlock
+// wearing a price. What is missing is one button at the foot instead, and that button opens the shop over the
+// screen rather than sending the phone to the Shop tab and losing its place. `keep` are the looks already
+// chosen, which stay on the list however they were come by -- a league keeps wearing what it was given.
+const looksIn = (key, keep) => themesIn(key).filter(t => E.canTheme(t.name) || keep.includes(t.name));
+const looksMissing = keep => DATA.themes.filter(t => !E.canTheme(t.name) && !keep.includes(t.name)).length;
+/** A button that opens the shop over whatever is on screen; `skus` is what it should open on. */
+export const shopBtn = (label, skus = "themes") => `<button class="btn soft wide shopmore" type="button" data-shop="${esc([].concat(skus).join(","))}">${esc(label)}</button>`;
+const moreLooks = keep => { const n = looksMissing(keep); return n ? shopBtn(`${plural(n, "more look")} in the shop`) : ""; };
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-shop]");
+  if (!b || b.disabled) return;
+  b.disabled = true;
+  try { await (await import("./screens/shop.js")).shopOver(b.dataset.shop.split(",")); } finally { b.disabled = false; }
+});
 /** A hundred looks are ten folded families, each opened only when it holds the pick; `chip` draws one look. */
-function familyFolds(chip, isOpen) {
+function familyFolds(chip, isOpen, keep = []) {
   return FAMILIES.map(f => {
-    const ts = themesIn(f.key);
+    const ts = looksIn(f.key, keep);
     if (!ts.length) return "";
-    const open = ts.some(isOpen), free = ts.filter(t => E.canTheme(t.name)).length;
-    return `<details class="tfam" ${open ? "open" : ""}><summary>${familyStrip(ts)}<span class="fname">${esc(f.name)}</span><span class="muted small">${ts.length}${free < ts.length ? ` · ${free ? free + " yours" : "in the shop"}` : ""}</span></summary>
+    return `<details class="tfam" ${ts.some(isOpen) ? "open" : ""}><summary>${familyStrip(ts)}<span class="fname">${esc(f.name)}</span><span class="muted small">${ts.length}</span></summary>
       <div class="tgrid">${ts.map(chip).join("")}</div></details>`;
   }).join("");
 }
 export function themeChips(selected) {
-  return familyFolds(t => E.canTheme(t.name)
-    ? tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name))
-    : tchip(`<input type="checkbox" name="theme" value="${t.name}" disabled>`, t, t.name + LOCKED, false), t => selected.includes(t.name));
+  return familyFolds(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name)),
+    t => selected.includes(t.name), selected) + moreLooks(selected);
 }
 export function themeRadios(name, sel, dflt = null) {
   const none = dflt ? `<div class="tgrid">${tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel)}</div>` : "";
-  return none + familyFolds(t => E.canTheme(t.name) || t.name === sel
-    ? tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel)
-    : tchip(`<input type="radio" name="${name}" value="${t.name}" disabled>`, t, t.name + LOCKED, false), t => t.name === sel);
+  return none + familyFolds(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel),
+    t => t.name === sel, sel ? [sel] : []) + moreLooks(sel ? [sel] : []);
 }
 export function bindChips(el, onPick = null) {
   if (!el) return;

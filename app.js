@@ -10,14 +10,16 @@ import { home } from "./screens/home.js";
 
 const onHome = () => !location.hash || location.hash === "#home";
 
-// other phones' changes: redraw the current screen, unless the user is typing, scoring, or looking at rendered images
+// a redraw is rude in the middle of typing, scoring, or a sheet full of rendered images
+const undisturbed = () => !(document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName))
+  && !(document.querySelector(".thumbs, .progress, .sheet-wrap") || location.hash.startsWith("#score/") || location.hash.startsWith("#join/"));
+
+// other phones' changes: redraw the current screen
 let lastSyncStatus = Y.sync.status;
 Y.onChange(({ changed, status }) => {
-  const typing = document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
-  const busy = document.querySelector(".thumbs, .progress, .sheet-wrap") || location.hash.startsWith("#score/") || location.hash.startsWith("#join/");
   const signedOutNow = Y.sync.status !== lastSyncStatus && (Y.sync.status === "signedout" || lastSyncStatus === "signedout");
   lastSyncStatus = Y.sync.status;
-  if ((changed || (signedOutNow && onHome())) && !typing && !busy) route();
+  if ((changed || (signedOutNow && onHome())) && undisturbed()) route();
 });
 S.setOnSave(Y.schedulePush);
 
@@ -44,3 +46,10 @@ A.onChange(() => { N.refresh(); F.refresh(); });
 if (A.signedIn()) { N.refresh(); F.refresh(); }
 Y.start();
 route();
+
+// What the account holds is read again whenever the app is opened or looked at again, and the screen redrawn
+// only if it changed. Without this a theme that became yours a minute ago goes on saying "in the shop" until
+// the session happens to turn over, which is the one moment the app looks broken to somebody who just paid.
+const recheck = async () => { if (await A.recheck() && undisturbed()) route(); };
+recheck();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recheck(); });

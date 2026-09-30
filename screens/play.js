@@ -1,4 +1,4 @@
-// Play: every round this phone can see, and the way into a new one -- the club by place, then the loop, then
+// Rounds: every round this phone can see, and the way into a new one -- the club by place, then the loop, then
 // the round's few options.
 import * as S from "../store.js";
 import * as A from "../auth.js";
@@ -27,7 +27,7 @@ export function play() {
       ${mine ? `<div class="muted small" style="margin-top:6px">You: ${mine.pts} pts · ${ordinal(mine.splace)} of ${M.field}</div>` : ""}</a>`;
   };
   const list = shown.filter(hit);
-  page("Play", `
+  page("Rounds", `
     <a class="btn primary big" href="#new">${ICONS.plus} Start a round</a>
     <div class="btnrow" style="margin-top:0"><a class="btn small" href="#scan">${ICONS.camera} Scan a paper card</a></div>
     ${open.length ? `<h2>Playing now</h2>${open.map(nowCard).join("")}` : ""}

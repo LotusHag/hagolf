@@ -195,6 +195,27 @@ export async function signInWithPasskey(email = null) {
   return session.account;
 }
 
+// What an account holds can change without this phone doing anything: another phone buys something, a club
+// seat is taken away, an operator grants the lot by hand. The entitlement list travels inside the session, so
+// left alone a phone goes on showing the free tier until its access token next turns over -- up to fifteen
+// minutes, and longer if nothing asks the backend for anything. `recheck` is what closes that gap.
+const held = a => a ? `${a.shop ? 1 : 0}|${[...(a.entitlements || [])].sort().join()}` : "";
+let lastCheck = 0;
+
+/**
+ * Re-reads the account if it has not been read lately, and answers whether what it holds actually changed --
+ * so a caller can redraw the screen on the rare occasion it did, and do nothing the rest of the time. The
+ * throttle only coalesces a flurry of tab-switches -- returning to the app is a person, not a tick -- so this
+ * costs about one request an app-opening. Offline it simply says nothing changed.
+ */
+export async function recheck(maxAge = 5000) {
+  if (!session.refresh || Date.now() - lastCheck < maxAge) return false;
+  lastCheck = Date.now();
+  const before = held(session.account);
+  try { await whoami(); } catch (e) { return false; }
+  return held(session.account) !== before;
+}
+
 /** Re-reads the account from the server, when something may have changed it elsewhere. */
 export async function whoami() {
   const token = await bearer();

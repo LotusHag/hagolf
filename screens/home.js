@@ -1,12 +1,13 @@
-// Home: the honours board. One centred masthead, the round in play given the whole top of the screen, then
-// where you stand and what you last played as ruled rows. Nothing here names a colour of its own, so all
-// hundred themes carry it: only the accent, the ink and the hairline.
+// Home: the honours board. A round in play takes the whole top of the screen; with nothing on the go the
+// player takes it instead, and home never asks for a round -- starting one lives under Rounds. Then where you
+// stand and what you last played, as ruled rows. Nothing here names a colour of its own, so all hundred
+// themes carry it: only the accent, the ink and the hairline.
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, plural, firstName, ordinal, fmtDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, safeCompute, isIOS, isStandalone } from "../ui.js";
-import { compute, handicapFor, stableford } from "../model.js";
+import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, isIOS, isStandalone } from "../ui.js";
+import { compute, handicapFor, stableford, fix, fmtIndex } from "../model.js";
 import { leagueResults, standingsFor, standingValue, FORMAT_NAMES } from "./formats.js";
 import { noteLine } from "./updates.js";
 import { resyncNow } from "./me.js";
@@ -35,7 +36,7 @@ export function liveLine(r) {
   return L && L.rows.length && L.through ? `<div class="live">through ${L.through} · ${L.rows.slice(0, 3).map((x, i) => `${i + 1}. ${esc(firstName(x.name))} <b>${x.pts}</b>`).join(" · ")}</div>` : "";
 }
 
-/** The round in progress as a card, for the Play tab, which lists several of them at once. */
+/** The round in progress as a card, for the Rounds tab, which lists several of them at once. */
 export const nowCard = r => `<a class="now" href="${resumeHash(r)}"><div class="k">${r.status === "scoring" ? "Playing now" : "Being set up"}</div><div class="name">${esc(r.name)}</div>
     <div class="small" style="opacity:.85">${esc(courseTitle(courseBy(r.course) || { name: r.course }))} · ${roundStatus(r)}</div>${liveLine(r)}<span class="cta">${r.status === "scoring" ? "Continue scoring ›" : "Add players ›"}</span></a>`;
 
@@ -58,11 +59,27 @@ function inPlay(r) {
     <a class="btn primary plate" href="${resumeHash(r)}">${r.status === "scoring" ? "Continue scoring" : "Add players"}</a>`;
 }
 
-/** Nothing on the go: the same centred block, asking for a round instead of reporting one. */
-const noRound = () => `<section class="inplay"><div class="rule"></div>
-  <div class="k quiet">No round in play</div>
-  <p class="where">Start one and Hagolf keeps the card.</p></section>
-  <a class="btn primary plate" href="#new">Start a round</a>`;
+const today = () => new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+
+/**
+ * Nothing on the go: the same centred block with the player in it instead of a round. Home never asks for a
+ * round, so what stands at the top is who they are and how they have been playing.
+ */
+function meHero(a, me, mine) {
+  const name = (a && a.name) || (me && me.name) || "";
+  const hi = a && a.hi != null ? a.hi : (me ? S.currentIndex(me) : null);
+  const pts = mine.map(x => x.pts).filter(v => v !== null);
+  const wins = mine.filter(x => x.win).length;
+  const where = hi === null || hi === undefined ? "" : `Handicap ${esc(fmtIndex(Number(hi)))}`;   // the rounds are in the strip below
+  const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
+  return `<section class="inplay"><div class="rule"></div>
+    <div class="k quiet">${esc(today())}</div>
+    ${name ? `<h1>${esc(firstName(name))}</h1>` : ""}
+    ${where ? `<p class="where">${where}</p>` : ""}</section>
+    ${pts.length ? `<div class="mecard herostats"><div class="stats">${tile(pts.length, plural(pts.length, "round").split(" ")[1])}
+      ${tile(fix(pts.reduce((x, y) => x + y, 0) / pts.length), "avg pts")}${tile(Math.max(...pts), "best")}
+      ${wins ? tile(wins, plural(wins, "win").split(" ")[1]) : ""}</div></div>` : ""}`;
+}
 
 /** The rounds open behind the one in the hero. */
 const alsoOpen = rs => rs.length ? `${sect("Also on the go")}<div class="rows">${rs.map(r => `<a class="hrow" href="${resumeHash(r)}">
@@ -74,7 +91,8 @@ function myLeagues(me) {
   for (const g of S.leagues()) {
     const { Ms, members } = leagueResults(g);
     const kind = S.cleanFormats(g.formats)[0];
-    const row = me ? standingsFor(g, Ms, members, kind).rows.find(r => r.id === me.id) : null;
+    // a league collapses a claimed contact into its account, so my line is under my identity as often as my id
+    const row = me ? standingsFor(g, Ms, members, kind).rows.find(r => r.id === S.identityOf(me.id) || r.id === me.id) : null;
     const suffix = row ? ordinal(row.place).slice(String(row.place).length) : "";
     rows.push(`<a class="hrow" href="#league/${g.id}"><span class="t"><b>${esc(g.name)}</b>
       <span>${row ? `${standingValue(kind, row)} from ${plural(row.played, "round")}` : `${plural(S.leagueRoundIds(g.id).length, "round")} · ${FORMAT_NAMES[kind]}`}</span></span>
@@ -84,16 +102,23 @@ function myLeagues(me) {
     <div class="rows">${rows.slice(0, 4).join("")}</div>` : "";
 }
 
-function lastRound(me) {
-  const mine = S.rounds().filter(r => r.status === "done" && r.entries.some(e => e.playerId === me.id));
-  if (!mine.length) return "";
-  const r = mine[0], M = safeCompute(compute, r);
-  const p = M ? M.players.find(x => x.id === me.id) : null;
-  return `${sect("Last round", `<a href="#player/${me.id}">All rounds</a>`)}
-    <div class="rows"><a class="hrow" href="#review/${r.id}">
-      <span class="t"><b>${esc(roundWhere(r))}</b><span>${esc(fmtDate(r.date))}${p ? ` · ${ordinal(p.splace)} of ${M.field}` : ""}</span></span>
-      <span class="v">${p ? p.pts : "–"}<small class="u"> PTS</small></span></a></div>`;
+/** Every finished round I have a line in, newest first. */
+function myRounds(me) {
+  const out = [];
+  for (const r of S.rounds()) {
+    if (r.status !== "done" || !r.entries.some(e => e.playerId === me.id)) continue;
+    const M = safeCompute(compute, r);
+    const p = M ? M.players.find(x => x.id === me.id) : null;
+    out.push({ r, field: M ? M.field : 0, pts: p ? p.pts : null, place: p ? p.splace : null, win: !!p && p.splace === 1 && M.field > 1 });
+  }
+  return out;
 }
+
+/** The last few cards as ruled rows: the club, then the day, the loop and where you came, then the points. */
+const recent = (me, mine) => mine.length ? `${sect(mine.length === 1 ? "Last round" : "Recent rounds", `<a href="#player/${me.id}">All rounds</a>`)}
+  <div class="rows">${mine.slice(0, 3).map(({ r, field, pts, place }) => `<a class="hrow" href="#review/${r.id}">
+    <span class="t"><b>${esc(roundClub(r))}</b><span>${[shortDate(r.date), roundLoop(r), place ? `${ordinal(place)} of ${field}` : ""].filter(Boolean).map(esc).join(" · ")}</span></span>
+    <span class="v">${pts === null ? "–" : pts}<small class="u"> PTS</small></span></a>`).join("")}</div>` : "";
 
 /** A phone with nothing on it yet: the two things worth doing first. */
 const starters = () => `${sect("To begin")}<div class="rows">
@@ -110,18 +135,17 @@ export function home() {
   if (window.__installPrompt) banners.push(`<button class="banner" data-act="install">Install Hagolf on this phone</button>`);
   else if (isIOS() && !isStandalone() && !S.state.settings.installHintSeen) banners.push(`<div class="banner act muted"><span>To install: tap Share <span class="ios-share">⎋</span> in Safari, then “Add to Home Screen”.</span><button class="x" data-act="hide-install" aria-label="Dismiss">×</button></div>`);
   const open = rounds.filter(r => r.status !== "done");
-  const finished = rounds.filter(r => r.status === "done");
+  const mine = me ? myRounds(me) : [];
   const fresh = N.held().filter(n => !n.seen).slice(0, 3);
   const a = A.account();
   page("Hagolf", `
-    ${a ? `<p class="cardline caps">${esc(firstName(a.name))}${a.hi != null ? ` · Handicap ${esc(String(a.hi))}` : ""}</p>` : ""}
     ${banners.join("")}
-    ${open.length ? inPlay(open[0]) : noRound()}
+    ${open.length ? inPlay(open[0]) : meHero(a, me, mine)}
     ${alsoOpen(open.slice(1))}
     ${fresh.length ? `${sect("New", `<a href="#updates">All updates</a>`)}<div class="rows">${fresh.map(n => noteLine(n, true)).join("")}</div>` : ""}
     ${me ? myLeagues(me) : ""}
-    ${me ? lastRound(me) : ""}
-    ${!open.length && !finished.length && !S.leagues().length ? starters() : ""}
+    ${me ? recent(me, mine) : ""}
+    ${!rounds.length && !S.leagues().length ? starters() : ""}
     ${Y.enabled() && Y.sync.status !== "error" && !rounds.length && !S.leagues().length && S.state.settings.welcomed ? `<p class="center"><button class="btn ghost small" data-act="resync">Nothing here yet? Fetch everything again</button></p>` : ""}`,
     { back: "", tabs: "home", brand: "center" });
   bind(async ev => {
