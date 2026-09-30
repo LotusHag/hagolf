@@ -455,7 +455,7 @@ export function fmtIndex(hi) {
  */
 export const STAT_KINDS = [
   { key: "putts", col: "putts", label: "Putts", short: "Putts", word: "putts", perHole: "count", derived: false,
-    blurb: "How many of your strokes were putts. On its own this also gives greens in regulation, scrambling and putts per green." },
+    blurb: "How many of your strokes were putts. On its own this also gives greens in regulation, up and down and putts per green." },
   { key: "fairway", col: "fairway", label: "Fairways hit", short: "Fairway", word: "fairways", perHole: "fairway", derived: false,
     blurb: "Whether the tee shot finished on the fairway. Not asked on a par 3, which has none." },
   { key: "gir", col: "gir", label: "Greens in regulation", short: "GIR", word: "greens", perHole: null, derived: true,
@@ -481,7 +481,7 @@ export const hasFairway = par => par >= 4;
 /**
  * Greens in regulation, from strokes and putts alone: the ball was on the green after `strokes - putts`,
  * and regulation is two strokes fewer than par. This is why putts are the one extra worth having -- they
- * carry GIR, scrambling and putts per green with them.
+ * carry GIR, up and down and putts per green with them.
  */
 export function girFrom(strokes, putts, par) {
   if (strokes === null || putts === null) return null;
@@ -522,8 +522,8 @@ const ratio = (hit, of) => of ? hit / of : null;
  * only the holes that answered it, so turning a switch on halfway through a season skews nothing: a putting
  * average over nine holes says nine holes.
  *
- * Scrambling and sand saves are not asked for anywhere. They fall out: a scramble is a green missed and par
- * still made, a sand save is a bunker visited and par still made.
+ * Up and down and sand saves are not asked for anywhere. They fall out: an up and down is a green missed and
+ * par still made, a sand save is a bunker visited and par still made.
  */
 export function statSummary(holes) {
   const hs = holes.filter(Boolean);
@@ -536,10 +536,6 @@ export function statSummary(holes) {
   const pen = hs.filter(h => h.penaltyShots !== null);
   const puttsOnGreens = withPutts.filter(h => h.gir);
   const total = xs => xs.reduce((a, h) => a + h.putts, 0);
-  // An up and down needs the putts as well as the green: chipped on and holed, or holed from off the green
-  // outright, which is why nought putts counts too. Scrambling asks a looser question -- par or better
-  // however it arrived -- so a par 5 reached in four and two-putted is a scramble but not an up and down.
-  const upDownHoles = girHoles.filter(h => !h.gir && h.putts !== null && h.strokes !== null);
   const fwGir = fw.filter(h => h.gir !== null);
   const fwHit = fwGir.filter(h => h.fairway === "hit"), fwMiss = fwGir.filter(h => h.fairway !== "hit");
   const greensScored = greens.filter(h => h.topar !== null);
@@ -580,17 +576,15 @@ export function statSummary(holes) {
       miss: { holes: fwMiss.length, gir: fwMiss.filter(h => h.gir).length, pct: ratio(fwMiss.filter(h => h.gir).length, fwMiss.length) },
       edge: ratio(fwHit.filter(h => h.gir).length, fwHit.length) - ratio(fwMiss.filter(h => h.gir).length, fwMiss.length),
     },
-    // Greens hit and turned into a birdie: the putter's half of the green, where scrambling is the other one.
+    // Greens hit and turned into a birdie: the putter's half of the green, where up and down is the other one.
     birdies: !greensScored.length ? null : {
       holes: greensScored.length, made: greensScored.filter(h => h.topar <= -1).length,
       pct: ratio(greensScored.filter(h => h.topar <= -1).length, greensScored.length),
     },
-    upDown: !upDownHoles.length ? null : {
-      holes: upDownHoles.length, made: upDownHoles.filter(h => h.putts <= 1).length,
-      pct: ratio(upDownHoles.filter(h => h.putts <= 1).length, upDownHoles.length),
-    },
-    scramble: !missed.length ? null : {
-      holes: missed.length, saved: missed.filter(h => h.topar <= 0).length,
+    // Par or better after missing the green, however it arrived: a par 5 reached in four and two-putted
+    // counts, which is why this needs only the score and never the putts.
+    upDown: !missed.length ? null : {
+      holes: missed.length, made: missed.filter(h => h.topar <= 0).length,
       pct: ratio(missed.filter(h => h.topar <= 0).length, missed.length),
     },
     sand: !sand.length ? null : {
@@ -633,7 +627,7 @@ export const RATE_MIN = 8;
 const SHOW_MIN = 5;
 
 /** The readings the personal card's strip and a poster's columns take, headline only, in the order drawn. */
-export const STRIP_KEYS = ["putts", "gir", "fairway", "puttsOnGir", "scramble", "penalty"];
+export const STRIP_KEYS = ["putts", "gir", "fairway", "puttsOnGir", "upDown", "penalty"];
 
 /**
  * One summary read out as a list of readings, so the tiles on screen, the strip on a card and the rows on a
@@ -716,10 +710,9 @@ export function statReadings(x, { per18 = false } = {}) {
     const g = x.girByPar[par];
     rate(`girPar${par}`, g.hit, g.holes, { title: `Greens in regulation on par ${par}s`, label: `GIR on par ${par}s`, short: `GIR par ${par}s`, group: "striking", deep: true, min: 6 });
   }
-  if (x.scramble) rate("scramble", x.scramble.saved, x.scramble.holes, { title: "Scrambling", label: "scrambling", short: "Scramble", group: "saves" });
-  // Up and down asks almost the same question as scrambling and sand saves ask it of a handful of holes, so
-  // neither belongs beside the readings every card can answer. They are worth keeping and worth folding away.
-  if (x.upDown) rate("upDown", x.upDown.made, x.upDown.holes, { title: "Up and down", label: "up and down", short: "Up & down", group: "saves", deep: true });
+  if (x.upDown) rate("upDown", x.upDown.made, x.upDown.holes, { title: "Up and down", label: "up and down", short: "Up & down", group: "saves" });
+  // Sand saves ask the same question of a handful of holes, so they do not belong beside the readings every
+  // card can answer. Worth keeping, worth folding away.
   if (x.sand) rate("sand", x.sand.saved, x.sand.holes, { title: "Sand saves", label: "sand saves", short: "Sand", group: "saves", deep: true, min: 6 });
   if (x.penalty) num("penalty", x.penalty.total, {
     title: "Penalty shots", label: `penalty shot${s(x.penalty.total)}`, short: "Penalties", group: "trouble",

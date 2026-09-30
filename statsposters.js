@@ -517,7 +517,7 @@ export function statsExtrasPoster(St, group, T) {
     `started keeping putts halfway through a season is measured over the holes they kept them for, and the number under each ` +
     `reading says which holes those were. A percentage waits for ${RATE_MIN} attempts before it is drawn as one; under that it stays ` +
     `the fraction it is, and the accent colour marks the best in a column only where enough stands behind it. Greens in regulation, ` +
-    `scrambling, up and down and sand saves are never asked for on the phone: they fall out of the strokes and the putts.`;
+    `up and down and sand saves are never asked for on the phone: they fall out of the strokes and the putts.`;
   return sheet(T, {
     title: "Putts, fairways and the rest", kicker: group.name,
     sub: `${who.length} player${who.length === 1 ? "" : "s"} keeping them  ·  ${F.holes} holes  ·  ${dateSpan(St.rounds)}`,

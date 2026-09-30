@@ -52,7 +52,7 @@ export function story(M, p, { extras = true } = {}) {
     const struck = [x.fairway ? `${x.fairway.hit} of ${x.fairway.holes} fairways` : "",
       x.gir ? `${x.gir.hit} of ${x.gir.holes} greens in regulation` : ""].filter(Boolean).join(" and ");
     // One bunker is not a sand-save record, so it is left to the scorecard rather than written up as one.
-    const saved = [x.scramble ? `${x.scramble.saved} of the ${x.scramble.holes} green${plural(x.scramble.holes)} missed` : "",
+    const saved = [x.upDown ? `${x.upDown.made} of the ${x.upDown.holes} green${plural(x.upDown.holes)} missed` : "",
       x.sand && x.sand.holes >= 3 ? `${x.sand.saved} of ${x.sand.holes} bunkers` : ""].filter(Boolean).join(" and ");
     if (struck || saved) said.push([struck, saved ? `par or better from ${saved}` : ""].filter(Boolean).join("; ") + ".");
     if (x.penalty) said.push(`${x.penalty.total} penalty shot${plural(x.penalty.total)}, already in the scores above.`);
