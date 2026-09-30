@@ -640,9 +640,12 @@ export const STRIP_KEYS = ["putts", "gir", "fairway", "puttsOnGir", "scramble", 
  * poster all say the same thing in the same order. Nothing here is computed: `statSummary` did the sums, and
  * this only decides what each one is called and how it is written down.
  *
- * `title` is for a poster row, `label` for a tile caption, `short` for the strip on a card. `value` is the
- * number a bar or a comparison uses, null where there is no single number to compare. `deep` marks the ones
- * that are interesting rather than headline: the screen and the card leave them out, the posters take them.
+ * `title` is for a poster row, `label` for a tile caption, `name` the same caption with nothing appended to
+ * it, `short` for a narrow table head. `big` is the figure as a season reads it and `count` as one round does:
+ * a percentage over enough attempts against the fraction it came from, because 0% of 9 greens is a hole in
+ * the page where 0 of 9 is a fact. `value` is the number a bar or a comparison uses, null where there is no
+ * single number to compare. `deep` marks the ones that are interesting rather than headline: the screen and
+ * the card leave them out, the posters take them.
  */
 export function statReadings(x, { per18 = false } = {}) {
   if (!x || !x.any) return [];
@@ -654,13 +657,14 @@ export function statReadings(x, { per18 = false } = {}) {
   const rate = (key, part, of, { title, label, short, group, deep = false, lower = false, min = SHOW_MIN }) => {
     if (!of || of < min) return;
     const pct = part / of, enough = of >= RATE_MIN;
-    out.push({ key, group, deep, lower, pair: true, title, short, n: of, value: pct, fmt: fmtPct,
+    out.push({ key, group, deep, lower, pair: true, title, short, name: label, n: of, value: pct, fmt: fmtPct,
       big: enough ? fmtPct(pct) : `${part}/${of}`,
+      count: `${part}/${of}`,
       label: enough ? `${label} · ${part} of ${of}` : label,
       sub: `${part} of ${of}` });
   };
   const num = (key, value, { title, label, short, group, deep = false, lower = false, pair = false, sub = "", big, n = null, fmt = v => String(v) }) =>
-    out.push({ key, group, deep, lower, pair, title, short, n, value, fmt, big: big ?? fmt(value), label, sub });
+    out.push({ key, group, deep, lower, pair, title, short, name: label, n, value, fmt, big: big ?? fmt(value), count: big ?? fmt(value), label, sub });
 
   const p = x.putts;
   if (p) {
@@ -670,8 +674,9 @@ export function statReadings(x, { per18 = false } = {}) {
       label: per18 ? "putts per 18" : `putts in ${p.holes} hole${s(p.holes)}`,
       sub: per18 ? `over ${p.holes} holes` : `${p.holes} hole${s(p.holes)}`,
       fmt: v => per18 ? fix(v, 1) : String(Math.round(v)) });
-    if (p.one) num("onePutt", p.one, { title: "One-putts", label: `one-putt${s(p.one)}`, short: "One-putts", group: "putting", deep: true, n: p.holes });
-    if (p.three) num("threePutt", p.three, { title: "Three-putts", label: `three-putt${s(p.three)}`, short: "Three-putts", group: "putting", deep: true, lower: true, n: p.holes });
+    const overHoles = `in ${p.holes} hole${s(p.holes)}`;
+    if (p.one) num("onePutt", p.one, { title: "One-putts", label: `one-putt${s(p.one)}`, short: "One-putts", group: "putting", deep: true, n: p.holes, sub: overHoles });
+    if (p.three) num("threePutt", p.three, { title: "Three-putts", label: `three-putt${s(p.three)}`, short: "Three-putts", group: "putting", deep: true, lower: true, n: p.holes, sub: overHoles });
     // an average over one green is that green, not a putting record
     if (p.onGir !== null && p.onGirHoles >= SHOW_MIN) num("puttsOnGir", p.onGir, {
       title: "Putts per green", label: "putts per green", short: "Per green", group: "putting", lower: true, pair: true,
@@ -686,7 +691,7 @@ export function statReadings(x, { per18 = false } = {}) {
     if (L + R >= 4) num("fairwayMiss", null, {
       title: "Where the tee shot misses", short: "Misses", group: "striking", deep: true, big: `${L}L · ${R}R`,
       label: L === R ? "missed both ways" : `misses mostly ${L > R ? "left" : "right"}`,
-      sub: `${L} left · ${R} right` });
+      sub: `${L + R} tee shot${s(L + R)} missed` });
   }
   if (x.fromFairway) {
     const f = x.fromFairway;

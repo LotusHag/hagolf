@@ -1,5 +1,6 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
 import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule, house } from "./draw.js";
+import { heading, headingIn, panel, bigIn } from "./sheet.js";
 import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, statReadings, STRIP_KEYS, NO_SCORE } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -108,29 +109,33 @@ export function story(M, p, { extras = true } = {}) {
   return out;
 }
 
-/** The five or six the strip has room for, headline readings only, in the order the card draws them. */
+/** The five or six the band has room for, headline readings only, in the order the card draws them. */
 export function stripReadings(statline) {
   if (!statline || !statline.any) return [];
   const rs = statReadings(statline);
   return STRIP_KEYS.map(k => rs.find(r => r.key === k && !r.deep)).filter(Boolean).slice(0, 6);
 }
 
-/** One band of the extras under the scorecard, built like the tiles in the header: name, figure, what it is out of. */
-function extrasStrip(fig, topIn, hIn, readings) {
-  const T = fig.T, W = fig.w - 2 * MARGIN * fig.w;
-  const ax = fig.axes([MARGIN, 1 - (topIn + hIn) / fig.h, 1 - 2 * MARGIN, hIn / fig.h], [0, W], [0, hIn]);
-  section(ax, 0, hIn - 0.1, "Putts, fairways and the rest", 10);
-  // Four readings stretched over fifteen inches are four numbers adrift in four fields, so the band keeps a
-  // box width and stands in the middle of the card when there are fewer readings than it has room for.
-  const used = Math.min(W, readings.length * 2.1), x0 = (W - used) / 2;
-  const boxH = hIn - 0.34, w = used / readings.length, inner = w - 0.18;
-  readings.forEach((r, i) => {
-    const x = x0 + i * w;
-    ax.rbox(x + 0.03, 0, w - 0.06, boxH, T.PANEL, 0.06);
-    ax.fitText(x + w / 2, boxH * 0.80, caps(T, r.short), inner, { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center", min: 6 });
-    ax.fitText(x + w / 2, boxH * 0.40, r.big, inner, { size: r.big.length > 5 ? 16 : 22, family: "display", color: T.INK, ha: "center", va: "center", min: 11 });
-    if (r.sub) ax.fitText(x + w / 2, boxH * 0.14, r.sub, inner, { size: 8, color: T.INK_3, ha: "center", va: "center", min: 5.5 });
-  });
+// The widest a single reading is set. A band that always filled the card would hand two readings half a
+// scorecard each; past this the row stops growing and stands in the middle instead.
+const BOX_MAX_IN = 4.2;
+
+/**
+ * The extras under the scorecard: the same titled band of panels the posters draw at their foot, drawn by
+ * the same code, so the card and the season sheet say the same thing in the same shape.
+ *
+ * A card is one round, so every reading is the count it came from rather than the rate: 0 of 9 greens is
+ * something that happened on a Saturday, where 0% is a hole in the page. The rates belong to a season, and
+ * the season sheets still draw them.
+ */
+function extrasBand(fig, topIn, hIn, readings) {
+  const x0 = MARGIN * fig.w, W = fig.w - 2 * x0;
+  heading(fig, x0, topIn, W, "Putts, fairways and the rest");
+  const used = Math.min(W, readings.length * BOX_MAX_IN), step = used / readings.length;
+  const boxH = hIn - headingIn;
+  readings.forEach((r, i) =>
+    panel(fig, x0 + (W - used) / 2 + i * step, topIn + headingIn, step, boxH, r.count, r.name, null,
+      { bigSize: bigIn(step, 24), capSize: 8.5 }));
 }
 
 /**
@@ -290,7 +295,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
     return { file: `players/${prefix0}_${fileSlug(p.name)}.png`, fig };
   }
 
-  if (strip.length) extrasStrip(fig, 5.22, EX - 0.2, strip);
+  if (strip.length) extrasBand(fig, 5.2, EX - 0.14, strip);
 
   // against the field
   const vs = p.vsrest;

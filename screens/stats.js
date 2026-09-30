@@ -348,6 +348,9 @@ const namesList = xs => xs.length < 2 ? esc(xs[0] || "") : `${xs.slice(0, -1).ma
 
 export function ninesPlayed(rounds, pid = null) {
   const out = new Map();
+  // identities, the way every other league reading counts: a contact linked to an account answers to the
+  // account's id, which is what the standings, the stats and the posters hand back in
+  const who = pid ? S.identityOf(pid) : null;
   for (const r of rounds) {
     if (r.status !== "done") continue;
     const c = courseBy(r.course);
@@ -357,14 +360,14 @@ export function ninesPlayed(rounds, pid = null) {
       const nc = courseBy(slug);
       if (!nc) return;
       let N;
-      try { N = computeNine(nc, S.toModelRound(r), i * 9); } catch (e) { return; }
+      try { N = computeNine(nc, S.toModelRound(r, true), i * 9); } catch (e) { return; }
       for (const p of N.players) {
-        if (pid && p.id !== pid) continue;
+        if (who && p.id !== who) continue;
         if (!out.has(slug)) out.set(slug, { slug, rows: [], unrated: new Set() });
         out.get(slug).rows.push({ round: r, player: p, field: N.field });
       }
       // named under the table: they walked it, but this loop has no rating for the tee they played
-      for (const u of N.unrated) if (!(pid && u.id !== pid) && out.has(slug)) out.get(slug).unrated.add(u.name);
+      for (const u of N.unrated) if (!(who && u.id !== who) && out.has(slug)) out.get(slug).unrated.add(u.name);
     });
   }
   return [...out.values()].map(x => {

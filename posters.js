@@ -313,7 +313,8 @@ export function holesPoster(M, T) {
 /** Season standings for a group: `S` from model.standings, `group` the group record. */
 export const STANDINGS_TITLES = {
   stableford: "Season standings", stroke: "Stroke play standings", match: "Matchplay standings",
-  soccer: "League table", gp: "Grand Prix standings", gpstroke: "Grand Prix standings, stroke play",
+  matchpts: "Matchplay standings, Stableford", soccer: "League table", soccerpts: "League table, Stableford",
+  gp: "Grand Prix standings", gpstroke: "Grand Prix standings, stroke play",
 };
 
 /**
@@ -347,7 +348,7 @@ export function standingsPoster(S, group, T, kind = "stableford") {
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [fmtToPar(lead), "the leader", T.ACCENT]];
     foot = `Net score against par in every round added up, lowest total wins, so a 9 and an 18 compare. ${bestRule} ` +
       `A round without a return does not count for that player. Wins: best net against par among the league's players on the day.` + onlyMembers;
-  } else if (kind === "match" || kind === "soccer") {
+  } else if (kind.startsWith("match") || kind.startsWith("soccer")) {
     const maxPts = Math.max(1, ...rows.map(r => r.points));
     const scaleMax = 5 * Math.ceil((maxPts + 1) / 5);
     const w = S.win ?? (kind.startsWith("soccer") ? 3 : 2), d = S.draw ?? 1;

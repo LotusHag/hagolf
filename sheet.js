@@ -138,16 +138,23 @@ function headerTiles(fig, items) {
 
 /**
  * One panel of a band of them: a figure over its caption, both shrunk to the box rather than allowed to run
- * out of it. Every headline row, every foot band and the strip on a player's card go through this, so a long
+ * out of it. Every headline row, every foot band and the band on a player's card go through this, so a long
  * caption behaves the same way wherever it turns up.
+ *
+ * `sub` is the line between the two, for a figure that hides what it was taken over: a percentage says
+ * nothing about whether it stands on nine attempts or nine hundred, and one that says "0%" with nothing
+ * under it reads as a hole in the page rather than as a season. `subRow` keeps the figure where a panel
+ * with a sub would put it, so a band where only some readings need one still sets them all on one line.
  */
-export function panel(fig, x, y, w, h, big, label, colr = null, { bigSize = 30, capSize = 9, tint = true } = {}) {
+export function panel(fig, x, y, w, h, big, label, colr = null, { bigSize = 30, capSize = 9, tint = true, sub = "", subRow = !!sub } = {}) {
   const T = fig.T;
   if (tint) surface(fig, x + 0.04, y, w - 0.08, h, 0.08);
   const inner = w - 0.22;
-  fig.text(x + w / 2, y + h * 0.48, String(big),
+  fig.text(x + w / 2, y + h * (subRow ? 0.42 : 0.48), String(big),
     { size: fig.fitOne(String(big), inner, bigSize, 11, { family: "display" }), family: "display", color: colr || T.INK, ha: "center", va: "center" });
-  fig.text(x + w / 2, y + h - 0.14, caps(T, label),
+  if (sub) fig.text(x + w / 2, y + h - 0.29, sub,
+    { size: fig.fitOne(sub, inner, capSize - 0.5, 5.5, {}), color: T.INK_3, ha: "center", va: "bottom" });
+  fig.text(x + w / 2, y + h - 0.13, caps(T, label),
     { size: fig.fitOne(caps(T, label), inner, capSize, 5.5, { family: "display" }), family: "display", color: T.INK_3, ha: "center", va: "bottom" });
 }
 

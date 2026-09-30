@@ -273,16 +273,23 @@ function statTableBlock(T, rows, cols, { title, tail = "" } = {}) {
  * The extras, as a titled band at the foot and nowhere else. Not everybody keeps these, so a figure half
  * the field cannot answer never goes in the headline row, the header or a comparison -- it goes here, and
  * only when there is something to put in it. Always a full-width row of its own, whatever the page.
+ *
+ * `items` are readings, and each panel carries what its figure was taken over wherever the figure itself
+ * does not: a band of percentages with nothing under them is the thing that reads as a page with holes in it.
  */
 function bandBlock(T, title, items, tail = "") {
-  const hIn = 0.9 * dense(T);
-  const rowsIn = w => bandRows(items, w).length * (hIn + 0.1) - 0.1;
+  // every panel says what it was taken over, except where the figure already is that: a reading too thin to
+  // draw as a percentage is written "5/7", and "5 of 7" under it is the same sentence twice
+  const cells = items.map(r => [r.big, r.name, r.sub.replace(" of ", "/") === r.big ? "" : r.sub]);
+  const subRow = cells.some(c => c[2]);
+  const hIn = (subRow ? 1.06 : 0.9) * dense(T);
+  const rowsIn = w => bandRows(cells, w).length * (hIn + 0.1) - 0.1;
   return block("note", 99, w => rowsIn(w) + headingIn, (fig, x, top, w) => {
     heading(fig, x, top, w, title, note(T, tail));
     const y = top + headingIn;
-    bandRows(items, w).forEach((row, r) => {
+    bandRows(cells, w).forEach((row, r) => {
       const step = w / row.length, ry = y + r * (hIn + 0.1);
-      row.forEach(([big, label], i) => panel(fig, x + i * step, ry, step, hIn, big, label, null, { bigSize: bigIn(step, 26), capSize: 8.5 }));
+      row.forEach(([big, label, sub], i) => panel(fig, x + i * step, ry, step, hIn, big, label, null, { bigSize: bigIn(step, 26), capSize: 8.5, sub, subRow }));
     });
   });
 }
@@ -346,7 +353,7 @@ export function statsFieldPoster(St, group, T, { extras = false } = {}) {
       ? progressBlock(T, P, P.perHole ? "The season, points a hole" : "The season, card by card", "one line a player, oldest card on the left")
       : null,
     playerBarsBlock(T, St.players, "Who scores what", `${St.players.length} players`),
-    band.length ? bandBlock(T, "Putts, fairways and the rest", band.map(r => [r.big, r.label.split(" · ")[0]])) : null,
+    band.length ? bandBlock(T, "Putts, fairways and the rest", band) : null,
   ]);
 }
 
@@ -480,7 +487,7 @@ export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
     // a rest of the league to set them against, and simply as their own figures where there is not.
     band.length
       ? { ...pairRowsBlock(T, band, { title: "Putts, fairways and the rest", noteHead: `${first}  ·  the rest of the league`, labelW: 2.6 }), minW: 99 }
-      : mineX.length ? bandBlock(T, "Putts, fairways and the rest", mineX.map(r => [r.big, r.label.split(" · ")[0]]),
+      : mineX.length ? bandBlock(T, "Putts, fairways and the rest", mineX,
         `${first} over ${p.statline.holes} hole${p.statline.holes === 1 ? "" : "s"}`) : null,
   ]);
 }
@@ -515,11 +522,11 @@ export function statsExtrasPoster(St, group, T) {
     title: "Putts, fairways and the rest", kicker: group.name,
     sub: `${who.length} player${who.length === 1 ? "" : "s"} keeping them  ·  ${F.holes} holes  ·  ${dateSpan(St.rounds)}`,
     right: "Only the holes that answered\nEverything else left blank", foot,
-    tiles: statReadings(F, opts).filter(r => !r.deep).slice(0, 5).map(r => [r.big, r.label.split(" · ")[0], r.key === "putts" ? T.ACCENT : null]),
+    tiles: statReadings(F, opts).filter(r => !r.deep).slice(0, 5).map(r => [r.big, r.name, r.key === "putts" ? T.ACCENT : null]),
   }, [
     statTableBlock(T, rows, cols, { title: "Player by player", tail: `${St.field.holes} holes walked in this league` }),
     // These share no units -- a birdie conversion and what the fairway is worth are not on one scale -- so
     // they are tiles and never bars against each other.
-    deep.length ? bandBlock(T, "More of the same, for fun", deep.map(r => [r.big, r.label.split(",")[0]])) : null,
+    deep.length ? bandBlock(T, "More of the same, for fun", deep) : null,
   ]);
 }
