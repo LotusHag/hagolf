@@ -2,7 +2,7 @@
 import * as S from "../store.js";
 import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, subtabs, safeCompute, ui } from "../ui.js";
 import { compute, computeNine, leagueStats, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, NO_SCORE } from "../model.js";
-import { statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
+import { statBlock, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
 import { H2H_BASES, basisUnit, leagueResults } from "./formats.js";
 import { nineName } from "./play.js";
 
@@ -85,7 +85,7 @@ function fieldStats(St, nines = "") {
   return `
     <div class="card statcard"><div class="dwrap">${donut(F.counts, `${pct(parOrBetter(F), F.holes)}%`, "par or better")}${donutKey(F.counts, F.rounds, "round")}</div>
       <p class="muted small" style="margin:10px 0 0">Every hole this league has played: ${plural(F.holes, "hole")} over ${plural(F.rounds, "round")} on ${plural(F.cards, "card")}. A round is worth ${fix(F.avgPts)} points, and a hole is played in ${fmtSigned(F.vspar, 2)} against par.</p></div>
-    ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}<div class="card"><div class="muted small">Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.</div>${statTiles(F.statline, { per18: true })}</div>` : ""}
+    ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(F.statline, `Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.`, { per18: true })}` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip("everyone in this league together"))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(F)}${everyHoleRow(F)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
@@ -146,7 +146,7 @@ function playerStats(St, p, nines = "", gid = "") {
       ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
     </div>`}
     ${sgLeague(gid, p.id)}
-    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}<div class="card"><div class="muted small">${esc(first)} over ${plural(p.statline.holes, "hole")} in this league.</div>${statTiles(p.statline, { per18: true })}</div>` : ""}
+    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(p.statline, `${esc(first)} over ${plural(p.statline.holes, "hole")} in this league.`, { per18: true })}` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}

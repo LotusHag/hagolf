@@ -195,6 +195,63 @@ export function promptSheet(title, lead, { placeholder = "", value = "", label =
 /** A sheet that just says something. */
 export const alertSheet = (title, lead, body = "") => sheet({ title, lead, body, actions: [{ label: "OK", value: "ok", kind: "primary" }] });
 
+/** A rendered image looked at full screen, inside the app. A raw PNG thrown into a new browser tab is a jolt on
+ *  a phone -- the app is gone, the way back is the browser's -- so the image opens over the screen instead:
+ *  swipe or tap the arrows through the set, tap the image to read it up close, tap anywhere else to leave.
+ *  Items are { url, label, blob? }; the full-size blob is turned into a URL only when looked at, and let go on
+ *  the way out, so nothing the caller owns is revoked. */
+export function viewer(items, start = 0) {
+  const list = (items || []).filter(x => x && (x.url || x.blob));
+  if (!list.length) return;
+  let i = Math.min(Math.max(start, 0), list.length - 1), big = false, swiped = false;
+  const made = new Map();
+  const srcOf = n => { if (!made.has(n)) made.set(n, list[n].blob ? URL.createObjectURL(list[n].blob) : list[n].url); return made.get(n); };
+  const wrap = document.createElement("div");
+  wrap.className = "viewer";
+  wrap.innerHTML = `<div class="vbar" role="dialog" aria-modal="true"><span class="vof"></span><button class="vx" data-v="close" aria-label="Close">&times;</button></div>
+    <div class="vstage"><img alt=""></div>
+    <div class="vfoot"><button class="vnav" data-v="-1" aria-label="Previous">&#8249;</button>
+      <figcaption><span class="vlabel"></span><span class="vhint">Tap to look closer</span></figcaption>
+      <button class="vnav" data-v="1" aria-label="Next">&#8250;</button></div>`;
+  const img = wrap.querySelector("img"), stage = wrap.querySelector(".vstage");
+  const zoom = on => { big = on; stage.classList.toggle("big", on); stage.scrollTop = 0; stage.scrollLeft = on ? (stage.scrollWidth - stage.clientWidth) / 2 : 0; };
+  const show = () => {
+    img.src = srcOf(i);
+    img.alt = list[i].label || "";
+    wrap.querySelector(".vlabel").textContent = list[i].label || "";
+    wrap.querySelector(".vof").textContent = list.length > 1 ? `${i + 1} of ${list.length}` : "";
+    wrap.querySelectorAll(".vnav").forEach(b => { b.hidden = list.length < 2; });
+    zoom(false);
+  };
+  const step = d => { i = (i + d + list.length) % list.length; show(); };
+  const close = () => { wrap.remove(); document.removeEventListener("keydown", onKey, true); made.forEach((u, n) => { if (list[n].blob) URL.revokeObjectURL(u); }); };
+  // caught on the way down, so Escape shuts the image and not the sheet underneath it as well
+  const onKey = e => {
+    const act = { Escape: close, ArrowLeft: () => step(-1), ArrowRight: () => step(1) }[e.key];
+    if (!act) return;
+    e.stopPropagation();
+    e.preventDefault();
+    act();
+  };
+  wrap.addEventListener("click", ev => {
+    if (swiped) { swiped = false; return; }
+    const b = ev.target.closest("[data-v]");
+    if (b) return b.dataset.v === "close" ? close() : step(Number(b.dataset.v));
+    if (ev.target === img) return zoom(!big);
+    if (!ev.target.closest(".vfoot, .vbar")) close();
+  });
+  let x0 = null;
+  stage.addEventListener("touchstart", e => { x0 = big || e.touches.length > 1 ? null : e.touches[0].clientX; }, { passive: true });
+  stage.addEventListener("touchend", e => {
+    const dx = x0 === null ? 0 : e.changedTouches[0].clientX - x0;
+    x0 = null;
+    if (Math.abs(dx) > 50 && list.length > 1) { swiped = true; step(dx < 0 ? 1 : -1); }
+  }, { passive: true });
+  document.addEventListener("keydown", onKey, true);
+  document.body.appendChild(wrap);
+  show();
+}
+
 // ---------------------------------------------------------------- explanations behind an "i", tab rows
 export const tipBody = text => `<div class="tipbody">${text}</div>`;
 export const ibtn = `<i class="ibtn" aria-hidden="true">i</i>`;
@@ -368,7 +425,7 @@ export async function runJobs(jobs, prefix) {
     if (!b) return;
     if (b.dataset.act === "save-all") await saveFiles(ok.map(x => toFile(x, prefix)), prefix);
     if (b.dataset.act === "save-one") await saveFiles([toFile(results[Number(b.dataset.i)], prefix)], prefix);
-    if (b.dataset.act === "open") { const x = results[Number(b.dataset.i)]; window.open(URL.createObjectURL(x.blob), "_blank"); }
+    if (b.dataset.act === "open") viewer(ok.map(x => ({ url: x.thumbUrl, blob: x.blob, label: x.label })), ok.indexOf(results[Number(b.dataset.i)]));
   };
   out.scrollIntoView({ behavior: "smooth" });
 }

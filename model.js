@@ -536,6 +536,14 @@ export function statSummary(holes) {
   const pen = hs.filter(h => h.penaltyShots !== null);
   const puttsOnGreens = withPutts.filter(h => h.gir);
   const total = xs => xs.reduce((a, h) => a + h.putts, 0);
+  // An up and down needs the putts as well as the green: chipped on and holed, or holed from off the green
+  // outright, which is why nought putts counts too. Scrambling asks a looser question -- par or better
+  // however it arrived -- so a par 5 reached in four and two-putted is a scramble but not an up and down.
+  const upDownHoles = girHoles.filter(h => !h.gir && h.putts !== null && h.strokes !== null);
+  const fwGir = fw.filter(h => h.gir !== null);
+  const fwHit = fwGir.filter(h => h.fairway === "hit"), fwMiss = fwGir.filter(h => h.fairway !== "hit");
+  const greensScored = greens.filter(h => h.topar !== null);
+  const pars = [...new Set(girHoles.map(h => h.par))].sort((a, b) => a - b);
   // Holes that actually answered something, not holes on the card. Every hole carries a record once anything
   // is switched on, so counting those would tell somebody who marked one green that it was "over 18 holes".
   const said = h => STAT_KEYS.some(k => h[k] !== null && h[k] !== undefined);
@@ -550,6 +558,7 @@ export function statSummary(holes) {
       three: withPutts.filter(h => h.putts >= 3).length,
       onGir: puttsOnGreens.length ? mean(puttsOnGreens.map(h => h.putts)) : null,
       onGirHoles: puttsOnGreens.length,
+      threeOnGir: puttsOnGreens.filter(h => h.putts >= 3).length,
     },
     fairway: !fw.length ? null : {
       holes: fw.length, hit: fw.filter(h => h.fairway === "hit").length,
@@ -558,6 +567,28 @@ export function statSummary(holes) {
       vague: fw.filter(h => isMiss(h.fairway) && !FAIRWAY_MISSES.includes(h.fairway)).length,
     },
     gir: !girHoles.length ? null : { holes: girHoles.length, hit: greens.length, pct: ratio(greens.length, girHoles.length) },
+    // The same greens split by the kind of hole. Only the pars actually walked appear, so a nine of par 3s
+    // has one entry and not three empty ones.
+    girByPar: !girHoles.length ? null : Object.fromEntries(pars.map(par => {
+      const at = girHoles.filter(h => h.par === par);
+      return [par, { holes: at.length, hit: at.filter(h => h.gir).length, pct: ratio(at.filter(h => h.gir).length, at.length) }];
+    })),
+    // What the fairway is worth, in greens. Both sides of this need the tee shot *and* the putts on the same
+    // hole, so it appears only on a card that kept both.
+    fromFairway: fwHit.length < 4 || fwMiss.length < 4 ? null : {
+      hit: { holes: fwHit.length, gir: fwHit.filter(h => h.gir).length, pct: ratio(fwHit.filter(h => h.gir).length, fwHit.length) },
+      miss: { holes: fwMiss.length, gir: fwMiss.filter(h => h.gir).length, pct: ratio(fwMiss.filter(h => h.gir).length, fwMiss.length) },
+      edge: ratio(fwHit.filter(h => h.gir).length, fwHit.length) - ratio(fwMiss.filter(h => h.gir).length, fwMiss.length),
+    },
+    // Greens hit and turned into a birdie: the putter's half of the green, where scrambling is the other one.
+    birdies: !greensScored.length ? null : {
+      holes: greensScored.length, made: greensScored.filter(h => h.topar <= -1).length,
+      pct: ratio(greensScored.filter(h => h.topar <= -1).length, greensScored.length),
+    },
+    upDown: !upDownHoles.length ? null : {
+      holes: upDownHoles.length, made: upDownHoles.filter(h => h.putts <= 1).length,
+      pct: ratio(upDownHoles.filter(h => h.putts <= 1).length, upDownHoles.length),
+    },
     scramble: !missed.length ? null : {
       holes: missed.length, saved: missed.filter(h => h.topar <= 0).length,
       pct: ratio(missed.filter(h => h.topar <= 0).length, missed.length),
@@ -579,6 +610,96 @@ export function statKindsPresent(summary) {
 
 /** A ratio as a percentage, for display. Named apart from the app's own `pct`, which takes a part and a whole. */
 export const fmtPct = v => v === null || v === undefined ? "–" : `${Math.round(v * 100)}%`;
+
+/**
+ * How many attempts a rate needs before it is drawn as one. Under this it stays the fraction it was: three
+ * sand saves out of three is a fact, and 100% is a claim about a player.
+ */
+export const RATE_MIN = 8;
+
+/** The five the personal card has room for, in the order they are drawn. */
+export const STRIP_KEYS = ["putts", "gir", "fairway", "upDown", "sand", "scramble", "penalty"];
+
+/**
+ * One summary read out as a list of readings, so the tiles on screen, the strip on a card and the rows on a
+ * poster all say the same thing in the same order. Nothing here is computed: `statSummary` did the sums, and
+ * this only decides what each one is called and how it is written down.
+ *
+ * `title` is for a poster row, `label` for a tile caption, `short` for the strip on a card. `value` is the
+ * number a bar or a comparison uses, null where there is no single number to compare. `deep` marks the ones
+ * that are interesting rather than headline: the screen and the card leave them out, the posters take them.
+ */
+export function statReadings(x, { per18 = false } = {}) {
+  if (!x || !x.any) return [];
+  const out = [];
+  const s = n => n === 1 ? "" : "s";
+  // `pair` marks a reading that means something set against somebody else's: a rate or an average, never a
+  // raw count. One player's 7 three-putts against a whole league's 17 is not a comparison, it is two
+  // different questions, and a bar drawn between them says the wrong thing in the right colours.
+  const rate = (key, part, of, { title, label, short, group, deep = false, lower = false }) => {
+    if (!of) return;
+    const pct = part / of, enough = of >= RATE_MIN;
+    out.push({ key, group, deep, lower, pair: true, title, short, n: of, value: pct, fmt: fmtPct,
+      big: enough ? fmtPct(pct) : `${part}/${of}`,
+      label: enough ? `${label} · ${part} of ${of}` : label,
+      sub: `${part} of ${of}` });
+  };
+  const num = (key, value, { title, label, short, group, deep = false, lower = false, pair = false, sub = "", big, n = null, fmt = v => String(v) }) =>
+    out.push({ key, group, deep, lower, pair, title, short, n, value, fmt, big: big ?? fmt(value), label, sub });
+
+  const p = x.putts;
+  if (p) {
+    num("putts", per18 ? p.per18 : p.total, {
+      title: per18 ? "Putts per 18" : "Putts", group: "putting", lower: true, pair: per18, n: p.holes, short: "Putts",
+      big: per18 ? fix(p.per18, 1) : String(p.total),
+      label: per18 ? "putts per 18" : `putts in ${p.holes} hole${s(p.holes)}`,
+      sub: per18 ? `over ${p.holes} holes` : `${p.holes} hole${s(p.holes)}`,
+      fmt: v => per18 ? fix(v, 1) : String(Math.round(v)) });
+    if (p.one) num("onePutt", p.one, { title: "One-putts", label: `one-putt${s(p.one)}`, short: "One-putts", group: "putting", deep: true, n: p.holes });
+    if (p.three) num("threePutt", p.three, { title: "Three-putts", label: `three-putt${s(p.three)}`, short: "Three-putts", group: "putting", deep: true, lower: true, n: p.holes });
+    if (p.onGir !== null) num("puttsOnGir", p.onGir, {
+      title: "Putts per green", label: "putts per green", short: "Per green", group: "putting", lower: true, pair: true,
+      n: p.onGirHoles, sub: `${p.onGirHoles} green${s(p.onGirHoles)}`, fmt: v => fix(v, 2) });
+  }
+  if (x.gir) rate("gir", x.gir.hit, x.gir.holes, { title: "Greens in regulation", label: "greens", short: "Greens", group: "striking" });
+  if (x.fairway) {
+    rate("fairway", x.fairway.hit, x.fairway.holes, { title: "Fairways hit", label: "fairways", short: "Fairways", group: "striking" });
+    const L = x.fairway.misses.left, R = x.fairway.misses.right;
+    if (L || R) num("fairwayMiss", null, {
+      title: "Where the tee shot misses", short: "Misses", group: "striking", big: `${L}← ${R}→`,
+      label: L === R ? "missed both ways" : `misses mostly ${L > R ? "left" : "right"}`,
+      sub: `${L} left · ${R} right` });
+  }
+  if (x.fromFairway) {
+    const f = x.fromFairway;
+    // One number, not two: what hitting the fairway is worth in greens. The two rates it came from stay in
+    // the sub, because the reading is the gap between them and a tile that showed only one would not say that.
+    const edge = v => `${fmtSigned(Math.round(v * 100), 0)}%`;
+    num("fromFairway", f.edge, {
+      title: "What the fairway is worth", short: "Fairway worth", group: "striking", deep: true, pair: true,
+      big: edge(f.edge), label: "greens gained by hitting the fairway",
+      sub: `${fmtPct(f.hit.pct)} from it, ${fmtPct(f.miss.pct)} from the rough`, fmt: edge });
+  }
+  if (x.birdies) rate("birdies", x.birdies.made, x.birdies.holes, { title: "Greens turned into birdies", label: "birdie conversion", short: "Birdies", group: "striking", deep: true });
+  if (x.girByPar) for (const par of Object.keys(x.girByPar)) {
+    const g = x.girByPar[par];
+    if (g.holes >= 4) rate(`girPar${par}`, g.hit, g.holes, { title: `Greens on par ${par}s`, label: `greens on par ${par}s`, short: `Par ${par}s`, group: "striking", deep: true });
+  }
+  if (x.scramble) rate("scramble", x.scramble.saved, x.scramble.holes, { title: "Scrambling", label: "scrambling", short: "Scramble", group: "saves" });
+  if (x.upDown) rate("upDown", x.upDown.made, x.upDown.holes, { title: "Up and down", label: "up and down", short: "Up & down", group: "saves" });
+  if (x.sand) rate("sand", x.sand.saved, x.sand.holes, { title: "Sand saves", label: "sand saves", short: "Sand", group: "saves" });
+  if (x.penalty) num("penalty", x.penalty.total, {
+    title: "Penalty shots", label: `penalty shot${s(x.penalty.total)}`, short: "Penalties", group: "trouble",
+    lower: true, n: x.penalty.holes, sub: `over ${x.penalty.holes} hole${s(x.penalty.holes)}` });
+  return out;
+}
+
+/** The readings two summaries can be set against each other on: the same key, on both sides, with a number. */
+export function statPairs(mine, theirs, opts = {}) {
+  const a = statReadings(mine, opts), b = new Map(statReadings(theirs, opts).map(r => [r.key, r]));
+  return a.filter(r => r.pair && r.value !== null && b.has(r.key) && b.get(r.key).value !== null)
+    .map(r => ({ ...r, theirs: b.get(r.key).value, theirN: b.get(r.key).n }));
+}
 
 // ---------------------------------------------------------------- strokes gained, against the people who were there
 /**

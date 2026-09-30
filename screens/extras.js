@@ -1,32 +1,34 @@
 // Putts, fairways and the rest: the one-tap strip under a score, and the tiles that read them back.
 import * as S from "../store.js";
 import { esc, plural } from "../ui.js";
-import { STAT_SWITCHES, hasFairway, fmtPct, fmtSigned, fix } from "../model.js";
+import { STAT_SWITCHES, hasFairway, statReadings, fmtSigned } from "../model.js";
 
 const PUTT_CHIPS = [0, 1, 2, 3];
 const MARK = { yes: "✓", no: "✗" };
 
-/** The extras read back, as tiles. Only what was actually recorded appears. */
-export function statTiles(x, { per18 = false } = {}) {
+/**
+ * The extras read back, as tiles. Only what was actually recorded appears, and `deep` decides whether the
+ * headline readings come back or the ones that are interesting rather than important.
+ */
+export function statTiles(x, { per18 = false, deep = false } = {}) {
+  const rs = statReadings(x, { per18 }).filter(r => !!r.deep === deep);
+  if (!rs.length) return "";
+  return `<div class="statgrid">${rs.map(r =>
+    `<div class="stattile"><b>${esc(r.big)}</b><small>${esc(r.label)}</small></div>`).join("")}</div>`;
+}
+
+/** True when a summary has anything worth folding away under "more". */
+export const hasDeepStats = (x, opts) => statReadings(x, opts).some(r => r.deep);
+
+/**
+ * The whole read-back as one card: the headline readings, with the interesting-but-not-important ones folded
+ * underneath. `intro` is drawn as it comes, so a caller that puts a name in it escapes that itself.
+ */
+export function statBlock(x, intro, opts = {}) {
   if (!x || !x.any) return "";
-  const t = (v, label) => `<div class="stattile"><b>${v}</b><small>${esc(label)}</small></div>`;
-  const tiles = [];
-  if (x.putts) {
-    tiles.push(per18 ? t(fix(x.putts.per18, 1), "putts per 18") : t(x.putts.total, `putts in ${plural(x.putts.holes, "hole")}`));
-    if (x.putts.one) tiles.push(t(x.putts.one, x.putts.one === 1 ? "one-putt" : "one-putts"));
-    if (x.putts.three) tiles.push(t(x.putts.three, x.putts.three === 1 ? "three-putt" : "three-putts"));
-    if (x.putts.onGir !== null) tiles.push(t(fix(x.putts.onGir, 2), "putts per green"));
-  }
-  if (x.fairway) {
-    tiles.push(t(fmtPct(x.fairway.pct), `fairways · ${x.fairway.hit} of ${x.fairway.holes}`));
-    const L = x.fairway.misses.left, R = x.fairway.misses.right;
-    if (L || R) tiles.push(t(`${L}← ${R}→`, L === R ? "missed both ways" : `misses mostly ${L > R ? "left" : "right"}`));
-  }
-  if (x.gir) tiles.push(t(fmtPct(x.gir.pct), `greens · ${x.gir.hit} of ${x.gir.holes}`));
-  if (x.scramble) tiles.push(t(fmtPct(x.scramble.pct), `scrambling · ${x.scramble.saved} of ${x.scramble.holes}`));
-  if (x.sand) tiles.push(t(`${x.sand.saved}/${x.sand.holes}`, "sand saves"));
-  if (x.penalty) tiles.push(t(x.penalty.total, x.penalty.total === 1 ? "penalty shot" : "penalty shots"));
-  return `<div class="statgrid">${tiles.join("")}</div>`;
+  const rest = statTiles(x, { ...opts, deep: true });
+  return `<div class="card"><div class="muted small">${intro}</div>${statTiles(x, opts)}${
+    rest ? `<details class="morestats"><summary class="small">More of the same, for fun</summary>${rest}</details>` : ""}</div>`;
 }
 
 export function statLine(x) {
@@ -69,8 +71,8 @@ export const SG_TIP = `<p>The published version of this compares every shot with
 
 export const STATS_TIP = `<p>These come off your own card, and only the ones you switched on. Nothing here is guessed at.</p>
 <p><b>Greens in regulation</b> is the green reached with two strokes still left for par, and is never asked for either: your strokes less your putts is where the ball was, so counting putts answers it. It is arithmetic, not an opinion, which is why there is no chip for it.</p>
-<p><b>Scrambling</b> is the holes where you missed the green and still made par or better. <b>Sand saves</b> are the same thing out of a bunker. Neither is ever asked for.</p>
-<p>Every figure counts only the holes that answered it, so switching something on halfway through a season skews nothing.</p>`;
+<p><b>Scrambling</b> is the holes where you missed the green and still made par or better. <b>Up and down</b> is the stricter question: green missed, then on and holed in two, which needs your putts as well. <b>Sand saves</b> are scrambling out of a bunker. None of the three is ever asked for.</p>
+<p>Every figure counts only the holes that answered it, so switching something on halfway through a season skews nothing. A percentage waits until there are eight attempts behind it; under that you get the fraction itself, because one sand save out of one is not a hundred per cent of anything.</p>`;
 
 export function statHolesOf(rounds, pid) {
   const out = [];

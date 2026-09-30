@@ -490,6 +490,14 @@ export function defaultStats() {
 
 export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
 
+/**
+ * Whether the extras are drawn on the images as well as read back on screen. On by default: somebody who
+ * took the trouble to write putts down on eighteen holes usually wants them on the card. One answer for
+ * this phone, which the Images screen offers again per round and writes back when it is changed.
+ */
+export const statsOnImages = () => state.settings.statsImages !== false;
+export function setStatsOnImages(on) { state.settings.statsImages = !!on; save(); }
+
 /** The Extras button: opens the ticked kinds for this card and every player on it, or shuts them again.
  * The only place a player's `trackStats` is turned on by default; anywhere else reads `cardKeepsStats`. */
 export function unlockStats(r, on) {

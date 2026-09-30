@@ -5,7 +5,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, h2tip, roundClub, roundLoop, safeCompute, saveFiles } from "../ui.js";
 import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained } from "../model.js";
-import { statTiles, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
+import { statBlock, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
 import { playerRounds, ninesPlayed } from "./stats.js";
 import { leagueResults } from "./formats.js";
 import { myCard, nineLine } from "./review.js";
@@ -162,7 +162,7 @@ export function player(id) {
     <div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">${p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))} · ` : ""}${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(rs.length, "round")}${linkedTo ? ` · <a href="#person/${esc(p.linkedAccount)}">friend</a>` : ""}</div></div></div>
     ${stats}
     ${leagueLines ? `<h2>Leagues</h2><div class="list">${leagueLines}</div>` : ""}
-    ${career.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}<div class="card"><div class="muted small">Over ${plural(career.holes, "hole")} of ${plural(rs.length, "round")}.</div>${statTiles(career, { per18: true })}</div>` : ""}
+    ${career.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(career, `Over ${plural(career.holes, "hole")} of ${plural(rs.length, "round")}.`, { per18: true })}` : ""}
     ${sgMine.total === null ? "" : `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sgMine, "everyone else on the card")}`}
     ${nines.length ? `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18.`)}
       <table class="stand"><thead><tr><th class="l">Loop</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>

@@ -72,7 +72,7 @@ export async function myCard(rid, pid = null) {
   toast("Making your card…", 3000);
   await loadFonts(DATA.fonts);
   const T = makeTheme(themeForRound(rid));
-  const fig = renderCards(M, T, [me.name])[0];
+  const fig = renderCards(M, T, [me.name], "full", { extras: S.statsOnImages() })[0];
   const blob = await fig.fig.toBlob();
   await saveFiles([new File([blob], `${slugFile(r.name)}_${fig.file.split("/").pop()}`, { type: "image/png" })], r.name);
 }

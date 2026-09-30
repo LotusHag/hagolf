@@ -6,7 +6,7 @@ import { DATA } from "../data.js";
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as E from "../entitlements.js";
-import { page, bind, esc, go, toast, sheet, app, ICONS, TABS, subtabs, firstName, appTheme, themeNamed, themeHere, paint, makeTheme, loadFonts, FAMILIES, themesIn, familyStrip } from "../ui.js";
+import { page, bind, esc, go, toast, sheet, viewer, app, ICONS, TABS, subtabs, firstName, appTheme, themeNamed, themeHere, paint, makeTheme, loadFonts, FAMILIES, themesIn, familyStrip } from "../ui.js";
 import { setMarked, marked } from "../draw.js";
 import { leagueStats } from "../model.js";
 import { stablefordLeaderboard, bothBoards, holesPoster, standingsPoster, STANDINGS_TITLES } from "../posters.js";
@@ -148,7 +148,7 @@ function jobsFor(sku, T, D) {
     { label: "Stableford leaderboard, with the handicap, the net and the points meter", make: () => stablefordLeaderboard(M, T, "full") },
     { label: "Both boards on one sheet", make: () => bothBoards(M, T) },
     { label: "How the holes played", make: () => holesPoster(M, T) }];
-  if (sku === "card") return [{ label: `${who.name}'s card: against the field, where the strokes went, the story of the round`, make: () => renderCard(M, who, T, "full").fig }];
+  if (sku === "card") return [{ label: `${who.name}'s card: against the field, where the strokes went, the story of the round`, make: () => renderCard(M, who, T, "full", { extras: true }).fig }];
   if (sku === "nomark") {
     const was = marked();
     return [
@@ -162,12 +162,12 @@ function jobsFor(sku, T, D) {
   if (sku === "season") {
     const L = D.league, St = leagueStats(L.Ms, L.members), p = statsPlayer(St, M);
     return [
-      { label: "How this league scores", make: () => statsFieldPoster(St, L.g, T) },
-      ...(p ? [{ label: `One image a player: ${p.name}`, make: () => statsPlayerPoster(St, p, L.g, T) }] : [])];
+      { label: "How this league scores", make: () => statsFieldPoster(St, L.g, T, { extras: true }) },
+      ...(p ? [{ label: `One image a player: ${p.name}`, make: () => statsPlayerPoster(St, p, L.g, T, { extras: true }) }] : [])];
   }
   if (sku.startsWith("skin:")) return [
     { label: "Stableford leaderboard", make: () => stablefordLeaderboard(M, T, tier) },
-    { label: `${who.name}'s card`, make: () => renderCard(M, who, T, cardTier).fig }];
+    { label: `${who.name}'s card`, make: () => renderCard(M, who, T, cardTier, { extras: true }).fig }];
   return [];
 }
 
@@ -222,7 +222,9 @@ const prevHtml = (j, i) => `<figure class="prev" data-i="${i}"><span class="ph s
 async function fillPrevs(el, jobs, keyOf) {
   el.addEventListener("click", ev => {
     const img = ev.target.closest("img[data-key]");
-    if (img && cache.has(img.dataset.key)) window.open(URL.createObjectURL(cache.get(img.dataset.key).blob), "_blank");
+    if (!img) return;
+    const drawn = jobs.map((j, i) => ({ key: keyOf(i), label: j.label })).filter(x => cache.has(x.key));
+    viewer(drawn.map(x => ({ ...cache.get(x.key), label: x.label })), drawn.findIndex(x => x.key === img.dataset.key));
   });
   for (let i = 0; i < jobs.length; i++) {
     if (!el.isConnected) return;

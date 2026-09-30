@@ -1,11 +1,11 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
 import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule } from "./draw.js";
-import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, NO_SCORE } from "./model.js";
+import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, statReadings, STRIP_KEYS, NO_SCORE } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
 const plural = (n, s = "s") => n === 1 ? "" : s;
 
-export function story(M, p) {
+export function story(M, p, { extras = true } = {}) {
   const n = M.n, L = M.labels;
   const s = p.scores, d = p.deltas, vs = p.vsrest, out = [];
   const players = M.players;
@@ -39,7 +39,7 @@ export function story(M, p) {
   // The extras, where this card kept any. One sentence inside the story rather than a block of its own: the
   // card's layout is fixed by hole count, and a card that kept nothing must look exactly as it did before.
   // High up, because the story is cut to seven lines and this is worth more than the flourishes below it.
-  if (p.statline && p.statline.any) {
+  if (extras && p.statline && p.statline.any) {
     const x = p.statline, said = [];
     // Three short sentences rather than one chain of semicolons: putting, then ball striking, then the
     // penalty. A card that kept only some of it drops the sentences it cannot fill.
@@ -107,15 +107,41 @@ export function story(M, p) {
   return out;
 }
 
+/** The five or six the strip has room for, headline readings only, in the order the card draws them. */
+export function stripReadings(statline) {
+  if (!statline || !statline.any) return [];
+  const rs = statReadings(statline);
+  return STRIP_KEYS.map(k => rs.find(r => r.key === k && !r.deep)).filter(Boolean).slice(0, 6);
+}
+
+/** One band of the extras under the scorecard, built like the tiles in the header: name, figure, what it is out of. */
+function extrasStrip(fig, topIn, hIn, readings) {
+  const T = fig.T, W = fig.w - 2 * MARGIN * fig.w;
+  const ax = fig.axes([MARGIN, 1 - (topIn + hIn) / fig.h, 1 - 2 * MARGIN, hIn / fig.h], [0, W], [0, hIn]);
+  section(ax, 0, hIn - 0.1, "Putts, fairways and the rest", 10);
+  const boxH = hIn - 0.34, w = W / readings.length;
+  readings.forEach((r, i) => {
+    const x = i * w;
+    ax.rbox(x + 0.03, 0, w - 0.06, boxH, T.PANEL, 0.06);
+    ax.text(x + w / 2, boxH * 0.80, caps(T, r.short), { size: 8.5, family: "display", color: T.ACCENT, ha: "center", va: "center" });
+    ax.text(x + w / 2, boxH * 0.40, r.big, { size: r.big.length > 5 ? 16 : 22, family: "display", color: T.INK, ha: "center", va: "center" });
+    if (r.sub) ax.text(x + w / 2, boxH * 0.14, r.sub, { size: 8, color: T.INK_3, ha: "center", va: "center" });
+  });
+}
+
 /**
  * `basic` is the free card: who, what they went round in, and the scorecard with its notation. `full` adds what
  * the round was like -- against the field per hole, where the strokes went, and the story. The basic card stops
  * after the scorecard, so the sheet itself is shorter rather than a full card with holes in it.
  */
-export function renderCard(M, p, T, tier = "full") {
+export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   const n = M.n, SI = M.si, N = M.field, L = M.labels, PAR = p.par;
   const basic = tier === "basic";
-  const W_IN = n <= 9 ? 12 : 15, H_IN = basic ? 5.25 : 10.9;
+  // The extras are a choice, and a card that does not take them is the card it always was: the strip adds its
+  // own height and everything under the scorecard slides down by exactly that much, so nothing else moves.
+  const strip = basic || !extras ? [] : stripReadings(p.statline);
+  const EX = strip.length ? 1.35 : 0;
+  const W_IN = n <= 9 ? 12 : 15, H_IN = basic ? 5.25 : 10.9 + EX;
   const fig = new Fig(W_IN, H_IN, T, 150);
   const rect = (topIn, hIn, x0 = MARGIN, x1 = 1 - MARGIN) => [x0, 1 - (topIn + hIn) / H_IN, x1 - x0, hIn / H_IN];
   const Mx = MARGIN * W_IN;
@@ -230,11 +256,13 @@ export function renderCard(M, p, T, tier = "full") {
     return { file: `players/${prefix0}_${fileSlug(p.name)}.png`, fig };
   }
 
+  if (strip.length) extrasStrip(fig, 5.22, EX - 0.2, strip);
+
   // against the field
   const vs = p.vsrest;
   const lo = Math.min(0, ...vsPlayed), hi = Math.max(0, ...vsPlayed);
   const span = Math.max(1, hi - lo), lim = span;
-  const axb = fig.axes(rect(5.3, 2.3, MARGIN, 0.60), [0.3, n + 0.7], [lo - span * 0.42, hi + span * 0.45]);
+  const axb = fig.axes(rect(5.3 + EX, 2.3, MARGIN, 0.60), [0.3, n + 0.7], [lo - span * 0.42, hi + span * 0.45]);
   section(axb, 0.3, hi + span * 0.36, "Strokes against the rest of the field, per hole");
   axb.line(0.4, 0, n + 0.6, 0, T.LINE, 0.8);
   const bw = n <= 9 ? 0.6 : 0.7;
@@ -251,11 +279,11 @@ export function renderCard(M, p, T, tier = "full") {
     }
     axb.text(h + 1, lo - span * 0.3, L[h], { size: 8.5, color: T.INK_3, ha: "center", va: "center" });
   });
-  fig.text(Mx, 7.72, "Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.",
+  fig.text(Mx, 7.72 + EX, "Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.",
     { size: 7.5, color: T.INK_3, va: "top" });
 
   // where the strokes went
-  const axw = fig.axes(rect(5.3, 2.3, 0.64), [0, 1], [0, 1]);
+  const axw = fig.axes(rect(5.3 + EX, 2.3, 0.64), [0, 1], [0, 1]);
   section(axw, 0, 0.955, "Shots to par, by section");
   const d = p.deltas;
   const rows = [];
@@ -288,11 +316,11 @@ export function renderCard(M, p, T, tier = "full") {
   outcomeBar(axw, 0, y - 0.13, 1.0, 0.075, p.counts, n, 0.006, true, 8);
 
   // story
-  const axf = fig.axes(rect(8.05, 2.65), [0, 1], [0, 1]);
+  const axf = fig.axes(rect(8.05 + EX, 2.65), [0, 1], [0, 1]);
   section(axf, 0, 0.96, "The story of the round");
   y = 0.80;
   const maxW = axf.wIn - 0.016 * axf.wIn;
-  for (const ln of story(M, p).slice(0, 7)) {
+  for (const ln of story(M, p, { extras }).slice(0, 7)) {
     const lines = fig.wrap(ln, maxW, 9.5);
     axf.rbox(0.0, y - 0.035, 0.006, 0.07, T.ACCENT, 0);
     axf.text(0.016, y, lines.join("\n"), { size: 9.5, color: T.INK_2, va: "center", lineSpacing: 1.3 });
@@ -305,6 +333,6 @@ export function renderCard(M, p, T, tier = "full") {
   return { file: `players/${prefix}_${fileSlug(p.name)}.png`, fig };
 }
 
-export function renderCards(M, T, names = null, tier = "full") {
-  return M.players.filter(p => !names || names.includes(p.name)).map(p => renderCard(M, p, T, tier));
+export function renderCards(M, T, names = null, tier = "full", opts = {}) {
+  return M.players.filter(p => !names || names.includes(p.name)).map(p => renderCard(M, p, T, tier, opts));
 }

@@ -1,7 +1,7 @@
 // Posters for a league's statistics: the field, the nines, one player. App-only, so there is no Python
 // twin; the drawing helpers and the four-outcome poster palette are the same ones the round posters use.
 import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, section, outcomeBar, legend, caps, rowBand } from "./draw.js";
-import { fmtToPar, fmtSigned, fix } from "./model.js";
+import { fmtToPar, fmtSigned, fix, statReadings, statPairs, STRIP_KEYS, RATE_MIN } from "./model.js";
 
 /** The screen's six buckets folded onto the four the poster palette names. */
 export function four(counts) {
@@ -175,6 +175,69 @@ function barWidth(fig, n, maxUnits, wantIn) {
   return Math.min(maxUnits, wantIn / unit);
 }
 
+/** A section heading on its own, for a band that is tiles rather than an axes of its own. */
+function bandHeading(fig, topIn, title) {
+  const ax = fig.axes([MARGIN, 1 - (topIn + 0.3) / fig.h, 1 - 2 * MARGIN, 0.3 / fig.h], [0, 1], [0, 1]);
+  section(ax, 0, 0.5, title, 10);
+  return topIn + 0.3;
+}
+
+const statRowsHeight = n => 0.52 * (n + 1.6) + 0.1;
+
+/** The headline readings a set of summaries has between them, in the order a card would draw them. */
+function statColumns(lines, opts) {
+  const seen = new Map();
+  for (const x of lines) for (const r of statReadings(x, opts)) if (!r.deep && !seen.has(r.key)) seen.set(r.key, r);
+  return STRIP_KEYS.map(k => seen.get(k)).filter(Boolean);
+}
+
+/** Every reading a summary has, the interesting ones included, as tiles: what a player kept, read back. */
+function readingTiles(fig, topIn, hIn, x, opts, limit = 5) {
+  const rs = statReadings(x, opts).filter(r => !r.deep).slice(0, limit);
+  return tiles(fig, topIn, hIn, rs.map(r => [r.big, r.label.split(" · ")[0], r.key === "putts" ? fig.T.ACCENT : null]));
+}
+
+/**
+ * One row a player, one column a reading. Every cell carries what it is out of underneath, because a rate
+ * over four holes and a rate over four hundred are not the same claim and a poster cannot footnote a cell.
+ */
+function statTable(fig, topIn, rows, cols, opts, { title, note = "" } = {}) {
+  const T = fig.T, W = fig.w - 2 * MARGIN * fig.w, rowIn = 0.52;
+  const hIn = rowIn * (rows.length + 1.6);
+  const ax = fig.axes([MARGIN, 1 - (topIn + hIn) / fig.h, 1 - 2 * MARGIN, hIn / fig.h], [0, W], [-rows.length, 1.6]);
+  section(ax, 0, 1.2, title);
+  if (note) ax.text(W, 1.2, note, { size: 9, color: T.INK_3, ha: "right", va: "center" });
+  const nameW = 3.0, colW = (W - nameW) / cols.length;
+  const size = ax.fitSize(rows.map(r => r.name), nameW - 0.15, 14);
+  ax.text(0.05, 0.45, caps(T, "Player"), { size: 9.5, family: "display", color: T.INK_3, va: "center" });
+  cols.forEach((c, i) => ax.text(nameW + colW * (i + 0.5), 0.45, caps(T, c.short), { size: 9.5, family: "display", color: T.INK_3, ha: "center", va: "center" }));
+  ax.line(0, 0.1, W, 0.1, T.LINE, 0.8);
+  // the best in each column, so a table of numbers still has somewhere for the eye to land
+  const best = cols.map(c => {
+    const vs = rows.map(r => r.by[c.key]).filter(r => r && r.n >= RATE_MIN).map(r => r.value);
+    return vs.length < 2 ? null : (c.lower ? Math.min(...vs) : Math.max(...vs));
+  });
+  rows.forEach((r, i) => {
+    const y = -i - 0.5;
+    rowBand(ax, 0, y - 0.46, W, 0.92, i, 0.06);
+    ax.text(0.05, y, r.name, { size, family: "display", color: T.INK, va: "center" });
+    cols.forEach((c, k) => {
+      const x = nameW + colW * (k + 0.5), cell = r.by[c.key];
+      if (!cell) { ax.text(x, y, "–", { size: 12, color: T.INK_3, ha: "center", va: "center" }); return; }
+      const top = best[k] !== null && cell.n >= RATE_MIN && cell.value === best[k];
+      ax.text(x, y + 0.09, cell.big, { size: 15, family: "display", color: top ? T.ACCENT : T.INK, ha: "center", va: "center" });
+      ax.text(x, y - 0.18, cell.sub, { size: 8.5, color: T.INK_3, ha: "center", va: "center" });
+    });
+  });
+  return topIn + hIn + 0.1;
+}
+
+/** The player against the rest of the league on the readings both sides kept. Empty when they share none. */
+function extrasPairs(p, opts) {
+  return statPairs(p.statline, p.rest && p.rest.statline, opts)
+    .map(r => [r.title, r.value, r.theirs, r.fmt, r.lower]);
+}
+
 const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
 
 const BANDS = ["Hardest third", "Middle third", "Easiest third"];
@@ -183,8 +246,9 @@ const BANDS = ["Hardest third", "Middle third", "Easiest third"];
  * The league as one field: what a hole costs it, how the kinds of hole play, and every player's shape.
  * `St` is model.leagueStats; only the league's own players are ever in it.
  */
-export function statsFieldPoster(St, group, T) {
+export function statsFieldPoster(St, group, T, { extras = false } = {}) {
   const F = St.field;
+  const band = extras && F.statline.any ? statReadings(F.statline, { per18: true }).filter(r => !r.deep).slice(0, 5) : [];
   const rows = [
     ...Object.keys(F.byPar).sort().map(k => [`Par ${k}`, F.byPar[k].vspar, `${fix(F.byPar[k].pts, 2)} pts  ·  ${F.byPar[k].holes} holes`]),
     ...F.bands.map((b, i) => b.holes ? [BANDS[i], b.vspar, `${fix(b.pts, 2)} pts  ·  ${b.holes} holes`] : null).filter(Boolean),
@@ -192,10 +256,11 @@ export function statsFieldPoster(St, group, T) {
   const foot = `Every hole the league's own players have walked: ${F.holes} holes over ${F.rounds} rounds on ${F.cards} cards. ` +
     `Points are Stableford, so 2 a hole is playing to handicap. The thirds split the holes by stroke index, so the hardest third of a ` +
     `nine is its three lowest-index holes; those are also where the strokes are given, which is why they usually pay the most points. ` +
-    `Only the league's own players count, so a guest never moves a figure.`;
+    `Only the league's own players count, so a guest never moves a figure.` +
+    (F.statline.any ? ` The readings along the bottom are only from the players who keep them, over the ${F.statline.holes} holes they kept them for, so they say nothing about the rest of the field.` : "");
   const width = 11.5;
   const H = HEADER_IN + 0.18 + 0.95 + 0.15 + DIST_IN + barRowsHeight(rows.length)
-    + playerBarsHeight(St.players.length) + footHeight(T, width, foot);
+    + playerBarsHeight(St.players.length) + (band.length ? 1.45 : 0) + footHeight(T, width, foot);
   const fig = new Fig(width, H, T);
   header(fig, "How this league scores", group.name, `${F.cards} cards  ·  ${F.rounds} rounds  ·  ${dateSpan(St.rounds)}`,
     `${F.players} players  ·  ${F.holes} holes walked\nA round is worth ${fix(F.avgPts)} points`);
@@ -208,7 +273,10 @@ export function statsFieldPoster(St, group, T) {
   ]) + 0.15;
   y = distributionPanel(fig, y, F.counts, "Every hole walked");
   y = barRows(fig, y, rows, { title: "How the holes play", noteHead: "average against par", fmtv: v => fmtSigned(v, 2) });
-  playerBars(fig, y, St.players, "Who scores what", `${St.players.length} players`);
+  y = playerBars(fig, y, St.players, "Who scores what", `${St.players.length} players`);
+  if (band.length) {
+    tiles(fig, bandHeading(fig, y + 0.05, "Putts, fairways and the rest"), 0.9, band.map(r => [r.big, r.label.split(" · ")[0]]));
+  }
   footer(fig, foot);
   return fig;
 }
@@ -284,8 +352,9 @@ export function statsNinesPoster(N, group, T) {
  * One player of a league: their own shape, then the same readings for everyone else over exactly the
  * rounds they were both there for. `p` is one of St.players and carries `rest`, that comparison.
  */
-export function statsPlayerPoster(St, p, group, T) {
+export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
   const R = p.rest;
+  const band = extras ? extrasPairs(p, { per18: true }) : [];
   const perHole = new Set(p.rounds.map(r => r.n)).size > 1;
   const first = p.name.split(" ")[0];
   const vs = [];
@@ -313,9 +382,10 @@ export function statsPlayerPoster(St, p, group, T) {
     `in the proportion of the two figures, and the accent colour marks ${first}'s side when it is the better one, whichever direction the number runs. `
     : `${first} has not yet shared a round in this league with anyone else, so there is nothing to measure against. `) +
     (perHole ? "This league mixes nine- and eighteen-hole rounds, so the round chart counts points a hole. " : "") +
-    "Only the league's own players count, so a guest never moves a figure.";
+    "Only the league's own players count, so a guest never moves a figure." +
+    (band.length ? ` The last block is only the holes where ${first} and somebody else both wrote the same thing down, which is why it counts fewer holes than everything above it.` : "");
   const H = HEADER_IN + 0.18 + 0.95 + 0.15 + DIST_IN + (vs.length ? pairRowsHeight(vs.length) : 0)
-    + (chartIn ? chartIn + 0.15 : 0) + footHeight(T, width, foot);
+    + (chartIn ? chartIn + 0.15 : 0) + (band.length ? pairRowsHeight(band.length) + 0.1 : 0) + footHeight(T, width, foot);
   const fig = new Fig(width, H, T);
   const right = [`${fix(p.avgPts)} points a round`,
     [p.wins ? `${p.wins} win${p.wins === 1 ? "" : "s"}` : "", p.avgPlace ? `${ordinal(Math.round(p.avgPlace))} on average in this league` : ""].filter(Boolean).join("  ·  ")];
@@ -330,7 +400,53 @@ export function statsPlayerPoster(St, p, group, T) {
   ]) + 0.15;
   y = distributionPanel(fig, y, p.counts, "Every hole in this league");
   if (vs.length) y = pairRows(fig, y, vs, { title: "Against the field", noteHead: `${first}  ·  the rest of the league`, labelW: 2.6 });
-  if (chartIn) roundChart(fig, y, chartIn, p.rounds, perHole ? "Points a hole, round by round" : "Points round by round", perHole);
+  if (chartIn) y = roundChart(fig, y, chartIn, p.rounds, perHole ? "Points a hole, round by round" : "Points round by round", perHole);
+  if (band.length) pairRows(fig, y + 0.1, band, { title: "Putts, fairways and the rest", noteHead: `${first}  ·  the rest of the league`, labelW: 2.6 });
+  footer(fig, foot);
+  return fig;
+}
+
+/**
+ * The extras as a sheet of their own: what the league keeps beyond the number of strokes. Nothing here is
+ * ever on the other posters' headline rows, because not everybody keeps these and a figure half the field
+ * cannot answer has no business sitting beside one they all can.
+ *
+ * Only players with something recorded appear at all, and every cell says what it is out of.
+ */
+export function statsExtrasPoster(St, group, T) {
+  const opts = { per18: true };
+  const who = St.players.filter(p => p.statline && p.statline.any);
+  const cols = statColumns([St.field.statline, ...who.map(p => p.statline)], opts);
+  const lead = cols[0];
+  const by = p => Object.fromEntries(statReadings(p.statline, opts).map(r => [r.key, r]));
+  const rows = who.map(p => ({ name: p.name, by: by(p) }))
+    .sort((a, b) => {
+      const x = a.by[lead.key], y = b.by[lead.key];
+      if (!x || !y) return (x ? 0 : 1) - (y ? 0 : 1) || a.name.localeCompare(b.name);
+      return (lead.lower ? x.value - y.value : y.value - x.value) || a.name.localeCompare(b.name);
+    });
+  const deep = statReadings(St.field.statline, opts).filter(r => r.deep).slice(0, 5);
+  const width = 11.5;
+  const foot = `Only what was actually written down: every figure counts the holes that answered it and no others, so a player who ` +
+    `started keeping putts halfway through a season is measured over the holes they kept them for, and the number under each ` +
+    `reading says which holes those were. A percentage waits for ${RATE_MIN} attempts before it is drawn as one; under that it stays ` +
+    `the fraction it is, and the accent colour marks the best in a column only where enough stands behind it. Greens in regulation, ` +
+    `scrambling, up and down and sand saves are never asked for on the phone: they fall out of the strokes and the putts.`;
+  const H = HEADER_IN + 0.18 + 0.95 + 0.15 + statRowsHeight(rows.length)
+    + (deep.length ? 1.5 : 0) + footHeight(T, width, foot);
+  const fig = new Fig(width, H, T);
+  const F = St.field.statline;
+  header(fig, "Putts, fairways and the rest", group.name,
+    `${who.length} player${who.length === 1 ? "" : "s"} keeping them  ·  ${F.holes} holes  ·  ${dateSpan(St.rounds)}`,
+    "Only the holes that answered\nEverything else left blank");
+  let y = HEADER_IN + 0.18;
+  y = readingTiles(fig, y, 0.95, F, opts) + 0.15;
+  y = statTable(fig, y, rows, cols, opts, { title: "Player by player", note: `${St.field.holes} holes walked in this league` });
+  if (deep.length) {
+    // These share no units -- a birdie conversion and what the fairway is worth are not on one scale -- so
+    // they are tiles and never bars against each other.
+    tiles(fig, bandHeading(fig, y + 0.1, "More of the same, for fun"), 0.9, deep.map(r => [r.big, r.label.split(",")[0]]));
+  }
   footer(fig, foot);
   return fig;
 }
