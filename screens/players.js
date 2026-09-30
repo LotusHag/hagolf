@@ -139,7 +139,7 @@ export function players(rid, keep = false) {
     if (act === "stat-kind") {
       const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
       S.setStatsFor(rid, next);
-      if (Object.values(next).some(Boolean) && !r.entries.some(e => e.trackStats)) {
+      if (Object.values(next).some(Boolean) && !S.cardKeepsStats(r)) {
         const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
         if (mine) S.setTrackStats(r, mine, true);
       }

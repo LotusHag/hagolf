@@ -683,8 +683,10 @@ a.kv:active { background: var(--card2); }
 
 /* ---- the shop: every item shown working on your own round before it is bought */
 .shopintro { margin: 4px 4px 10px; }
-.banner.fees { cursor: default; margin: 8px 0 12px; line-height: 1.45; }
-.fees-line { margin-top: 3px; }
+.shopline { margin: 3px 4px 0; }
+/* the only money talk on the page: one line, the rest behind it */
+.shopwhy { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 8px 0 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); color: var(--ink2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.shopwhy span { color: var(--green); font-weight: 600; white-space: nowrap; }
 .now.pass { margin: 10px 0 6px; }
 .now button.cta { border: 0; color: inherit; cursor: pointer; font-family: inherit; }
 .shopitem { padding: 0; overflow: hidden; }

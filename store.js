@@ -490,7 +490,8 @@ export function defaultStats() {
 
 export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
 
-/** The Extras button: opens the ticked kinds for this card and every player on it, or shuts them again. */
+/** The Extras button: opens the ticked kinds for this card and every player on it, or shuts them again.
+ * The only place a player's `trackStats` is turned on by default; anywhere else reads `cardKeepsStats`. */
 export function unlockStats(r, on) {
   const want = defaultStats();
   const kinds = Object.fromEntries(STAT_KEYS.map(k => [k, on && (want[k] || !Object.values(want).some(Boolean))]));
@@ -500,6 +501,13 @@ export function unlockStats(r, on) {
 
 /** True when this round is keeping anything at all on this phone. */
 export const anyStatsOn = rid => Object.values(statsFor(rid)).some(Boolean);
+
+/**
+ * Whether this card has ever been asked for extras. Which kinds are open is per phone, but *whose* card keeps
+ * them is shared, so this is the one card-level fact both scorers can see -- and the only thing a player added
+ * later can inherit. Read it rather than guessing again, or the two answers drift apart.
+ */
+export const cardKeepsStats = r => r.entries.some(e => e.trackStats);
 
 export function deleteRound(id) {
   const r = state.rounds.find(x => x.id === id);
@@ -516,8 +524,8 @@ export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, grou
   const e = { playerId: p.id, name: p.name, hi, tee, gender: gender || "m", courseHandicap: courseHandicap ?? null, group, fromHole,
     scores: ghost ? ghost.scores : new Array(n).fill(null), scoreTs: ghost ? ghost.scoreTs : new Array(n).fill(null),
     stats: ghost ? ghost.stats : new Array(n).fill(null), statsTs: ghost ? ghost.statsTs : new Array(n).fill(null),
-    // Keeping putts is the phone owner's habit, so it follows them and nobody else until somebody asks.
-    trackStats: trackStats === null ? (ghost ? !!ghost.trackStats : p.id === state.settings.meId) : !!trackStats,
+    // Whatever the card already does: nothing on a card nobody has asked, and keeping on one that has.
+    trackStats: trackStats === null ? (ghost ? !!ghost.trackStats : cardKeepsStats(round)) : !!trackStats,
     penalties: [], updated_at: now() };
   round.entries.push(e);
   mark("round_entries", `${round.id}|${e.playerId}`, e.updated_at);

@@ -271,7 +271,7 @@ export function headerRule(fig, y) {
     case "dots": fig.line(M, y, R, y, T.ACCENT, 2.2, [0.9, 4.5]); break;
     case "stub": fig.rbox(M, y - 0.05, 1.15, 0.1, T.ACCENT, 0.008); fig.line(M + 1.28, y, R, y, T.LINE, 1.0); break;
     case "glow": fig.rbox(M, y - 0.06, R - M, 0.12, T.ACCENT, 0.02, { alpha: 0.18 }); fig.line(M, y, R, y, T.ACCENT, 1.6); break;
-    case "hair": fig.line(M, y, R, y, T.LINE, 1.0); break;
+    case "hair": fig.line(M, y, R, y, T.INK_3, 0.7); break;
     case "thin": fig.line(M, y, R, y, T.ACCENT, 1.0); break;
     // three bands the width of a flag, in the theme's own three
     case "flags": { const seg = (R - M) / 3; [T.ACCENT, T.INK_3, T.BAR].forEach((c, i) => fig.rbox(M + i * seg, y - 0.03, seg - 0.04, 0.06, c, 0.006)); break; }

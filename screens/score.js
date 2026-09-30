@@ -49,7 +49,7 @@ export function score(rid, hArg) {
   const shown = r.entries.map((e, i) => [e, i]).filter(([e]) => !gf || (e.group || 1) === gf);
   const metres = c.tees[r.defaultTee] && c.tees[r.defaultTee].metres;
   const kinds = S.statsFor(rid);
-  const extras = S.anyStatsOn(rid) && r.entries.some(e => e.trackStats);
+  const extras = S.anyStatsOn(rid) && S.cardKeepsStats(r);
   const body = `
     <div class="strip">${stripHtml(r, c, rid, h)}</div>
     ${groups.length > 1 ? `<div class="filter"><button data-act="gf" data-g="0" class="${gf === 0 ? "on" : ""}">All</button>${groups.map(g => `<button data-act="gf" data-g="${g}" class="${gf === g ? "on" : ""}">Group ${g}</button>`).join("")}</div>` : ""}
