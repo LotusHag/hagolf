@@ -748,15 +748,15 @@ a.kv:active { background: var(--card2); }
 .shopthumb.swrow { display: flex; aspect-ratio: auto; height: 64px; }
 .swrow i { flex: 1; display: block; background: var(--tbg); position: relative; }
 .swrow i::after { content: ""; position: absolute; left: 20%; right: 20%; top: 36%; height: 26%; border-radius: 2px; background: var(--tpanel); border-left: 5px solid var(--tacc); }
-.skins { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
-.skins.colls { grid-template-columns: 1fr; gap: 0; }
+.shopthemes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+.shopthemes.colls { grid-template-columns: 1fr; gap: 0; }
 .collrows { display: grid; gap: 6px; margin: 8px 0; }
 .collrow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .collrow > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .collrow small { font-size: 12px; }
 .collrow i { color: var(--ink3); font-size: 22px; font-style: normal; }
-.tchip.skin { width: 100%; padding-bottom: 8px; }
-.tchip.skin .sw { height: 72px; }
+.tchip.theme { width: 100%; padding-bottom: 8px; }
+.tchip.theme .sw { height: 72px; }
 .tchip small { display: block; color: var(--ink3); font-size: 12px; font-weight: 500; margin-top: -2px; }
 .prevs { margin-top: 6px; }
 .prev { margin: 0 0 14px; }
@@ -764,22 +764,22 @@ a.kv:active { background: var(--card2); }
 .prev img { display: block; width: 100%; border-radius: 4px; border: 1px solid var(--line); cursor: zoom-in; }
 .prev figcaption { font-size: 13px; color: var(--ink2); margin-top: 6px; }
 .prev.err figcaption { color: var(--danger); }
-.skinmock { background: var(--bg); color: var(--ink); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 12px 0; margin: 8px 0 14px; overflow: hidden; }
-.skinmock .mtop { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 4px; }
-.skinmock .brand { font-family: "Oswald", sans-serif; font-weight: 600; font-size: 22px; letter-spacing: .5px; color: var(--green); }
-.skinmock svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
-.skinmock .mbell { color: var(--ink2); display: flex; gap: 10px; }
-.skinmock .now { margin: 8px 0; }
-.skinmock h2 { margin: 12px 4px 6px; }
-.skinmock .card { margin: 0; padding: 0; }
-.skinmock .pl + .pl { border-top: 1px solid var(--line); }
-.skinmock .mtabs { display: flex; justify-content: space-around; margin: 12px -12px 0; padding: 6px 4px 8px; background: var(--card); border-top: 1px solid var(--line); }
-.skinmock .mtabs span { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--ink3); }
-.skinmock .mtabs span.on { color: var(--green); }
-.skinmock.tiny { zoom: .5; margin: 0; pointer-events: none; }
-.skingrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
-.skingrid button { padding: 0; border: 0; background: none; text-align: center; font: inherit; font-weight: 600; font-size: 13px; color: var(--ink); cursor: pointer; }
-.skingrid button span { display: block; margin-top: 4px; }
-.skingrid .board { position: relative; aspect-ratio: 2.2 / 1; margin-top: 6px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--card2); }
-.skingrid .board img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
-.skingrid .board .skeleton { position: absolute; inset: 0; margin: 0; border-radius: 4px; height: auto; }
+.thememock { background: var(--bg); color: var(--ink); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 12px 0; margin: 8px 0 14px; overflow: hidden; }
+.thememock .mtop { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 4px; }
+.thememock .brand { font-family: "Oswald", sans-serif; font-weight: 600; font-size: 22px; letter-spacing: .5px; color: var(--green); }
+.thememock svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.thememock .mbell { color: var(--ink2); display: flex; gap: 10px; }
+.thememock .now { margin: 8px 0; }
+.thememock h2 { margin: 12px 4px 6px; }
+.thememock .card { margin: 0; padding: 0; }
+.thememock .pl + .pl { border-top: 1px solid var(--line); }
+.thememock .mtabs { display: flex; justify-content: space-around; margin: 12px -12px 0; padding: 6px 4px 8px; background: var(--card); border-top: 1px solid var(--line); }
+.thememock .mtabs span { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--ink3); }
+.thememock .mtabs span.on { color: var(--green); }
+.thememock.tiny { zoom: .5; margin: 0; pointer-events: none; }
+.themegrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
+.themegrid button { padding: 0; border: 0; background: none; text-align: center; font: inherit; font-weight: 600; font-size: 13px; color: var(--ink); cursor: pointer; }
+.themegrid button span { display: block; margin-top: 4px; }
+.themegrid .board { position: relative; aspect-ratio: 2.2 / 1; margin-top: 6px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--card2); }
+.themegrid .board img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
+.themegrid .board .skeleton { position: absolute; inset: 0; margin: 0; border-radius: 4px; height: auto; }

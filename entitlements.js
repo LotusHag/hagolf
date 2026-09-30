@@ -1,5 +1,5 @@
 // What this phone may render, from what its account holds. The list travels with the session, so it is here
-// offline exactly as long as the session is: a phone on the tenth with no signal still renders in a skin that
+// offline exactly as long as the session is: a phone on the tenth with no signal still renders in a theme that
 // was paid for, and nothing is ever checked live.
 //
 // The gate is only closed for a signed-in account on a backend that has the catalogue switched on (`shop`
@@ -24,7 +24,7 @@ export function has(sku) {
   return s.has("pass") || s.has(sku);
 }
 
-export const canTheme = name => FREE_THEMES.includes(name) || has("skins") || has(`collection:${familyOf(name)}`) || has(`skin:${name}`);
+export const canTheme = name => FREE_THEMES.includes(name) || has("themes") || has(`collection:${familyOf(name)}`) || has(`theme:${name}`);
 export const boardTier = () => has("boards") ? "full" : "basic";
 export const cardTier = () => has("card") ? "full" : "basic";
 export const formatAllowed = f => !FORMAT_SKU[f] || has(FORMAT_SKU[f]);

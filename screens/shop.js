@@ -23,7 +23,7 @@ const GROUPS = [
   { key: "ranking", title: "Ways of ranking a season", intro: "Stableford and stroke play are free. These are the other ways to score a season.", skus: ["matchplay", "grandprix"] },
 ];
 
-const TABS_ = [["all", "All"], ["mark", "The mark"], ["images", "Images"], ["ranking", "Ranking"], ["skins", "Skins"]];
+const TABS_ = [["all", "All"], ["mark", "The mark"], ["images", "Images"], ["ranking", "Ranking"], ["themes", "Themes"]];
 let tab = "all";   // the tab last looked at stays chosen for the session
 
 export async function shop(state) {
@@ -38,47 +38,56 @@ export async function shop(state) {
   let cat;
   try { cat = await A.api("/shop/catalogue"); } catch (e) { return page("Shop", `<div class="banner warn">${esc(e.message)}</div>`, { back: "", tabs: "shop" }); }
   const D = previewData();
-  const all = cat.skus.some(c => (c.sku === "pass" || c.sku === "skins") && c.owned);
+  const all = cat.skus.some(c => (c.sku === "pass" || c.sku === "themes") && c.owned);
   const item = sku => cat.skus.find(c => c.sku === sku);
-  const pass = item("pass"), bundle = item("skins");
+  const pass = item("pass"), bundle = item("themes");
   const rest = cat.skus.filter(c => c.sku !== "pass"), oneByOne = rest.reduce((a, c) => a + c.price, 0);
+  // Bought is gone. An item this account holds leaves the shop rather than sitting there wearing a "Yours"
+  // pill, a group with nothing left in it takes its heading and its tab with it, and a shop with nothing at
+  // all left to sell says so instead of showing a page of things already paid for.
+  const groups = GROUPS.map(g => ({ ...g, items: g.skus.map(item).filter(c => c && !c.owned) })).filter(g => g.items.length);
+  const colls = FAMILIES.filter(f => themesIn(f.key).length && !(all || (collectionOf(cat, f.key) || {}).owned));
+  if (!groups.length && all) return everything(cat);
+  const tabs = TABS_.filter(([k]) => k === "all" || (k === "themes" ? !all : groups.some(g => g.key === k)));
+  if (!tabs.some(([k]) => k === tab)) tab = "all";
   const swatch = t => `style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK}"`;
   // one card a family: its looks as a strip, what it costs as a set, and the sheet with every look in it
   const collHtml = f => {
-    const ts = themesIn(f.key), c = collectionOf(cat, f.key), free = ts.filter(t => cat.freeThemes.includes(t.name)).length;
-    if (!ts.length) return "";
-    const owned = all || (c && c.owned);
+    const ts = themesIn(f.key), c = collectionOf(cat, f.key);
+    const free = ts.filter(t => cat.freeThemes.includes(t.name)).length;
+    const yours = ts.filter(t => !cat.freeThemes.includes(t.name) && ownsTheme(cat, t.name)).length;
+    const had = [free ? `${free} free` : "", yours ? `${yours} already yours` : ""].filter(Boolean).join(", ");
     return `<div class="card shopitem" data-sku="collection:${f.key}">
       <button class="shopthumb swrow" data-act="peek" data-sku="collection:${f.key}" aria-label="See the ${esc(f.name)} looks">${ts.map(t => `<i ${swatch(t)}></i>`).join("")}</button>
       <div class="body row"><button class="plain" data-act="peek" data-sku="collection:${f.key}"><div class="name">${esc(f.name)}</div><div class="muted small">${esc(f.blurb)}</div>
-        <div class="muted small shopline">${ts.length} looks${free ? `, ${free} of them free` : ""}</div><div class="peek">See all ${ts.length} ›</div></button>
-        ${owned ? `<span class="pill done">Yours</span>` : c ? `<button class="btn small primary" data-act="buy" data-sku="${c.sku}" ${cat.stripe ? "" : "disabled"}>${eur(c.price)}</button>` : ""}</div></div>`;
+        <div class="muted small shopline">${ts.length} looks${had ? `, ${had}` : ""}</div><div class="peek">See all ${ts.length} ›</div></button>
+        ${c ? `<button class="btn small primary" data-act="buy" data-sku="${c.sku}" ${cat.stripe ? "" : "disabled"}>${eur(c.price)}</button>` : ""}</div></div>`;
   };
 
   const itemHtml = c => `<div class="card shopitem" data-sku="${esc(c.sku)}">
     <button class="shopthumb" data-act="peek" data-sku="${esc(c.sku)}" aria-label="See ${esc(c.name)} on ${onWhat(c.sku).short}"><span class="skeleton"></span></button>
     <div class="body row"><button class="plain" data-act="peek" data-sku="${esc(c.sku)}"><div class="name">${esc(c.name)}</div><div class="muted small">${esc(c.blurb)}</div><div class="peek">See it on ${onWhat(c.sku).short} ›</div></button>
-      ${c.owned ? `<span class="pill done">Yours</span>` : `<button class="btn small primary" data-act="buy" data-sku="${esc(c.sku)}" ${cat.stripe ? "" : "disabled"}>${eur(c.price)}</button>`}</div></div>`;
+      <button class="btn small primary" data-act="buy" data-sku="${esc(c.sku)}" ${cat.stripe ? "" : "disabled"}>${eur(c.price)}</button></div></div>`;
 
   page("Shop", `
-    ${subtabs(TABS_.map(([k, l]) => `<button data-act="tab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join(""))}
+    ${tabs.length > 2 ? subtabs(tabs.map(([k, l]) => `<button data-act="tab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")) : ""}
     <button class="shopwhy" data-act="why"><b>Everything here is extra.</b><span>Why it costs what it costs ›</span></button>
     ${cat.open && cat.stripe ? "" : `<p class="muted small shopline">${cat.open ? "" : "Nothing is gated yet. "}${cat.stripe ? "" : "Buying is not open yet."}</p>`}
     <div data-tab="all">
     <div class="now pass"><div class="k">Everything</div><div class="name">${esc(pass.blurb)}</div>
       <div class="live">All of it in one checkout: <b>${eur(pass.price)}</b> instead of <b>${eur(oneByOne)}</b> item by item.</div>
-      ${pass.owned ? `<span class="cta">Yours</span>` : `<button class="cta" data-act="buy" data-sku="pass" ${cat.stripe ? "" : "disabled"}>Buy the pass · ${eur(pass.price)}</button>`}</div>
+      <button class="cta" data-act="buy" data-sku="pass" ${cat.stripe ? "" : "disabled"}>Buy the pass · ${eur(pass.price)}</button></div>
     </div>
-    ${GROUPS.map(g => `<div data-tab="${g.key}"><h2>${g.title}</h2><p class="muted small shopintro">${g.intro}</p>${g.skus.map(item).filter(Boolean).map(itemHtml).join("")}</div>`).join("")}
-    <div data-tab="skins">
-    <h2>Skins</h2>
-    <p class="muted small shopintro">A skin dresses the app, posters and cards, and a collection its own house style. ${esc(cat.freeThemes.join(" and "))} are free; any other look is ${eur(cat.skinPrice)}, less by the collection.</p>
-    <div class="card shopitem" data-sku="skins">
-      <button class="shopthumb swrow" data-act="peek" data-sku="skins" aria-label="See every skin">${DATA.themes.map(t => `<i ${swatch(t)}></i>`).join("")}</button>
-      <div class="body row"><button class="plain" data-act="peek" data-sku="skins"><div class="name">${esc(bundle.name)}</div><div class="muted small">${esc(bundle.blurb)}</div><div class="peek">See all ${DATA.themes.length} ›</div></button>
-        ${bundle.owned ? `<span class="pill done">Yours</span>` : `<button class="btn small primary" data-act="buy" data-sku="skins" ${cat.stripe ? "" : "disabled"}>${eur(bundle.price)}</button>`}</div></div>
-    <div class="skins colls">${FAMILIES.map(collHtml).join("")}</div>
-    </div>`, { back: "", tabs: "shop", sub: "Bought once, yours on every phone" });
+    ${groups.map(g => `<div data-tab="${g.key}"><h2>${g.title}</h2><p class="muted small shopintro">${g.intro}</p>${g.items.map(itemHtml).join("")}</div>`).join("")}
+    ${all ? "" : `<div data-tab="themes">
+    <h2>Themes</h2>
+    <p class="muted small shopintro">A theme dresses the app, posters and cards, and a collection its own house style. ${esc(cat.freeThemes.join(" and "))} are free; any other look is ${eur(cat.themePrice)}, less by the collection.</p>
+    <div class="card shopitem" data-sku="themes">
+      <button class="shopthumb swrow" data-act="peek" data-sku="themes" aria-label="See every theme">${DATA.themes.map(t => `<i ${swatch(t)}></i>`).join("")}</button>
+      <div class="body row"><button class="plain" data-act="peek" data-sku="themes"><div class="name">${esc(bundle.name)}</div><div class="muted small">${esc(bundle.blurb)}</div><div class="peek">See all ${DATA.themes.length} ›</div></button>
+        <button class="btn small primary" data-act="buy" data-sku="themes" ${cat.stripe ? "" : "disabled"}>${eur(bundle.price)}</button></div></div>
+    ${colls.length ? `<div class="shopthemes colls">${colls.map(collHtml).join("")}</div>` : ""}
+    </div>`}`, { back: "", tabs: "shop", sub: "Bought once, yours on every phone" });
 
   showTab();
   bind(async ev => {
@@ -89,12 +98,27 @@ export async function shop(state) {
     if (b.dataset.act === "buy") return checkout(b.dataset.sku, b);
     if (b.dataset.act !== "peek") return;
     const sku = b.dataset.sku;
-    if (sku.startsWith("skin:")) return skinSheet(sku.slice(5), cat, D);
+    if (sku.startsWith("theme:")) return themeSheet(sku.slice(6), cat, D);
     if (sku.startsWith("collection:")) return collectionSheet(sku.slice(11), cat, D);
-    if (sku === "skins") return bundleSheet(cat, D);
+    if (sku === "themes") return bundleSheet(cat, D);
     return itemSheet(item(sku), cat, D);
   });
   fillList(D);
+}
+
+/**
+ * Nothing left to sell. The shop is a tab in the bar, so it cannot simply disappear; instead it says what it
+ * would otherwise have to say a dozen times over, and points at the two screens where the things it sold live.
+ */
+function everything(cat) {
+  tab = "all";
+  if (location.hash !== "#shop") history.replaceState(null, "", "#shop");
+  return page("Shop", `
+    <div class="now pass"><div class="k">The shop</div><div class="name">You have all of it.</div>
+      <div class="live">Every theme, the full boards and cards, every way of ranking a season, and the mark gone. There is nothing here left to sell you.</div></div>
+    <p class="muted small shopintro">The looks are in <a href="#me/look">Appearance</a>; the images screen of any round or league offers the full set.</p>
+    ${cat.open ? "" : `<p class="muted small shopline">Nothing is gated on this backend yet in any case.</p>`}`,
+    { back: "", tabs: "shop", sub: "Bought once, yours on every phone" });
 }
 
 /** Hides every block that is not on the chosen tab; the All tab shows the lot. The hash follows, so the tab survives a reload. */
@@ -164,7 +188,7 @@ function jobsFor(sku, T, D) {
       { label: "How this league scores", make: () => statsFieldPoster(St, L.g, T, { extras: true }) },
       ...(p ? [{ label: `One image a player: ${p.name}`, make: () => statsPlayerPoster(St, p, L.g, T, { extras: true }) }] : [])];
   }
-  if (sku.startsWith("skin:")) return [
+  if (sku.startsWith("theme:")) return [
     { label: "Stableford leaderboard", make: () => stablefordLeaderboard(M, T, tier) },
     { label: `${who.name}'s card`, make: () => renderCard(M, who, T, cardTier, { extras: true }).fig }];
   return [];
@@ -207,7 +231,7 @@ async function fillList(D) {
   const T = makeTheme(appTheme());
   for (const el of [...app.querySelectorAll(".shopthumb[data-sku]")]) {
     const sku = el.dataset.sku;
-    if (sku === "skins" || sku.startsWith("collection:")) continue;   // those thumbnails are swatch strips, drawn already
+    if (sku === "themes" || sku.startsWith("collection:")) continue;   // those thumbnails are swatch strips, drawn already
     const job = jobsFor(sku, T, D)[0];
     if (!job) { el.innerHTML = ""; continue; }
     // the list shows the whole poster even where the sheet shows a corner of it: a corner blown up to a tile is just text
@@ -251,7 +275,7 @@ async function itemSheet(c, cat, D) {
 export function mockHtml(t, M, tiny = false) {
   const vars = Object.entries(t.ui).filter(([k]) => k !== "scheme").map(([k, v]) => `--${k}:${v}`).join(";");
   const top = M ? M.stbl_board.slice(0, 3) : [];
-  return `<div class="skinmock${tiny ? " tiny" : ""}" style="${vars}" aria-hidden="true">
+  return `<div class="thememock${tiny ? " tiny" : ""}" style="${vars}" aria-hidden="true">
     <div class="mtop"><span class="brand">Hagolf</span><span class="mbell">${ICONS.bell}${ICONS.settings}</span></div>
     <div class="now"><div class="k">Last round</div><div class="name">${esc(M ? M.name : "Sunday fourball")}</div>${top.length ? `<div class="live">${esc(firstName(top[0].name))} won with ${top[0].pts} points</div>` : ""}</div>
     <h2>Stableford</h2>
@@ -259,33 +283,33 @@ export function mockHtml(t, M, tiny = false) {
     <div class="mtabs">${TABS.map(([, , l, ic], i) => `<span class="${i === 0 ? "on" : ""}">${ICONS[ic]}${l}</span>`).join("")}</div></div>`;
 }
 
-/** Held outright, through its collection, through every skin, or through the pass; the free two always. */
-const ownsAll = cat => cat.skus.some(c => (c.sku === "pass" || c.sku === "skins") && c.owned);
+/** Held outright, through its collection, through every theme, or through the pass; the free two always. */
+const ownsAll = cat => cat.skus.some(c => (c.sku === "pass" || c.sku === "themes") && c.owned);
 const collectionOf = (cat, key) => (cat.collections || []).find(c => c.key === key) || null;
-function ownsSkin(cat, name) {
+function ownsTheme(cat, name) {
   const t = themeNamed(name), c = t && collectionOf(cat, t.family || "other");
-  return cat.freeThemes.includes(name) || ownsAll(cat) || cat.skins.includes(name) || !!(c && c.owned);
+  return cat.freeThemes.includes(name) || ownsAll(cat) || cat.themes.includes(name) || !!(c && c.owned);
 }
 
-async function skinSheet(name, cat, D) {
+async function themeSheet(name, cat, D) {
   const t = themeNamed(name);
   if (!t) return;
   const T = makeTheme(t);
-  const owned = ownsSkin(cat, name);
-  const bundle = cat.skus.find(c => c.sku === "skins"), coll = collectionOf(cat, t.family || "other"), fam = FAMILIES.find(f => f.key === (t.family || "other"));
-  const jobs = jobsFor(`skin:${name}`, T, D);
+  const owned = ownsTheme(cat, name);
+  const bundle = cat.skus.find(c => c.sku === "themes"), coll = collectionOf(cat, t.family || "other"), fam = FAMILIES.find(f => f.key === (t.family || "other"));
+  const jobs = jobsFor(`theme:${name}`, T, D);
   const body = `<p class="muted small">The app itself, as it opens every time:</p>${mockHtml(t, D.M)}
-    <p class="muted small">${onWhat("skin").line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>`;
+    <p class="muted small">${onWhat("theme").line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>`;
   const wearing = appTheme().name === name;
   const actions = owned
     ? [{ label: wearing ? "The app wears this now" : "Wear it", value: "wear", kind: "primary" }]
-    : [...buyActions(`Buy this skin · ${eur(cat.skinPrice)}`, "buy", cat),
+    : [...buyActions(`Buy this theme · ${eur(cat.themePrice)}`, "buy", cat),
       ...(coll && !coll.owned && fam ? buyActions(`${fam.name}, all ${coll.themes.length} · ${eur(coll.price)}`, "coll", cat) : []),
-      ...(bundle && !bundle.owned ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : [])];
-  const v = await sheet({ title: `The ${name} skin`, lead: t.blurb || "", body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(`skin:${name}`, T, i)) });
-  if (v === "buy") return checkout(`skin:${name}`);
+      ...(bundle && !bundle.owned ? buyActions(`Every theme · ${eur(bundle.price)}`, "bundle", cat) : [])];
+  const v = await sheet({ title: `The ${name} theme`, lead: t.blurb || "", body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(`theme:${name}`, T, i)) });
+  if (v === "buy") return checkout(`theme:${name}`);
   if (v === "coll") return checkout(coll.sku);
-  if (v === "bundle") return checkout("skins");
+  if (v === "bundle") return checkout("themes");
   if (v === "wear" && !wearing) {
     S.setSetting("theme", name); S.setSetting("themeChosen", true);
     paint(themeHere());
@@ -298,8 +322,8 @@ async function skinSheet(name, cat, D) {
 async function fillGrid(el, ts, D) {
   for (const t of ts) {
     if (!el.isConnected) return;
-    const T = makeTheme(t), job = jobsFor(`skin:${t.name}`, T, D)[0];
-    const r = job && await rendered(keyFor(`skin:${t.name}`, T, 0), job);   // the key the skin's own sheet uses, so it is drawn once
+    const T = makeTheme(t), job = jobsFor(`theme:${t.name}`, T, D)[0];
+    const r = job && await rendered(keyFor(`theme:${t.name}`, T, 0), job);   // the key the theme's own sheet uses, so it is drawn once
     const slot = el.querySelector(`.board[data-look="${CSS.escape(t.name)}"]`);
     if (slot) slot.innerHTML = r ? `<img src="${r.url}" alt="The Stableford leaderboard in ${esc(t.name)}">` : "";
   }
@@ -309,26 +333,26 @@ async function fillGrid(el, ts, D) {
 async function collectionSheet(key, cat, D) {
   const fam = FAMILIES.find(f => f.key === key), ts = themesIn(key);
   if (!fam || !ts.length) return;
-  const c = collectionOf(cat, key), owned = ownsAll(cat) || !!(c && c.owned), bundle = cat.skus.find(x => x.sku === "skins");
-  const tag = t => cat.freeThemes.includes(t.name) ? "free" : ownsSkin(cat, t.name) ? "yours" : "";
+  const c = collectionOf(cat, key), owned = ownsAll(cat) || !!(c && c.owned), bundle = cat.skus.find(x => x.sku === "themes");
+  const tag = t => cat.freeThemes.includes(t.name) ? "free" : ownsTheme(cat, t.name) ? "yours" : "";
   const body = `<p class="muted small">${ts.length} looks, each on the app itself and on the showcase round's Stableford leaderboard, all in this collection's house style. Tap one to see it up close.</p>
-    <div class="skingrid">${ts.map(t => `<button data-act="skin:${t.name}" data-sheet-act>${mockHtml(t, D.M, true)}<span class="board" data-look="${esc(t.name)}"><span class="skeleton"></span></span><span>${esc(t.name)}${tag(t) ? ` <small class="muted">· ${tag(t)}</small>` : ""}</span></button>`).join("")}</div>`;
+    <div class="themegrid">${ts.map(t => `<button data-act="theme:${t.name}" data-sheet-act>${mockHtml(t, D.M, true)}<span class="board" data-look="${esc(t.name)}"><span class="skeleton"></span></span><span>${esc(t.name)}${tag(t) ? ` <small class="muted">· ${tag(t)}</small>` : ""}</span></button>`).join("")}</div>`;
   const actions = [...(owned || !c ? [] : buyActions(`Buy all ${ts.length} · ${eur(c.price)}`, "buy", cat)),
-    ...(bundle && !bundle.owned && !ownsAll(cat) ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : [])];
+    ...(bundle && !bundle.owned && !ownsAll(cat) ? buyActions(`Every theme · ${eur(bundle.price)}`, "bundle", cat) : [])];
   const v = await sheet({ title: fam.name, lead: fam.blurb, body, actions, onOpen: el => fillGrid(el, ts, D) });
   if (v === "buy") return checkout(c.sku);
-  if (v === "bundle") return checkout("skins");
-  if (v && v.startsWith("skin:")) return skinSheet(v.slice(5), cat, D);
+  if (v === "bundle") return checkout("themes");
+  if (v && v.startsWith("theme:")) return themeSheet(v.slice(6), cat, D);
 }
 
-/** Every skin: the collections as strips, each opening on its looks. */
+/** Every theme: the collections as strips, each opening on its looks. */
 async function bundleSheet(cat, D) {
-  const bundle = cat.skus.find(c => c.sku === "skins");
+  const bundle = cat.skus.find(c => c.sku === "themes");
   const rows = FAMILIES.filter(f => themesIn(f.key).length).map(f => `<button class="collrow" data-act="coll:${f.key}" data-sheet-act>${familyStrip(themesIn(f.key))}<span><b>${esc(f.name)}</b><small class="muted">${themesIn(f.key).length} looks</small></span><i>›</i></button>`).join("");
   const body = `<p class="muted small">All ${DATA.themes.length} looks in ${FAMILIES.filter(f => themesIn(f.key).length).length} collections, on the posters, the cards and the app itself. Tap a collection to see its looks.</p>
     <div class="collrows">${rows}</div>`;
-  const actions = bundle.owned ? [] : buyActions(`Buy every skin · ${eur(bundle.price)}`, "buy", cat);
+  const actions = bundle.owned ? [] : buyActions(`Buy every theme · ${eur(bundle.price)}`, "buy", cat);
   const v = await sheet({ title: bundle.name, lead: bundle.blurb, body, actions });
-  if (v === "buy") return checkout("skins");
+  if (v === "buy") return checkout("themes");
   if (v && v.startsWith("coll:")) return collectionSheet(v.slice(5), cat, D);
 }
