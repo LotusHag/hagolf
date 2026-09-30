@@ -449,22 +449,26 @@ export function fmtIndex(hi) {
  * nothing else keeps putts and nothing else, and a card with every switch off is exactly the card the app
  * kept before any of this existed.
  *
- * `derived` marks the two that the app can work out for itself once putts are being kept, so their chip
- * arrives already answered and a tap only ever *corrects* it. `perHole` is what the scoring strip draws.
+ * `derived` marks what the app works out for itself. Those are never switched on, never asked about on a
+ * hole and never drawn as a chip -- they are here only so a table can name them. `perHole` is what the
+ * scoring strip draws for the rest.
  */
 export const STAT_KINDS = [
   { key: "putts", col: "putts", label: "Putts", short: "Putts", word: "putts", perHole: "count", derived: false,
     blurb: "How many of your strokes were putts. On its own this also gives greens in regulation, scrambling and putts per green." },
   { key: "fairway", col: "fairway", label: "Fairways hit", short: "Fairway", word: "fairways", perHole: "fairway", derived: false,
     blurb: "Whether the tee shot finished on the fairway. Not asked on a par 3, which has none." },
-  { key: "gir", col: "gir", label: "Greens in regulation", short: "GIR", word: "greens", perHole: "bit", derived: true,
-    blurb: "Whether the green was reached with two strokes left for par. Worked out from your putts where you keep them; tap only to correct it." },
+  { key: "gir", col: "gir", label: "Greens in regulation", short: "GIR", word: "greens", perHole: null, derived: true,
+    blurb: "Whether the green was reached with two strokes left for par. Never asked for: it falls out of your putts, so keeping those is what turns it on." },
   { key: "penaltyShots", col: "penalty_shots", label: "Penalty shots", short: "Penalties", word: "penalty shots", perHole: "count", derived: false,
     blurb: "How many of the strokes you took were penalties — water, out of bounds, an unplayable lie. These are already inside your score and are never added to it again." },
   { key: "bunker", col: "bunker", label: "Greenside bunkers", short: "Sand", word: "bunkers", perHole: "bit", derived: false,
     blurb: "Whether you played from a bunker by the green. Whether you saved par from it comes from your score." },
 ];
 export const STAT_KEYS = STAT_KINDS.map(k => k.key);
+/** The ones a card actually asks about, and so the only ones with a switch and a chip. */
+export const STAT_SWITCHES = STAT_KINDS.filter(k => !k.derived);
+export const STAT_SWITCH_KEYS = STAT_SWITCHES.map(k => k.key);
 export const statKind = key => STAT_KINDS.find(k => k.key === key) || null;
 
 /** The ways a fairway can be missed. The app writes `hit` or `miss`; the rest are for a card read off paper. */

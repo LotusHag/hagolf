@@ -4,7 +4,7 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, parseHI, hiOk, confirmSheet, promptSheet, avatar } from "../ui.js";
-import { handicapFor, fmtHcp, fmtIndex, STAT_KINDS } from "../model.js";
+import { handicapFor, fmtHcp, fmtIndex, STAT_SWITCHES } from "../model.js";
 
 /** Giving up on a round: it is thrown away everywhere. A finished one is deleted by whoever was on it. */
 export function dropBtn(r) {
@@ -187,14 +187,14 @@ export function players(rid, keep = false) {
 }
 
 function statsPicker(rid, kinds, r) {
-  const on = STAT_KINDS.filter(k => kinds[k.key]);
+  const on = STAT_SWITCHES.filter(k => kinds[k.key]);
   const who = r.entries.filter(e => e.trackStats);
   const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
   const line = !on.length ? "Putts, fairways and the rest: not kept"
     : `Keeping ${andList(on.map(k => k.word))}${who.length ? ` for ${andList(who.map(e => firstName(e.name)))}` : " — for nobody yet"}`;
   return `<details class="card" id="statpick"><summary class="small">${esc(line)}</summary>
     <p class="muted small" style="margin:8px 0 0">Tick what you want to tap in beside each score. One tap on the hole each; anything left off never appears.</p>
-    <div class="statpick">${STAT_KINDS.map(k => `<button data-act="stat-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
+    <div class="statpick">${STAT_SWITCHES.map(k => `<button data-act="stat-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
     ${on.length ? `<p class="muted small" style="margin:10px 0 0">${on.map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>
       <p class="pickline" style="margin:12px 0 0">Keep them for</p>
       <div class="statpick">

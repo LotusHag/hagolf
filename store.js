@@ -2,7 +2,7 @@
 // leagues, league-round attachments, courses added on phones, course handicaps from club tables, settings.
 // Every record carries updated_at and deleted; the queue remembers which records changed and when.
 import { DATA } from "./data.js";
-import { STAT_KEYS, emptyStat, blankStat } from "./model.js";
+import { STAT_SWITCH_KEYS, emptyStat, blankStat } from "./model.js";
 import { mirror } from "./idb.js";
 
 const KEY = "hagolf-v2";
@@ -473,7 +473,7 @@ export function setTrackStats(r, e, on) {
  */
 export function statsFor(rid) {
   const per = (state.settings.statsRound || {})[rid];
-  return Object.fromEntries(STAT_KEYS.map(k => [k, !!(per && per[k])]));
+  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, !!(per && per[k])]));
 }
 
 export function setStatsFor(rid, kinds) {
@@ -485,7 +485,7 @@ export function setStatsFor(rid, kinds) {
 /** What unlocking opens on a card: the kinds ticked in Settings, or everything until somebody narrows it. */
 export function defaultStats() {
   const on = state.settings.stats;
-  return Object.fromEntries(STAT_KEYS.map(k => [k, on ? !!on[k] : true]));
+  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on ? !!on[k] : true]));
 }
 
 export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
@@ -494,7 +494,7 @@ export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
  * The only place a player's `trackStats` is turned on by default; anywhere else reads `cardKeepsStats`. */
 export function unlockStats(r, on) {
   const want = defaultStats();
-  const kinds = Object.fromEntries(STAT_KEYS.map(k => [k, on && (want[k] || !Object.values(want).some(Boolean))]));
+  const kinds = Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on && (want[k] || !Object.values(want).some(Boolean))]));
   setStatsFor(r.id, kinds);
   if (on) for (const e of r.entries) if (!e.trackStats) setTrackStats(r, e, true);
 }

@@ -1,7 +1,7 @@
 // Putts, fairways and the rest: the one-tap strip under a score, and the tiles that read them back.
 import * as S from "../store.js";
 import { esc, plural } from "../ui.js";
-import { STAT_KINDS, hasFairway, girFrom, fmtPct, fmtSigned, fix } from "../model.js";
+import { STAT_SWITCHES, hasFairway, fmtPct, fmtSigned, fix } from "../model.js";
 
 const PUTT_CHIPS = [0, 1, 2, 3];
 const MARK = { yes: "✓", no: "✗" };
@@ -67,8 +67,8 @@ export const SG_TIP = `<p>The published version of this compares every shot with
 <p><b>Strokes gained</b> is what they averaged on a hole less what you took: plus means you took fewer. <b>Putting</b> is the same sum on putts alone, and <b>tee to green</b> is whatever is left over, so the two always add back up to the total.</p>
 <p>A hole picked up is left out, and the putting split only counts holes where both cards wrote putts down.</p>`;
 
-export const STATS_TIP = `<p>These come off your own card, and only the ones you switched on. Nothing here is guessed at except where it says <b>auto</b>.</p>
-<p><b>Greens in regulation</b> is the green reached with two strokes still left for par. Once you count putts the app knows it: the ball was on the green after your strokes less your putts.</p>
+export const STATS_TIP = `<p>These come off your own card, and only the ones you switched on. Nothing here is guessed at.</p>
+<p><b>Greens in regulation</b> is the green reached with two strokes still left for par, and is never asked for either: your strokes less your putts is where the ball was, so counting putts answers it. It is arithmetic, not an opinion, which is why there is no chip for it.</p>
 <p><b>Scrambling</b> is the holes where you missed the green and still made par or better. <b>Sand saves</b> are the same thing out of a bunker. Neither is ever asked for.</p>
 <p>Every figure counts only the holes that answered it, so switching something on halfway through a season skews nothing.</p>`;
 
@@ -87,7 +87,7 @@ function bitChip(i, kind, label, state, extra = "") {
 
 export function statStrip(r, c, e, i, h, kinds) {
   if (!e.trackStats) return "";
-  const on = STAT_KINDS.filter(k => kinds[k.key]);
+  const on = STAT_SWITCHES.filter(k => kinds[k.key]);
   if (!on.length) return "";
   const v = e.stats[h] || {};
   const par = c.par[h], live = holedOut(e, h);
@@ -103,12 +103,6 @@ export function statStrip(r, c, e, i, h, kinds) {
     lines.push(`<div class="srow"><span class="slab">Fairway</span>${opt("left", "← left")}${opt("hit", "hit ✓")}${opt("right", "right →")}</div>`);
   }
   const bits = [];
-  if (kinds.gir) {
-    const auto = girFrom(live ? e.scores[h] : null, v.putts ?? null, par);
-    const eff = v.gir === null || v.gir === undefined ? auto : !!v.gir;
-    const guessed = (v.gir === null || v.gir === undefined) && auto !== null;
-    bits.push(bitChip(i, "gir", "Green", eff === null ? "off" : eff ? "yes" : "no", guessed ? `<i class="auto">auto</i>` : ""));
-  }
   if (kinds.penaltyShots) {
     const n = v.penaltyShots ?? null;
     bits.push(`<button class="schip wide ${n ? "pen" : "off"}" data-act="st-bit" data-i="${i}" data-k="penaltyShots">Penalty${n ? ` +${n}` : ""}</button>`);
@@ -127,7 +121,6 @@ export function statTap(r, e, h, act, b) {
   }
   if (act === "st-fw") { const want = b.dataset.v; return S.setStat(r, e, h, { fairway: v.fairway === want ? null : want }); }
   const k = b.dataset.k;
-  if (k === "gir") return S.setStat(r, e, h, { gir: v.gir === null || v.gir === undefined ? true : v.gir ? false : null });
   if (k === "penaltyShots") { const n = v.penaltyShots ?? 0; return S.setStat(r, e, h, { penaltyShots: n >= 3 ? null : n + 1 }); }
   if (k === "bunker") return S.setStat(r, e, h, { bunker: v.bunker ? null : true });
 }
