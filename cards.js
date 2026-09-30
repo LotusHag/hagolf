@@ -118,24 +118,48 @@ export function stripReadings(statline) {
 
 // The widest a single reading is set. A band that always filled the card would hand two readings half a
 // scorecard each; past this the row stops growing and stands in the middle instead.
-const BOX_MAX_IN = 4.2;
+const BOX_MAX_IN = 2.4;
 
 /**
- * The extras under the scorecard: the same titled band of panels the posters draw at their foot, drawn by
- * the same code, so the card and the season sheet say the same thing in the same shape.
+ * The extras, in the foot of the by-section block: the same titled band of panels the posters draw at their
+ * foot, drawn by the same code, so the card and the season sheet say the same thing in the same shape.
  *
  * A card is one round, so every reading is the count it came from rather than the rate: 0 of 9 greens is
  * something that happened on a Saturday, where 0% is a hole in the page. The rates belong to a season, and
- * the season sheets still draw them.
+ * the season sheets still draw them. The caption is the short name: a column this narrow has room for GIR
+ * but not for greens in regulation.
  */
-function extrasBand(fig, topIn, hIn, readings) {
-  const x0 = MARGIN * fig.w, W = fig.w - 2 * x0;
+function extrasBand(fig, x0, topIn, W, hIn, readings) {
   heading(fig, x0, topIn, W, "Putts, fairways and the rest");
   const used = Math.min(W, readings.length * BOX_MAX_IN), step = used / readings.length;
   const boxH = hIn - headingIn;
   readings.forEach((r, i) =>
-    panel(fig, x0 + (W - used) / 2 + i * step, topIn + headingIn, step, boxH, r.count, r.name, null,
-      { bigSize: bigIn(step, 24), capSize: 8.5 }));
+    panel(fig, x0 + (W - used) / 2 + i * step, topIn + headingIn, step, boxH, r.count, r.short, null,
+      { bigSize: Math.min(bigIn(step, 22), boxH * 27), capSize: 8 }));   // a strip this shallow is capped by its height too
+}
+
+/** The rows of the by-section block: the nines, or the thirds of a short loop, and then the par families. */
+function sectionRows(M, p) {
+  const n = M.n, L = M.labels, d = p.deltas, PAR = p.par, rows = [];
+  const range = (a, b) => [...Array(b - a).keys()].map(i => a + i);
+  const group = (label, hs) => {
+    const pl = hs.filter(h => d[h] !== null);
+    if (pl.length) rows.push([label, sum(pl.map(h => d[h])), pl.length]);
+  };
+  if (n === 18) {
+    group("Front nine", range(0, 9));
+    group("Back nine", range(9, 18));
+  } else {
+    const third = Math.floor(n / 3);
+    group(`Holes ${L[0]} to ${L[third - 1]}`, range(0, third));
+    group(`Holes ${L[third]} to ${L[2 * third - 1]}`, range(third, 2 * third));
+    group(`Holes ${L[2 * third]} to ${L[n - 1]}`, range(2 * third, n));
+  }
+  for (const k of [3, 4, 5]) {
+    const hs = range(0, n).filter(h => PAR[h] === k);
+    if (hs.length) group(`Par ${k}s (${hs.length})`, hs);
+  }
+  return rows;
 }
 
 /**
@@ -150,8 +174,16 @@ function extrasBand(fig, topIn, hIn, readings) {
  */
 const CARD_W = { portrait: 0.92, tall: 1, poster: 1.08, broad: 1.06, wide: 1.14 };
 const STORY_LINES = { full: 7, short: 5, none: 3 };
-const SIDE_IN = 2.3, STACK_IN = 1.72;
+const MID_TOP = 5.3, SIDE_IN = 2.3, CAP_IN = 0.34;               // inches: the middle band's top, its least height, the note under the chart
 const STORY_TOP = 0.53, STORY_LINE = 0.34, STORY_WRAP = 0.13;   // inches: the title gap, an entry, a turned line
+// The by-section block, measured in inches from its own top rather than stretched over whatever height it is
+// given, so its rows sit the same distance apart on every card: the title, the first row, a row, the foot of
+// the results bar under the last of them, and how tall that bar is.
+const SECT_HEAD = 0.1, SECT_ROW0 = 0.41, SECT_ROW = 0.265, SECT_BAR = 0.3, SECT_BARH = 0.1725;
+// The readings go in the foot of that block, and the block reserves the strip whether or not this card kept
+// any: one with nothing to put there is the same card with the strip left empty, never the story moved up
+// into it.
+const STATS_IN = 1.15, STATS_GAP = 0.12;
 
 /**
  * `basic` is the free card: who, what they went round in, and the scorecard with its notation. `full` adds what
@@ -161,24 +193,31 @@ const STORY_TOP = 0.53, STORY_LINE = 0.34, STORY_WRAP = 0.13;   // inches: the t
 export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   const n = M.n, SI = M.si, N = M.field, L = M.labels, PAR = p.par;
   const basic = tier === "basic";
-  // The extras are a choice, and a card that does not take them is the card it always was: the strip adds its
-  // own height and everything under the scorecard slides down by exactly that much, so nothing else moves.
+  // The extras are a choice; the room for them is not. Whether this card kept any or not the by-section
+  // block ends with the same reserved strip, so the two cards are the same card.
   const strip = basic || !extras ? [] : stripReadings(p.statline);
-  const EX = strip.length ? 1.35 : 0;
   const H = house(T);
   // A narrow family stands the two panels under the scorecard one above the other instead of side by side,
   // and every family tells as much of the story as its prose level allows. Both change the height, which is
   // summed here once, before the figure exists, so nothing below has to know which way it went.
   const stacked = H.page === "portrait";
   const storyN = STORY_LINES[H.prose] ?? 7;
-  const midIn = stacked ? SIDE_IN + STACK_IN : SIDE_IN;
   const W_IN = Math.round((n <= 9 ? 12 : 15) * (CARD_W[H.page] ?? 1) * 10) / 10;
+  // Beside the chart the by-section rows are one narrow column; under it the block is the width of the card,
+  // so the same rows go in two. Either way the block is as tall as its rows plus the reserved strip, and
+  // beside the chart the chart grows to match, so the two end on the same line.
+  const rows = sectionRows(M, p);
+  const wcols = stacked ? 2 : 1, per = Math.ceil(rows.length / wcols);
+  const sectIn = SECT_ROW0 + per * SECT_ROW + SECT_BAR + STATS_IN;
+  const colIn = stacked ? SIDE_IN : Math.max(SIDE_IN, sectIn);
+  const midIn = stacked ? SIDE_IN + CAP_IN + sectIn : colIn;
   const told = basic ? [] : story(M, p, { extras }).slice(0, storyN);
   const storyW = (1 - 2 * MARGIN) * W_IN * 0.984;
   const probe = new Fig(W_IN, 1, T, 20);
   const wrapped = told.map(ln => probe.wrap(ln, storyW, 9.5));
   const storyIn = STORY_TOP + wrapped.reduce((a, ls) => a + STORY_LINE + (ls.length - 1) * STORY_WRAP, 0);
-  const H_IN = basic ? 5.25 : 8.05 + EX + (midIn - SIDE_IN) + storyIn + 0.2;
+  const storyTop = MID_TOP + midIn + 0.45;
+  const H_IN = basic ? 5.25 : storyTop + storyIn + 0.2;
   const fig = new Fig(W_IN, H_IN, T, 150);
   const rect = (topIn, hIn, x0 = MARGIN, x1 = 1 - MARGIN) => [x0, 1 - (topIn + hIn) / H_IN, x1 - x0, hIn / H_IN];
   const Mx = MARGIN * W_IN;
@@ -295,13 +334,11 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
     return { file: `players/${prefix0}_${fileSlug(p.name)}.png`, fig };
   }
 
-  if (strip.length) extrasBand(fig, 5.2, EX - 0.14, strip);
-
   // against the field
   const vs = p.vsrest;
   const lo = Math.min(0, ...vsPlayed), hi = Math.max(0, ...vsPlayed);
   const span = Math.max(1, hi - lo), lim = span;
-  const axb = fig.axes(rect(5.3 + EX, SIDE_IN, MARGIN, stacked ? 1 - MARGIN : 0.60), [0.3, n + 0.7], [lo - span * 0.42, hi + span * 0.45]);
+  const axb = fig.axes(rect(MID_TOP, colIn, MARGIN, stacked ? 1 - MARGIN : 0.60), [0.3, n + 0.7], [lo - span * 0.42, hi + span * 0.45]);
   section(axb, 0.3, hi + span * 0.36, "Strokes against the rest of the field, per hole");
   axb.line(0.4, 0, n + 0.6, 0, T.LINE, 0.8);
   const bw = n <= 9 ? 0.6 : 0.7;
@@ -318,50 +355,38 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
     }
     axb.text(h + 1, lo - span * 0.3, L[h], { size: 8.5, color: T.INK_3, ha: "center", va: "center" });
   });
-  fig.text(Mx, 7.72 + EX, "Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.",
+  fig.text(Mx, MID_TOP + colIn + 0.12, "Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.",
     { size: 7.5, color: T.INK_3, va: "top" });
 
   // where the strokes went: beside the chart, or under it on a narrow card
-  const axw = stacked
-    ? fig.axes(rect(5.3 + SIDE_IN + 0.12 + EX, STACK_IN - 0.12, MARGIN, 1 - MARGIN), [0, 1], [0, 1])
-    : fig.axes(rect(5.3 + EX, SIDE_IN, 0.64), [0, 1], [0, 1]);
-  section(axw, 0, 0.955, "Shots to par, by section");
-  const d = p.deltas;
-  const rows = [];
-  const group = (label, hs) => {
-    const pl = hs.filter(h => d[h] !== null);
-    if (pl.length) rows.push([label, sum(pl.map(h => d[h])), pl.length]);
-  };
-  const range = (a, b) => [...Array(b - a).keys()].map(i => a + i);
-  if (n === 18) {
-    group("Front nine", range(0, 9));
-    group("Back nine", range(9, 18));
-  } else {
-    const third = Math.floor(n / 3);
-    group(`Holes ${L[0]} to ${L[third - 1]}`, range(0, third));
-    group(`Holes ${L[third]} to ${L[2 * third - 1]}`, range(third, 2 * third));
-    group(`Holes ${L[2 * third]} to ${L[n - 1]}`, range(2 * third, n));
-  }
-  for (const k of [3, 4, 5]) {
-    const hs = range(0, n).filter(h => PAR[h] === k);
-    if (hs.length) group(`Par ${k}s (${hs.length})`, hs);
-  }
-  // Beside the chart this is one narrow column; under it the block is the width of the card, so the same
-  // rows go in two, which keeps the label and its figure the same distance apart either way.
-  const wcols = stacked ? 2 : 1, per = Math.ceil(rows.length / wcols), cw = 1 / wcols;
+  const blockTop = stacked ? MID_TOP + SIDE_IN + CAP_IN : MID_TOP;
+  const blockIn = stacked ? sectIn : colIn;
+  const blockX = stacked ? MARGIN : 0.64, blockX1 = 1 - MARGIN;
+  const axw = fig.axes(rect(blockTop, blockIn, blockX, blockX1), [0, 1], [0, 1]);
+  const dn = v => 1 - v / blockIn;             // inches from the top of the block, in its own units
+  section(axw, 0, dn(SECT_HEAD), "Shots to par, by section");
+  const cw = 1 / wcols;
   rows.forEach(([label, v, cnt], i) => {
-    const x0 = Math.floor(i / per) * cw, y0 = 0.82 - (i % per) * 0.115;
+    const x0 = Math.floor(i / per) * cw, y0 = dn(SECT_ROW0 + (i % per) * SECT_ROW);
     axw.text(x0, y0, label, { size: 9, color: T.INK_2, va: "center" });
     axw.text(x0 + 0.70 * cw, y0, fmtToPar(v), { size: 11, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
     axw.text(x0 + 0.76 * cw, y0, `${fmtSigned(v / cnt, 1)} per hole`, { size: 7.5, color: T.INK_3, va: "center" });
   });
-  let y = 0.82 - per * 0.115;
-  axw.text(0, y - 0.02, "Results against par" + (p.nr ? ` (${p.holes_played} holes played)` : ""), { size: 8, color: T.INK_3, va: "center" });
-  outcomeBar(axw, 0, y - 0.13, 1.0, 0.075, p.counts, n, 0.006, true, 8);
+  const foot = SECT_ROW0 + per * SECT_ROW;
+  axw.text(0, dn(foot + 0.05), "Results against par" + (p.nr ? ` (${p.holes_played} holes played)` : ""), { size: 8, color: T.INK_3, va: "center" });
+  outcomeBar(axw, 0, dn(foot + SECT_BAR), 1.0, SECT_BARH / blockIn, p.counts, n, 0.006, true, 8);
+
+  // The readings, in the strip the block keeps for them. It is measured from the foot of the block rather
+  // than from the rows above it, so it lands in the same place on a card with three sections and on one with
+  // six, and nothing above it can reach into it.
+  if (strip.length) {
+    extrasBand(fig, blockX * W_IN, blockTop + blockIn - STATS_IN + STATS_GAP,
+      (blockX1 - blockX) * W_IN, STATS_IN - STATS_GAP, strip);
+  }
 
   // story. The axes is only as tall as the entries that survived the family's prose level, so the block is
   // laid out in inches from its own top and never spreads three lines over the room seven would have taken.
-  const axf = fig.axes(rect(8.05 + EX + (midIn - SIDE_IN), storyIn), [0, 1], [0, 1]);
+  const axf = fig.axes(rect(storyTop, storyIn), [0, 1], [0, 1]);
   const down = v => 1 - v / storyIn;           // inches from the top of the block, in its own units
   section(axf, 0, down(0.1), "The story of the round");
   let at = STORY_TOP;
