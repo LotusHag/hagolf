@@ -37,10 +37,10 @@ const dateSpan = rounds => {
 function distributionBlock(T, counts, label) {
   const c4 = four(counts), total = sumc(c4), d = dense(T);
   const hIn = 0.95 * d;
-  return block("chart", 2.8, () => hIn + headingIn, (fig, x, top, w) => {
+  return block("chart", 2.8, () => hIn + headingIn, (fig, x, top, w, extra = 0) => {
     heading(fig, x, top, w, label, "");
     const y = top + headingIn;
-    const ax = blockAxes(fig, x, y, w, hIn, [0, w], [0, 1]);
+    const ax = blockAxes(fig, x, y, w, hIn + extra, [0, w], [0, 1]);
     if (legends(T)) legend(ax, 0, 0.92, present(T, c4), 8.5, 0.09, 0.09, 0.12);
     outcomeBar(ax, 0, 0.24, w, 0.42, c4, total, 0.03, true, 11);
     T.OUTCOMES.forEach((o, k) => {
@@ -53,7 +53,7 @@ function distributionBlock(T, counts, label) {
         ax.text(cx, 0.17, `${share(c4[k], total)}%`, { size: 9, color: T.INK_3, ha: "center", va: "top" });
       }
     });
-  });
+  }, 0.7);
 }
 
 /**
@@ -64,10 +64,10 @@ function distributionBlock(T, counts, label) {
 function barRowsBlock(T, rows, { title, fmtv = v => fix(v, 2), noteHead = "", labelW = 2.4 } = {}) {
   const rowIn = 0.42 * dense(T), hIn = rowIn * rows.length + 0.2;
   const notes = house(T).prose !== "none";
-  return block("chart", 3.4, () => hIn + (title ? headingIn : 0), (fig, x, top, w) => {
+  return block("chart", 3.4, () => hIn + (title ? headingIn : 0), (fig, x, top, w, extra = 0) => {
     if (title) heading(fig, x, top, w, title, note(T, noteHead));
     const y = top + (title ? headingIn : 0);
-    const ax = blockAxes(fig, x, y, w, hIn, [0, w], [-rows.length, 0.2 / rowIn]);
+    const ax = blockAxes(fig, x, y, w, hIn + extra, [0, w], [-rows.length, 0.2 / rowIn]);
     const lw = Math.min(labelW, w * 0.3), noteW = notes ? Math.min(1.9, w * 0.2) : 0.15;
     // the figure is written at the end of its own bar, so the track stops short of the note by its width
     const valW = Math.max(...rows.map(r => ax.textWidth(fmtv(r[1]), 12, "display"))) + 0.18;
@@ -86,7 +86,7 @@ function barRowsBlock(T, rows, { title, fmtv = v => fix(v, 2), noteHead = "", la
       ax.text(bx + (bx >= zero ? 0.08 : -0.08), yy, fmtv(value), { size: 12, family: "display", color: T.INK, ha: bx >= zero ? "left" : "right", va: "center" });
       if (tail && notes) ax.text(w, yy, tail, { size: 9.5, color: T.INK_2, ha: "right", va: "center" });
     });
-  });
+  }, 0.3);
 }
 
 /**
@@ -97,10 +97,10 @@ function barRowsBlock(T, rows, { title, fmtv = v => fix(v, 2), noteHead = "", la
  */
 function pairRowsBlock(T, rows, { title, noteHead = "", labelW = 2.5 } = {}) {
   const rowIn = 0.42 * dense(T), hIn = rowIn * rows.length + 0.2;
-  return block("chart", 3.6, () => hIn + (title ? headingIn : 0), (fig, x, top, w) => {
+  return block("chart", 3.6, () => hIn + (title ? headingIn : 0), (fig, x, top, w, extra = 0) => {
     if (title) heading(fig, x, top, w, title, note(T, noteHead));
     const y = top + (title ? headingIn : 0);
-    const ax = blockAxes(fig, x, y, w, hIn, [0, w], [-rows.length, 0.2 / rowIn]);
+    const ax = blockAxes(fig, x, y, w, hIn + extra, [0, w], [-rows.length, 0.2 / rowIn]);
     const lw = Math.min(labelW, w * 0.32), numW = 0.95;
     const trackX0 = lw + numW, trackX1 = w - numW;
     rows.forEach(([label, mine, theirs, fmtv, lower], i) => {
@@ -116,17 +116,17 @@ function pairRowsBlock(T, rows, { title, noteHead = "", labelW = 2.5 } = {}) {
       ax.text(trackX0 - 0.1, yy, fmtv(mine), { size: 13, family: "display", color: lead === "mine" ? T.ACCENT : T.INK, ha: "right", va: "center" });
       ax.text(trackX1 + 0.1, yy, fmtv(theirs), { size: 13, family: "display", color: lead === "theirs" ? T.ACCENT_2 : T.INK_2, ha: "left", va: "center" });
     });
-  });
+  }, 0.3);
 }
 
 /** One stacked bar per player, every bar the same width, so the shares compare straight down the column. */
 function playerBarsBlock(T, players, label, tail) {
   const rowIn = 0.5 * dense(T), hIn = rowIn * players.length + 0.2;
   const notes = house(T).prose !== "none";
-  return block("chart", 4.2, () => hIn + headingIn, (fig, x, top, w) => {
+  return block("chart", 4.2, () => hIn + headingIn, (fig, x, top, w, extra = 0) => {
     heading(fig, x, top, w, label, note(T, tail));
     const y = top + headingIn;
-    const ax = blockAxes(fig, x, y, w, hIn, [0, w], [-players.length, 0.2 / rowIn]);
+    const ax = blockAxes(fig, x, y, w, hIn + extra, [0, w], [-players.length, 0.2 / rowIn]);
     const nameW = Math.min(2.7, w * 0.26), tailW = notes ? Math.min(1.9, w * 0.2) : 0.1;
     const size = ax.fitSize(players.map(p => p.name), nameW - 0.15, 14);
     if (legends(T)) legend(ax, nameW, 0.16 / rowIn, T.OUTCOMES, 8, 0.08, 0.08, 0.1);
@@ -138,7 +138,7 @@ function playerBarsBlock(T, players, label, tail) {
       outcomeBar(ax, nameW, yy - 0.15, w - tailW - nameW, 0.3, c4, sumc(c4), 0.03, true, 9);
       if (notes) ax.text(w, yy, `${share(parOrBetter(p.counts), p.holes)}% par or better`, { size: 9.5, color: T.INK_2, ha: "right", va: "center" });
     });
-  });
+  }, 0.6);
 }
 
 /** A bar width in axis units that stays near `wantIn` inches however few bars there are. */
@@ -151,12 +151,12 @@ function roundChartBlock(T, rounds, label, perHole) {
   const fld = r => r.fieldPts === null ? null : (perHole ? r.fieldPts / r.n : r.fieldPts);
   const any = rounds.some(r => r.fieldPts !== null);
   const best = Math.max(...rounds.map(val));
-  return block("chart", 3.0, () => hIn + headingIn, (fig, x, top, w0) => {
+  return block("chart", 3.0, () => hIn + headingIn, (fig, x, top, w0, extra = 0) => {
     heading(fig, x, top, w0, label, any ? note(T, "the column behind each bar is the rest of the field that day") : "");
     const y = top + headingIn;
     const cap = Math.max(...rounds.map(r => Math.max(val(r), fld(r) || 0)), 1) * 1.18;
     const span = barSpan(w0, rounds.length, 1.6), w = span.w;
-    const ax = blockAxes(fig, x + span.x, y, w, hIn, [-0.6, rounds.length - 0.4], [-cap * 0.17, cap]);
+    const ax = blockAxes(fig, x + span.x, y, w, hIn + extra, [-0.6, rounds.length - 0.4], [-cap * 0.17, cap]);
     const bw = barWidth(w, rounds.length, 0.62, 0.95);
     rounds.forEach((r, i) => {
       const f = fld(r);
@@ -166,7 +166,7 @@ function roundChartBlock(T, rounds, label, perHole) {
       ax.text(i, -cap * 0.035, shortDate(r.date), { size: 8.5, color: T.INK_3, ha: "center", va: "top" });
     });
     ax.line(-0.6, 0, rounds.length - 0.4, 0, T.LINE, 0.8);
-  });
+  }, 0.5);
 }
 
 /**
@@ -188,7 +188,7 @@ function progressBlock(T, P, label, tail) {
   const firsts = {};
   for (const p of P.players) firsts[p.name.split(" ")[0]] = (firsts[p.name.split(" ")[0]] || 0) + 1;
   const shortName = p => firsts[p.name.split(" ")[0]] > 1 ? p.name : p.name.split(" ")[0];
-  return block("chart", 4.0, () => hIn + headingIn, (fig, x0, top, w) => {
+  return block("chart", 4.0, () => hIn + headingIn, (fig, x0, top, w, extra = 0) => {
     heading(fig, x0, top, w, label, note(T, tail));
     // The names live in a gutter of their own, and the plot keeps a sane pitch rather than stretching two
     // cards across a foot of paper. Both are centred together, so a short season sits in the middle.
@@ -196,7 +196,7 @@ function progressBlock(T, P, label, tail) {
     const plotW = Math.min(w - nameW, Math.max(2.0, n * 1.5));
     const x = x0 + Math.max(0, (w - plotW - nameW) / 2);
     const y = top + headingIn;
-    const ax = blockAxes(fig, x, y, plotW, hIn, [-0.35, n - 1 + 0.35], [lo - pad * 1.9, hi + pad]);
+    const ax = blockAxes(fig, x, y, plotW, hIn + extra, [-0.35, n - 1 + 0.35], [lo - pad * 1.9, hi + pad]);
     // the grid is one hairline a card with its date under it: no y axis, because the lines carry the numbers
     P.cards.forEach((c, i) => {
       ax.line(i, lo - pad * 1.2, i, hi + pad, T.LINE, 0.6);
@@ -224,14 +224,14 @@ function progressBlock(T, P, label, tail) {
     const step = 0.145;
     ends.sort((a, b) => a.y - b.y);
     for (let k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + step);
-    const drop = Math.max(0, ends.length ? ends[ends.length - 1].y - (y + hIn) : 0);
+    const drop = Math.max(0, ends.length ? ends[ends.length - 1].y - (y + hIn + extra) : 0);
     const lx = x + plotW + 0.14;
     for (const e of ends) {
       e.y -= drop;
       fig.line(e.at + 0.06, e.from, lx - 0.06, e.y, T.LINE, 0.7);
       fig.fitText(lx, e.y, e.name, nameW - 0.2, 9.5, 6.5, { family: "display", color: e.col, va: "center" });
     }
-  });
+  }, 0.5);
 }
 
 /**
@@ -240,10 +240,10 @@ function progressBlock(T, P, label, tail) {
  */
 function statTableBlock(T, rows, cols, { title, tail = "" } = {}) {
   const rowIn = 0.52 * dense(T), hIn = rowIn * (rows.length + 0.9) + 0.1;
-  return block("table", 2.8 + 0.9 * cols.length, () => hIn + headingIn, (fig, x, top, w) => {
+  return block("table", 2.8 + 0.9 * cols.length, () => hIn + headingIn, (fig, x, top, w, extra = 0) => {
     heading(fig, x, top, w, title, note(T, tail));
     const y = top + headingIn;
-    const ax = blockAxes(fig, x, y, w, hIn, [0, w], [-rows.length, 0.9 + 0.1 / rowIn]);
+    const ax = blockAxes(fig, x, y, w, hIn + extra, [0, w], [-rows.length, 0.9 + 0.1 / rowIn]);
     const nameW = Math.min(3.0, w * 0.27), colW = (w - nameW) / cols.length;
     const size = ax.fitSize(rows.map(r => r.name), nameW - 0.15, 14);
     ax.text(0.05, 0.45, caps(T, "Player"), { size: 9.5, family: "display", color: T.INK_3, va: "center" });
@@ -266,7 +266,7 @@ function statTableBlock(T, rows, cols, { title, tail = "" } = {}) {
         ax.text(cx, yy - 0.18, cell.sub, { size: 8.5, color: T.INK_3, ha: "center", va: "center" });
       });
     });
-  });
+  }, 0.3);
 }
 
 /**
@@ -370,11 +370,11 @@ export function statsNinesPoster(N, group, T) {
 
   // one bar per loop: what a card on it is worth, with what it is gone round in underneath
   const chartIn = 2.35 * dense(T);
-  const loops = block("chart", Math.max(3.2, 1.15 * N.length), () => chartIn + headingIn, (fig, x, top, w0) => {
+  const loops = block("chart", Math.max(3.2, 1.15 * N.length), () => chartIn + headingIn, (fig, x, top, w0, extra = 0) => {
     heading(fig, x, top, w0, "Average points a card", "");
     const cap = Math.max(...N.map(l => l.avgPts), 1) * 1.3;
     const span = barSpan(w0, N.length, 2.8), w = span.w;
-    const ax = blockAxes(fig, x + span.x, top + headingIn, w, chartIn, [-0.6, N.length - 0.4], [-cap * 0.28, cap]);
+    const ax = blockAxes(fig, x + span.x, top + headingIn, w, chartIn + extra, [-0.6, N.length - 0.4], [-cap * 0.28, cap]);
     const bw = barWidth(w, N.length, 0.55, 1.15);
     const best = Math.max(...N.map(l => l.avgPts));
     N.forEach((l, i) => {
@@ -386,13 +386,13 @@ export function statsNinesPoster(N, group, T) {
       ax.fitText(i, -cap * 0.195, `${l.cards} card${l.cards === 1 ? "" : "s"}  ·  par ${l.par}`, 1.0, { size: 9, color: T.INK_3, ha: "center", va: "top" });
     });
     ax.line(-0.6, 0, N.length - 0.4, 0, T.LINE, 0.8);
-  });
+  }, 0.5);
 
   // then the same thing player by player, so a loop that suits somebody shows up as a row
   const rowIn = 0.5 * dense(T), tIn = rowIn * (table.length + 0.9) + 0.1;
-  const grid = block("table", 2.8 + 0.85 * N.length, () => tIn + headingIn, (fig, x, top, w) => {
+  const grid = block("table", 2.8 + 0.85 * N.length, () => tIn + headingIn, (fig, x, top, w, extra = 0) => {
     heading(fig, x, top, w, "Points a card, player by player", "");
-    const ax = blockAxes(fig, x, top + headingIn, w, tIn, [0, w], [-table.length, 0.9 + 0.1 / rowIn]);
+    const ax = blockAxes(fig, x, top + headingIn, w, tIn + extra, [0, w], [-table.length, 0.9 + 0.1 / rowIn]);
     const nameW = Math.min(3.0, w * 0.27), colW = (w - nameW) / N.length;
     const size = ax.fitSize(table.map(r => r.name), nameW - 0.15, 14);
     ax.text(0.05, 0.45, caps(T, "Player"), { size: 9.5, family: "display", color: T.INK_3, va: "center" });
@@ -411,7 +411,7 @@ export function statsNinesPoster(N, group, T) {
         ax.text(cx, yy - 0.18, `${c.avgGross === null ? "–" : fix(c.avgGross)}  ·  ${c.cards}`, { size: 8.5, color: T.INK_3, ha: "center", va: "center" });
       });
     });
-  });
+  }, 0.3);
 
   return sheet(T, {
     title: "The nines walked", kicker: group.name,

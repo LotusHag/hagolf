@@ -112,7 +112,6 @@ function whySheet() {
     body: `<p class="muted small">Scoring a round, keeping a league, sharing cards and inviting people are free, and always will be. What is sold is how the output looks and how much it says. Nothing here plays golf better; nothing is taken away from you for not buying it.</p>
       <p class="muted small">A price is not what reaches us. The card company takes a fixed amount on every checkout, however small, and a share on top; the rest pays for running the app. That fixed amount is the whole reason a bundle costs less than its items one at a time: one checkout instead of several.</p>
       <p class="muted small">Bought once, never a subscription, on the web rather than inside an app store. What you buy follows your account to every phone you sign in on.</p>`,
-    actions: [{ label: "Close", value: "no" }],
   });
 }
 
@@ -243,7 +242,7 @@ async function itemSheet(c, cat, D) {
   const T = makeTheme(appTheme());
   const jobs = jobsFor(c.sku, T, D);
   const body = `<p class="muted small">${onWhat(c.sku).line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>`;
-  const actions = [...(c.owned ? [] : buyActions(`Buy · ${eur(c.price)}`, "buy", cat)), { label: "Close", value: "no" }];
+  const actions = c.owned ? [] : buyActions(`Buy · ${eur(c.price)}`, "buy", cat);
   const v = await sheet({ title: c.name, lead: c.blurb, body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(c.sku, T, i)) });
   if (v === "buy") await checkout(c.sku);
 }
@@ -279,10 +278,10 @@ async function skinSheet(name, cat, D) {
     <p class="muted small">${onWhat("skin").line}</p><div class="prevs">${jobs.map(prevHtml).join("")}</div>`;
   const wearing = appTheme().name === name;
   const actions = owned
-    ? [{ label: wearing ? "The app wears this now" : "Wear it", value: "wear", kind: "primary" }, { label: "Close", value: "no" }]
+    ? [{ label: wearing ? "The app wears this now" : "Wear it", value: "wear", kind: "primary" }]
     : [...buyActions(`Buy this skin · ${eur(cat.skinPrice)}`, "buy", cat),
       ...(coll && !coll.owned && fam ? buyActions(`${fam.name}, all ${coll.themes.length} · ${eur(coll.price)}`, "coll", cat) : []),
-      ...(bundle && !bundle.owned ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : []), { label: "Close", value: "no" }];
+      ...(bundle && !bundle.owned ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : [])];
   const v = await sheet({ title: `The ${name} skin`, lead: t.blurb || "", body, actions, onOpen: el => fillPrevs(el, jobs, i => keyFor(`skin:${name}`, T, i)) });
   if (v === "buy") return checkout(`skin:${name}`);
   if (v === "coll") return checkout(coll.sku);
@@ -315,7 +314,7 @@ async function collectionSheet(key, cat, D) {
   const body = `<p class="muted small">${ts.length} looks, each on the app itself and on the showcase round's Stableford leaderboard, all in this collection's house style. Tap one to see it up close.</p>
     <div class="skingrid">${ts.map(t => `<button data-act="skin:${t.name}" data-sheet-act>${mockHtml(t, D.M, true)}<span class="board" data-look="${esc(t.name)}"><span class="skeleton"></span></span><span>${esc(t.name)}${tag(t) ? ` <small class="muted">· ${tag(t)}</small>` : ""}</span></button>`).join("")}</div>`;
   const actions = [...(owned || !c ? [] : buyActions(`Buy all ${ts.length} · ${eur(c.price)}`, "buy", cat)),
-    ...(bundle && !bundle.owned && !ownsAll(cat) ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : []), { label: "Close", value: "no" }];
+    ...(bundle && !bundle.owned && !ownsAll(cat) ? buyActions(`Every skin · ${eur(bundle.price)}`, "bundle", cat) : [])];
   const v = await sheet({ title: fam.name, lead: fam.blurb, body, actions, onOpen: el => fillGrid(el, ts, D) });
   if (v === "buy") return checkout(c.sku);
   if (v === "bundle") return checkout("skins");
@@ -328,7 +327,7 @@ async function bundleSheet(cat, D) {
   const rows = FAMILIES.filter(f => themesIn(f.key).length).map(f => `<button class="collrow" data-act="coll:${f.key}" data-sheet-act>${familyStrip(themesIn(f.key))}<span><b>${esc(f.name)}</b><small class="muted">${themesIn(f.key).length} looks</small></span><i>›</i></button>`).join("");
   const body = `<p class="muted small">All ${DATA.themes.length} looks in ${FAMILIES.filter(f => themesIn(f.key).length).length} collections, on the posters, the cards and the app itself. Tap a collection to see its looks.</p>
     <div class="collrows">${rows}</div>`;
-  const actions = [...(bundle.owned ? [] : buyActions(`Buy every skin · ${eur(bundle.price)}`, "buy", cat)), { label: "Close", value: "no" }];
+  const actions = bundle.owned ? [] : buyActions(`Buy every skin · ${eur(bundle.price)}`, "buy", cat);
   const v = await sheet({ title: bundle.name, lead: bundle.blurb, body, actions });
   if (v === "buy") return checkout("skins");
   if (v && v.startsWith("coll:")) return collectionSheet(v.slice(5), cat, D);

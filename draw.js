@@ -65,12 +65,10 @@ function fromHsl(hue, sat, l) {
  * in their own colours rather than in a colour borrowed from somewhere else. A theme that names any of
  * these keeps what it named: this only fills the gaps, exactly as build.py fills the screen's `ui` palette.
  *
- * `ACCENT_2` is the one that is invented rather than mixed -- the accent's hue turned most of the way round
- * the wheel, set at the lightness of the theme's own chart colour so it belongs to the same page, then
- * walked towards the ink until it clears the background. Everything else is a straight blend.
+ * `ACCENT_2` is the one that is invented rather than mixed -- the accent's hue turned a short way round the
+ * wheel, set at the lightness of the theme's own chart colour so it belongs to the same page, then walked
+ * towards the ink until it clears the background. Everything else is a straight blend.
  */
-const gap = (a, b) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return Math.min(d, 360 - d); };
-
 function derive(T) {
   const dark = lum(T.BG) < 0.35;
   const put = (k, v) => { if (T[k] === undefined || T[k] === null) T[k] = v; };
@@ -82,16 +80,14 @@ function derive(T) {
     if (sat < 0.12) {
       T.ACCENT_2 = mix(T.BAR, T.INK, 0.45);   // a theme with no colour in its accent gets a step, not a hue
     } else {
-      // The turn that lands furthest from BOTH the colours the theme already uses, so the third colour is
-      // a third colour and not a second shade of the chart one.
-      let best = null;
-      for (const off of [155, 120, 190, 90, 225, 60, 260]) {
-        const h = hue + off, score = Math.min(gap(h, hue), gap(h, barHue));
-        if (!best || score > best.score) best = { h, score };
-      }
+      // A neighbour of the accent, turned the way that leads away from the chart colour rather than across
+      // the wheel: the far side of a gold-and-blue theme is a magenta that belongs to neither of them,
+      // where a neighbour is still the theme's own colour and is told apart from the bars by being warm
+      // where they are cool, or cool where they are warm.
+      const side = ((((hue - barHue) % 360) + 360) % 360) < 180 ? 1 : -1;
       // knocked back in saturation and a touch towards the muted ink: the third colour has to be told
       // apart from the other two, not to shout over the accent the theme actually chose
-      let c = mix(fromHsl(best.h, Math.max(0.26, sat * 0.7), barL), T.INK_3, 0.14);
+      let c = mix(fromHsl(hue + side * 40, Math.max(0.26, sat * 0.7), barL), T.INK_3, 0.14);
       for (let k = 0; k < 8 && contrast(c, T.BG) < 2.6; k++) c = mix(c, T.INK, 0.12);
       T.ACCENT_2 = c;
     }

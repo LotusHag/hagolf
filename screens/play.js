@@ -2,7 +2,7 @@
 // the round's few options.
 import * as S from "../store.js";
 import * as A from "../auth.js";
-import { page, bind, esc, go, ui, plural, fmtDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, tip, ICONS, emptyState, firstName, ordinal, sheet } from "../ui.js";
+import { page, scrollPos, scrollAt, bind, esc, go, ui, plural, fmtDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, tip, ICONS, emptyState, firstName, ordinal, sheet } from "../ui.js";
 import { compute } from "../model.js";
 import { nowCard } from "./home.js";
 
@@ -38,7 +38,7 @@ export function play() {
       : (open.length ? "" : emptyState("golf", "No rounds yet", "Start one, or scan an old paper card."))}`,
     { back: "", tabs: "play", brand: false });
   const qEl = document.getElementById("q");
-  if (qEl) qEl.addEventListener("input", () => { ui.search = qEl.value; const y = window.scrollY; play(); window.scrollTo(0, y); const n = document.getElementById("q"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
+  if (qEl) qEl.addEventListener("input", () => { ui.search = qEl.value; const y = scrollPos(); play(); scrollAt(y); const n = document.getElementById("q"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
   bind(ev => {
     const b = ev.target.closest("[data-act=rf]");
     if (b) { ui.roundsFilter = b.dataset.v; play(); }

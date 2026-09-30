@@ -3,7 +3,7 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, h2tip, roundClub, roundLoop, safeCompute, saveFiles } from "../ui.js";
+import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, h2tip, roundClub, roundLoop, safeCompute, saveFiles } from "../ui.js";
 import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained } from "../model.js";
 import { statBlock, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
 import { playerRounds, ninesPlayed } from "./stats.js";
@@ -48,7 +48,7 @@ export function people() {
       if (location.hash === "#people") redraw();
     }, 350);
   });
-  const redraw = () => { const y = window.scrollY; people(); window.scrollTo(0, y); const n = document.getElementById("q"); if (n && document.activeElement !== n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } };
+  const redraw = () => { const y = scrollPos(); people(); scrollAt(y); const n = document.getElementById("q"); if (n && document.activeElement !== n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } };
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;

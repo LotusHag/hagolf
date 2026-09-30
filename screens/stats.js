@@ -344,6 +344,8 @@ function rivalsBlock(St, p, gid) {
 }
 
 // ---------------------------------------------------------------- nines walked
+const namesList = xs => xs.length < 2 ? esc(xs[0] || "") : `${xs.slice(0, -1).map(esc).join(", ")} and ${esc(xs[xs.length - 1])}`;
+
 export function ninesPlayed(rounds, pid = null) {
   const out = new Map();
   for (const r of rounds) {
@@ -358,14 +360,16 @@ export function ninesPlayed(rounds, pid = null) {
       try { N = computeNine(nc, S.toModelRound(r), i * 9); } catch (e) { return; }
       for (const p of N.players) {
         if (pid && p.id !== pid) continue;
-        if (!out.has(slug)) out.set(slug, { slug, rows: [] });
+        if (!out.has(slug)) out.set(slug, { slug, rows: [], unrated: new Set() });
         out.get(slug).rows.push({ round: r, player: p, field: N.field });
       }
+      // named under the table: they walked it, but this loop has no rating for the tee they played
+      for (const u of N.unrated) if (!(pid && u.id !== pid) && out.has(slug)) out.get(slug).unrated.add(u.name);
     });
   }
   return [...out.values()].map(x => {
     const gs = x.rows.map(r => r.player.gross).filter(g => g !== null), pts = x.rows.map(r => r.player.pts);
-    return { ...x, played: x.rows.length, bestGross: gs.length ? Math.min(...gs) : null, avgGross: gs.length ? gs.reduce((a, b) => a + b, 0) / gs.length : null,
+    return { ...x, unrated: [...x.unrated], played: x.rows.length, bestGross: gs.length ? Math.min(...gs) : null, avgGross: gs.length ? gs.reduce((a, b) => a + b, 0) / gs.length : null,
       bestPts: pts.length ? Math.max(...pts) : null, avgPts: pts.length ? pts.reduce((a, b) => a + b, 0) / pts.length : null };
   }).sort((a, b) => b.played - a.played || nineName(a.slug).localeCompare(nineName(b.slug)));
 }
@@ -391,8 +395,9 @@ function ninesFieldBlock(gid, rounds, me) {
   const nines = ninesPlayed(rounds);
   if (!nines.length) return "";
   const pick = nines.some(x => x.slug === ui.nineTab[gid]) ? ui.nineTab[gid] : nines[0].slug;
+  const loop = nines.find(x => x.slug === pick);
   const rows = new Map();
-  for (const row of nines.find(x => x.slug === pick).rows) {
+  for (const row of loop.rows) {
     const id = row.player.id;
     if (!id) continue;
     if (!rows.has(id)) rows.set(id, { id, name: row.player.name, gs: [], pts: [] });
@@ -405,7 +410,8 @@ function ninesFieldBlock(gid, rounds, me) {
   return `${h2tip("The nines walked", `This club's loops are rated on their own, so every nine is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18. Pick a loop; the table ranks the players on it by average points.`)}
     <div class="chips-wrap">${nines.map(x => `<button class="pchip ${x.slug === pick ? "on" : ""}" data-act="ninetab" data-slug="${esc(x.slug)}">${esc(nineName(x.slug))}<small>${plural(x.played, "card")}</small></button>`).join("")}</div>
     <table class="stand" style="margin-top:12px"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
-      <tbody>${table.map((e, i) => `<tr class="${me && e.id === me.id ? "acc" : ""}"><td class="pos">${i + 1}</td><td class="l">${esc(e.name)}</td><td>${e.played}</td><td>${e.bestGross === null ? "–" : e.bestGross}</td><td>${e.avgGross === null ? "–" : fix(e.avgGross)}</td><td class="acc">${fix(e.avgPts)}</td></tr>`).join("")}</tbody></table>`;
+      <tbody>${table.map((e, i) => `<tr class="${me && e.id === me.id ? "acc" : ""}"><td class="pos">${i + 1}</td><td class="l">${esc(e.name)}</td><td>${e.played}</td><td>${e.bestGross === null ? "–" : e.bestGross}</td><td>${e.avgGross === null ? "–" : fix(e.avgGross)}</td><td class="acc">${fix(e.avgPts)}</td></tr>`).join("")}</tbody></table>
+    ${loop.unrated.length ? `<p class="muted small" style="margin:10px 4px">${namesList(loop.unrated)} walked it too. This loop carries no rating for the tees they played, so there is no way to work out their strokes on it.</p>` : ""}`;
 }
 export function ninesPlayerBlock(rounds, pid, first) {
   const nines = ninesPlayed(rounds, pid);

@@ -22,8 +22,10 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 -apple-system, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-body { touch-action: manipulation; overscroll-behavior-y: none; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font: 16px/1.45 -apple-system, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+body { touch-action: manipulation; }
+/* the app scrolls, not the document: a document scroll makes Chrome float its own "move to top" chip over us */
+#app { height: 100%; overflow-y: auto; overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
 a { color: var(--green); text-decoration: none; }
 h1 { font-family: "Oswald", sans-serif; font-size: 20px; margin: 0; font-weight: 500; letter-spacing: .4px; }
 h2 { display: flex; align-items: center; gap: 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 2.2px; color: var(--ink3); margin: 28px 0 6px; font-weight: 700; }
@@ -246,7 +248,7 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .segpick button.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 
 /* ---- the gate and onboarding: centred, one thing on the screen */
-main.bare { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); }
+main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); }
 .gate { width: 100%; max-width: 380px; text-align: center; }
 .gatemark { font-family: "Oswald", sans-serif; font-weight: 500; font-size: 40px; letter-spacing: 9px; text-transform: uppercase; color: var(--green); margin-bottom: 6px; }
 .gate .tag { color: var(--ink2); margin: 0 0 22px; }
@@ -263,8 +265,12 @@ main.bare { min-height: 100dvh; display: grid; place-items: center; padding: 24p
 .sheet-wrap { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { transform: translateY(24px); } to { transform: none; } }
-.sheet { width: 100%; max-width: 640px; max-height: 88dvh; overflow-y: auto; background: var(--bg); border-radius: 8px 8px 0 0; padding: 10px 16px calc(16px + var(--sab)); animation: rise .18s; }
-.sheet .grip { width: 38px; height: 4px; border-radius: 2px; background: var(--line2); margin: 0 auto 10px; }
+.sheet { position: relative; width: 100%; max-width: 640px; max-height: 88dvh; overflow-y: auto; background: var(--bg); border-radius: 8px 8px 0 0; padding: 0 16px calc(16px + var(--sab)); animation: rise .18s; }
+/* the grip and the way out ride along as the sheet scrolls: a long sheet must never hide its own cross */
+.sheet .sheethead { position: sticky; top: 0; z-index: 2; padding: 10px 0 8px; background: var(--bg); }
+.sheet .grip { display: block; width: 38px; height: 4px; border-radius: 2px; background: var(--line2); margin: 0 auto; }
+.sheet .sheetx { position: absolute; top: -2px; right: -10px; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: var(--ink3); font-size: 26px; line-height: 1; cursor: pointer; }
+.sheet .sheetx:active { color: var(--ink); }
 .sheet h3 { font-size: 18px; margin: 4px 0 4px; }
 .sheet .lead { color: var(--ink2); margin: 0 0 10px; font-size: 15px; }
 .sheet .acts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }

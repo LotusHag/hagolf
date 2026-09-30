@@ -10,6 +10,8 @@ import * as E from "./entitlements.js";
 import { loadFonts, makeTheme, setMarked, setMarkText } from "./draw.js";
 
 export const app = document.getElementById("app");
+export const scrollPos = () => app.scrollTop;
+export const scrollAt = y => { app.scrollTop = y; };
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const go = hash => { location.hash = hash; };
 export const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -100,7 +102,7 @@ let toastTimer = null;
  * gate (no chrome at all). A screen with no `back` and a `tabs` key is top level and gets the centred masthead.
  */
 export function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false, actions = "", bell = true } = {}) {
-  const y = keepScroll ? window.scrollY : 0;
+  const y = keepScroll ? scrollPos() : 0;
   const badge = N.actionable();
   const nav = tabs ? `<nav class="tabs">${TABS.filter(([k]) => k !== "shop" || Y.enabled()).map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "people" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
   const bellBtn = bell && A.signedIn() ? `<a class="iconbtn ${location.hash === "#updates" ? "on" : ""}" href="#updates" aria-label="Updates">${ICONS.bell}${badge ? `<span class="n">${badge}</span>` : N.unread() ? `<span class="n quiet">${N.unread()}</span>` : ""}</a>` : "";
@@ -117,7 +119,7 @@ export function page(title, body, { back = "#home", bar = "", sub = "", tabs = n
   app.innerHTML = bare ? `<main class="bare">${body}</main>` : `${head}
     <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
     ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
-  window.scrollTo(0, y);
+  scrollAt(y);
   cueTabs();
 }
 /** Friend requests waiting, for the People tab's badge. */
@@ -148,6 +150,26 @@ export function toast(msg, ms = 2600, action = null) {
 }
 export const hideToast = () => { const t = document.getElementById("toast"); if (t && !t.classList.contains("action")) t.classList.remove("show"); };
 
+// ---------------------------------------------------------------- back shuts what is on top
+// A sheet or the image viewer is a place of its own, so each takes a history entry while it is open: Android's
+// back gesture and the browser's back button shut it instead of leaving the screen.
+const overlays = [];
+window.addEventListener("popstate", () => {
+  const depth = (history.state && history.state.overlay) || 0;
+  while (overlays.length > depth) overlays.pop()();
+});
+/**
+ * Opens an overlay's own history entry and returns the way out of it. Every way of leaving -- back, the cross,
+ * Escape, a button -- goes through that entry, so the two can never drift apart: asking to leave only asks the
+ * browser to go back, and the overlay shuts when the entry does.
+ */
+function backShuts(shut) {
+  try { history.pushState({ overlay: overlays.length + 1 }, ""); }
+  catch (e) { return shut; }   // no history to lean on (file://): shut it outright
+  overlays.push(shut);
+  return () => { if (overlays.includes(shut)) history.back(); };
+}
+
 // ---------------------------------------------------------------- sheets: what confirm(), prompt() and alert() used to do
 /**
  * A bottom sheet. `body` is trusted HTML; `actions` are [{label, value, kind}] drawn as buttons under it. Resolves
@@ -157,13 +179,18 @@ export function sheet({ title = "", lead = "", body = "", actions = [], onOpen =
   return new Promise(resolve => {
     const wrap = document.createElement("div");
     wrap.className = "sheet-wrap";
-    wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div>
+    wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheethead"><span class="grip"></span><button class="sheetx" data-sheet-x aria-label="Close">&times;</button></div>
       ${title ? `<h3>${esc(title)}</h3>` : ""}${lead ? `<p class="lead">${esc(lead)}</p>` : ""}${body}
-      <div class="acts">${actions.map(a => `<button class="btn ${a.kind || ""}" data-sheet="${esc(a.value)}">${esc(a.label)}</button>`).join("")}</div></div>`;
-    const close = v => { wrap.remove(); document.removeEventListener("keydown", onKey); resolve(v); };
+      ${actions.length ? `<div class="acts">${actions.map(a => `<button class="btn ${a.kind || ""}" data-sheet="${esc(a.value)}">${esc(a.label)}</button>`).join("")}</div>` : ""}</div>`;
+    let gone = false, picked = null;
+    const shut = () => { if (gone) return; gone = true; wrap.remove(); document.removeEventListener("keydown", onKey); resolve(picked); };
+    const leave = backShuts(shut);
+    const close = v => { if (gone) return; picked = v; leave(); };
     const onKey = e => { if (e.key === "Escape") close(null); };
     wrap.addEventListener("click", ev => {
       if (ev.target === wrap) return close(null);
+      if (ev.target.closest("[data-sheet-x]")) return close(null);
       const b = ev.target.closest("[data-sheet]");
       if (b) return close(b.dataset.sheet);
       const a = ev.target.closest("[data-act]");
@@ -224,7 +251,15 @@ export function viewer(items, start = 0) {
     zoom(false);
   };
   const step = d => { i = (i + d + list.length) % list.length; show(); };
-  const close = () => { wrap.remove(); document.removeEventListener("keydown", onKey, true); made.forEach((u, n) => { if (list[n].blob) URL.revokeObjectURL(u); }); };
+  let gone = false;
+  const shut = () => {
+    if (gone) return;
+    gone = true;
+    wrap.remove();
+    document.removeEventListener("keydown", onKey, true);
+    made.forEach((u, n) => { if (list[n].blob) URL.revokeObjectURL(u); });
+  };
+  const close = backShuts(shut);
   // caught on the way down, so Escape shuts the image and not the sheet underneath it as well
   const onKey = e => {
     const act = { Escape: close, ArrowLeft: () => step(-1), ArrowRight: () => step(1) }[e.key];

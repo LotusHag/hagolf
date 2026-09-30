@@ -821,18 +821,30 @@ export function halves(M, p) {
  * loop's own stroke index and its own course rating and slope. Strokes received are worked out again from
  * the nine's rating, so a loop walked inside an 18 is on the same footing as the same loop walked alone.
  * That makes it the right basis for "how does this player do on Noord" and the wrong one for "what did
- * they score that day" -- use halves() for the latter. Throws if the nine cannot rate the player's tee.
+ * they score that day" -- use halves() for the latter.
+ *
+ * A tee the nine has no rating for cannot give that player their strokes: an 18-hole course handicap from a
+ * club table says nothing about half a loop. Those players are left off and named in M.unrated, rather than
+ * thrown over, so one unratable card does not take the whole field's nine with it.
  */
 export function computeNine(nineCourse, round, from) {
   const shift = p => ({ ...p, hole: Number(p.hole) - from });
-  const entries = (round.entries || []).map(e => ({
+  const tees = prepareCourse(nineCourse).tees;
+  const fallback = round.defaultTee || Object.keys(tees)[0];
+  const rated = e => {
+    const t = tees[e.tee || fallback];
+    return !!(t && t.ratings && t.ratings[String(e.gender || "m").toLowerCase()[0]]);
+  };
+  const entries = (round.entries || []).filter(rated).map(e => ({
     ...e,
     courseHandicap: null,  // an 18-hole course handicap means nothing here; the nine has its own rating
     scores: (e.scores || []).slice(from, from + 9),
     fromHole: Math.max(1, Math.min(9, (Number(e.fromHole || 1) || 1) - from)),
     penalties: (e.penalties || []).filter(p => Number(p.hole) > from && Number(p.hole) <= from + 9).map(shift),
   }));
-  return compute(nineCourse, { ...round, final: true, entries });
+  const M = compute(nineCourse, { ...round, final: true, entries });
+  M.unrated = (round.entries || []).filter(e => !rated(e)).map(e => ({ id: e.id ?? null, name: String(e.name || "").trim() }));
+  return M;
 }
 
 // ---------------------------------------------------------------- seasons: what a league counts as one card

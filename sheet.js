@@ -45,9 +45,11 @@ const HEAD_IN = 0.32;
  *          takes a full-width row of its own instead, which is how a nine-column table stays readable
  *          on a two-column page.
  *  `h`     (widthIn, probe) -> inches. Called before the figure exists, so it may only measure.
- *  `draw`  (fig, xIn, topIn, widthIn) -> void.
+ *  `draw`  (fig, xIn, topIn, widthIn, extraIn) -> void.
+ *  `grow`  how much of its own height it will take on top of it, as a fraction, when its column ends short
+ *          of the other one. A block that says nothing keeps the height it asked for.
  */
-export const block = (kind, minW, h, draw) => ({ kind, minW, h, draw });
+export const block = (kind, minW, h, draw, grow = 0) => ({ kind, minW, h, draw, grow });
 
 const FLOWS = { charts: ["tiles", "chart", "table", "note"], tables: ["tiles", "table", "chart", "note"] };
 
@@ -80,18 +82,37 @@ function runs(blocks, colW) {
 /**
  * Balances one run down `cols` columns. Reading order is kept: a column is filled until it has had its
  * share, then the next one starts, so the page still reads top to bottom, left to right.
+ *
+ * Reading order also means the split is rarely even -- three blocks whose only balanced arrangement would
+ * read across the page instead of down it leave one column short -- so the room left over is handed back
+ * rather than left at the foot of the page: the blocks that said they can take it are grown into it first,
+ * and whatever is still spare is split above and below them, so a short column stands in the middle of its
+ * own space instead of hanging from the top of it.
  */
 function place(run, cols, colW, gap, x0, y0, probe) {
   const hs = run.map(b => b.h(colW, probe));
   const target = hs.reduce((a, v) => a + v + GAP_Y, 0) / cols;
-  const colH = new Array(cols).fill(0), placed = [];
+  const colH = new Array(cols).fill(0), mine = Array.from({ length: cols }, () => []);
   let c = 0;
   run.forEach((b, i) => {
     if (c < cols - 1 && colH[c] > 0 && colH[c] + (hs[i] + GAP_Y) / 2 > target) c++;
-    placed.push([b, x0 + c * (colW + gap), y0 + colH[c], colW]);
+    mine[c].push(i);
     colH[c] += hs[i] + GAP_Y;
   });
-  return { placed, height: Math.max(...colH) };
+  const height = Math.max(...colH);
+  const placed = [];
+  mine.forEach((ids, k) => {
+    const slack = height - colH[k];
+    const room = ids.reduce((a, i) => a + run[i].grow * hs[i], 0);
+    const take = slack > 0.05 && room > 0 ? Math.min(slack, room) : 0;
+    let y = y0 + Math.max(0, slack - take) / 2;
+    for (const i of ids) {
+      const extra = take ? take * (run[i].grow * hs[i]) / room : 0;
+      placed.push([run[i], x0 + k * (colW + gap), y, colW, extra]);
+      y += hs[i] + extra + GAP_Y;
+    }
+  });
+  return { placed, height };
 }
 
 /**
@@ -265,7 +286,7 @@ export function sheet(T, head, blocks, opts = {}) {
       y += g.blocks[0].h(inner, probe) + GAP_Y;
     } else {
       const r = place(g.blocks, cols, colW, gap, M, y, probe);
-      for (const [b, bx, by, bw] of r.placed) b.draw(fig, bx, by, bw);
+      for (const [b, bx, by, bw, be] of r.placed) b.draw(fig, bx, by, bw, be);
       y += r.height;
     }
   }
