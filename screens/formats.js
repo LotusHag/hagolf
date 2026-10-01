@@ -1,7 +1,7 @@
 // The ways a league is scored, in words, and the one place every standings table is computed.
 import * as S from "../store.js";
-import { esc, safeCompute } from "../ui.js";
-import { compute, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, fmtToPar, fix } from "../model.js";
+import { esc, plural, safeCompute } from "../ui.js";
+import { compute, standings, strokeStandings, matchStandings, gpStandings, GP_POINTS, leagueCards, fmtToPar, fix } from "../model.js";
 
 export const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay (stroke)",
   matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)",
@@ -57,6 +57,24 @@ export function standingsFor(g, Ms, members, kind) {
   return standings(Ms, members, g.bestN);
 }
 
+/**
+ * The most recent day, and the table as it stood before it. A league counts by the day, so the question
+ * "did I move?" is the same table run again over everything but the last card -- which works for all eight
+ * ways of scoring without any of them knowing about it, and needs nothing stored.
+ */
+export function sinceLast(g, Ms, members, kind) {
+  const cards = leagueCards(Ms).filter(c => c.date);
+  if (!cards.length) return null;
+  // the unit is the day, not the card: one Sunday split over two loops is two cards and one outing, so
+  // taking only one of them away would credit the other to the table "before" it was played
+  const day = cards.reduce((d, c) => (String(c.date) > d ? String(c.date) : d), "");
+  const onTheDay = cards.filter(c => String(c.date) === day);
+  const before = Ms.filter(M => !onTheDay.some(c => c.rounds.includes(M)));
+  const was = before.length ? new Map(standingsFor(g, before, members, kind).rows.map(r => [r.id, r.place])) : null;
+  const last = onTheDay.reduce((x, y) => (y.players.length > x.players.length ? y : x));
+  return { last, onTheDay, day, was, first: !before.length };
+}
+
 /** What a player's line in a league's table is worth, in that league's own units. */
 export function standingValue(kind, r) {
   if (kind === "stroke") return r.played ? fmtToPar(r.counted) : "–";
@@ -64,9 +82,65 @@ export function standingValue(kind, r) {
   return `${r.counted} pts`;
 }
 
+/**
+ * One standings row as the board draws it: the number the league is decided on, the unit under it, and the
+ * figures that used to be columns said as one line. Every format keeps its own facts; only the shape is
+ * shared, so a phone gets three things across instead of eight.
+ */
+export function boardLine(kind, r, g) {
+  const cards = n => plural(n, "card");
+  if (kind in MATCH_BASIS) {
+    const word = kind.startsWith("soccer") ? "played" : "matches";
+    return { value: String(r.points), unit: "pts",
+      sub: `${r.played} ${word} · ${r.won} W ${r.drawn} D ${r.lost} L${r.up ? ` · ${r.up > 0 ? "+" : ""}${r.up} up` : ""}` };
+  }
+  if (kind === "stroke") {
+    const nr = r.nr ? ` · ${plural(r.nr, "no return")}` : "";
+    if (!r.played) return { value: "–", unit: g.bestN ? `best ${g.bestN}` : "net", sub: r.nr ? `no card returned${nr}` : "no cards yet" };
+    return { value: fmtToPar(r.counted), unit: g.bestN ? `best ${g.bestN}` : "net",
+      sub: `${cards(r.played)} · ${fmtToPar(r.avg)} avg${r.wins ? ` · ${plural(r.wins, "win")}` : ""}${nr}` };
+  }
+  if (kind in GP_BASIS) {
+    const nr = r.nr ? ` · ${r.nr} scored nothing` : "";
+    return { value: String(r.counted), unit: g.bestN ? `best ${g.bestN}` : "pts",
+      sub: `${cards(r.played)}${r.wins ? ` · ${plural(r.wins, "win")}` : ""}${r.best ? ` · best ${r.best}` : ""}${nr}` };
+  }
+  return { value: String(r.counted), unit: g.bestN ? `best ${g.bestN}` : "pts",
+    sub: `${cards(r.played)} · ${fix(r.avg)} avg${r.wins ? ` · ${plural(r.wins, "win")}` : ""}` };
+}
+
+/** The value a table is actually ordered on, so the screen can tell when two rows were split on countback. */
+export const decidingValue = (kind, r) => kind in MATCH_BASIS ? r.points : r.counted;
+
+/** What a round is settled on in each of the eight ways: Stableford points, or net strokes against par. */
+export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind === "stroke" ? "net" : "points");
+
+/**
+ * One day's board in the league's own currency. A football-table or stroke-play league whose day is read off
+ * the Stableford board crowns the wrong player in the largest type on the screen, so the sort follows the
+ * league. `gross_board` is no use here: it ranks gross strokes, and a stroke league is settled on net.
+ */
+export function dayBoard(kind, card) {
+  const basis = dayBasis(kind);
+  const rows = [...(card.stbl_board || [])];
+  if (basis === "points") return { basis, rows, value: p => String(p.pts), unit: "pts" };
+  const par = card.course_par ?? 0;
+  const net = p => (p.net === null || p.net === undefined ? null : p.net - par);
+  rows.sort((a, b) => { const x = net(a), y = net(b); return x === null ? (y === null ? 0 : 1) : y === null ? -1 : x - y; });
+  return { basis, rows, value: p => net(p) === null ? "NR" : fmtToPar(net(p)), unit: "net", key: net };
+}
+
+/**
+ * Which row is this phone's. A league collapses a claimed contact into the account that claimed it, so my
+ * line is under my identity as often as under my own id; asking only for `me.id` leaves a claimed player
+ * unmarked on every board. One answer, used by every screen that draws a standings row.
+ */
+export const isMyRow = (r, me) => !!me && !!r && (r.id === S.identityOf(me.id) || r.id === me.id);
+export const myRow = (rows, me) => (me && rows.find(r => isMyRow(r, me))) || null;
+
 export function standingsTable(kind, Sx, g, me) {
   const rows = Sx.rows;
-  const mark = r => me && r.id === me.id ? "acc" : "";
+  const mark = r => isMyRow(r, me) ? "acc" : "";
   if (!rows.length) return `<p class="muted center">Nothing to rank yet.</p>`;
   if (kind === "stableford") return `<table class="stand"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;

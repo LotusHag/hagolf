@@ -6,7 +6,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, isIOS, isStandalone } from "../ui.js";
+import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect } from "../ui.js";
 import { compute, handicapFor, stableford, fix, fmtIndex } from "../model.js";
 import { leagueResults, standingsFor, standingValue, FORMAT_NAMES } from "./formats.js";
 import { noteLine } from "./updates.js";
@@ -39,9 +39,6 @@ export function liveLine(r) {
 /** The round in progress as a card, for the Rounds tab, which lists several of them at once. */
 export const nowCard = r => `<a class="now" href="${resumeHash(r)}"><div class="k">${r.status === "scoring" ? "Playing now" : "Being set up"}</div><div class="name">${esc(r.name)}</div>
     <div class="small" style="opacity:.85">${esc(courseTitle(courseBy(r.course) || { name: r.course }))} · ${roundStatus(r)}</div>${liveLine(r)}<span class="cta">${r.status === "scoring" ? "Continue scoring ›" : "Add players ›"}</span></a>`;
-
-/** A section label with the hairline running off it, and an optional link at the far end. */
-const sect = (label, link = "") => `<div class="sect"><span class="caps">${esc(label)}</span><span class="fill"></span>${link}</div>`;
 
 /** The round in play, given the top of the screen: an accent rule, the name, the board, one button. */
 function inPlay(r) {
@@ -132,8 +129,6 @@ export function home() {
   if (Y.sync.status === "error") banners.push(`<button class="banner warn" data-act="retry">Couldn't sync: ${esc(Y.sync.error || "")}. Tap to retry.</button>`);
   if (Y.sync.status === "signedout") banners.push(`<a class="banner warn" href="#welcome">Signed out. Everything is kept on this phone; sign in to keep syncing.</a>`);
   if (window.__updateReady) banners.push(`<button class="banner accent" data-act="update">A new version is ready. Tap to reload.</button>`);
-  if (window.__installPrompt) banners.push(`<button class="banner" data-act="install">Install Hagolf on this phone</button>`);
-  else if (isIOS() && !isStandalone() && !S.state.settings.installHintSeen) banners.push(`<div class="banner act muted"><span>To install: tap Share <span class="ios-share">⎋</span> in Safari, then “Add to Home Screen”.</span><button class="x" data-act="hide-install" aria-label="Dismiss">×</button></div>`);
   const open = rounds.filter(r => r.status !== "done");
   const mine = me ? myRounds(me) : [];
   const fresh = N.held().filter(n => !n.seen).slice(0, 3);
@@ -153,8 +148,6 @@ export function home() {
     if (!b) return;
     if (b.dataset.act === "retry") { await Y.pushAndPull(); return home(); }
     if (b.dataset.act === "resync") return resyncNow();
-    if (b.dataset.act === "hide-install") { S.setSetting("installHintSeen", true); return home(); }
     if (b.dataset.act === "update") { if (window.__updateWorker) window.__updateWorker.postMessage("skipWaiting"); }
-    if (b.dataset.act === "install" && window.__installPrompt) { window.__installPrompt.prompt(); window.__installPrompt = null; }
   });
 }

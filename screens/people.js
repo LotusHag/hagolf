@@ -7,7 +7,7 @@ import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName,
 import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained } from "../model.js";
 import { statBlock, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
 import { playerRounds, ninesPlayed } from "./stats.js";
-import { leagueResults } from "./formats.js";
+import { leagueResults, standingsFor, standingValue, MATCH_BASIS } from "./formats.js";
 import { myCard, nineLine } from "./review.js";
 import { nineName } from "./play.js";
 import { inviteSheet } from "./league.js";
@@ -141,9 +141,10 @@ export function player(id) {
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
   const stats = rs.length ? `<div class="mecard"><div class="stats">${tile(rs.length, plural(rs.length, "round").split(" ")[1])}${tile(Math.max(...pts), "best pts")}${tile((pts.reduce((a, b) => a + b, 0) / pts.length).toFixed(1), "average")}${grosses.length ? tile(Math.min(...grosses), "best gross") : ""}${wins ? tile(wins, plural(wins, "win").split(" ")[1]) : ""}</div></div>` : "";
   const leagueLines = S.leagues().map(g => {
-    const { S: Sx } = leagueResults(g);
-    const row = Sx.rows.find(r => r.id === S.identityOf(p.id) || r.id === p.id);
-    return row ? `<a href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${plural(row.played, "round")} counted</div></div><span class="pill done">${ordinal(row.place)} · ${row.counted} pts</span></a>` : "";
+    const { Ms, members } = leagueResults(g);
+    const kind = S.cleanFormats(g.formats)[0];
+    const row = standingsFor(g, Ms, members, kind).rows.find(r => r.id === S.identityOf(p.id) || r.id === p.id);
+    return row ? `<a href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${kind in MATCH_BASIS ? plural(row.played, "match") : `${plural(row.played, "round")} counted`}</div></div><span class="pill done">${ordinal(row.place)} · ${standingValue(kind, row)}</span></a>` : "";
   }).filter(Boolean).join("");
   const list = rs.map(({ r, M, x }) => {
     const H = halves(M, x);

@@ -8,7 +8,8 @@ import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui
 import { DATA } from "../data.js";
 import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE } from "../model.js";
 import { renderCards } from "../cards.js";
-import { statStrip, statTap, statLine, holedOut } from "./extras.js";
+import { statTap, statLine, holedOut } from "./extras.js";
+import { mark, keys as padKeys, askSteps, askAll, moreSheet } from "../pad.js";
 import { dropBtn, dropRound } from "./players.js";
 import { nineName } from "./play.js";
 
@@ -128,16 +129,16 @@ export function review(rid, keep = false) {
     const skip = (e.fromHole || 1) - 1 > i;
     const cls = skip ? "empty" : v === null ? "empty" : v === 0 ? "pick" : ["under", "par", "bogey", "double"][outcome(v - par)];
     const sel = ui.expanded === e.playerId && ui.selHole === i ? "sel" : "";
-    return `<button class="chip ${cls} ${sel}" data-act="sel-hole" data-pid="${e.playerId}" data-h="${i}" ${skip || !mine ? "disabled" : ""}><small>${c.first_hole + i}</small>${skip ? "—" : v === null ? "–" : v === 0 ? String(NO_SCORE) : v}</button>`;
+    return `<button class="chip ${cls} ${sel}" data-act="sel-hole" data-pid="${e.playerId}" data-h="${i}" ${skip || !mine ? "disabled" : ""}><small>${c.first_hole + i}</small>${skip ? `<span class="mk empty">—</span>` : mark(v, par)}</button>`;
   }).join("");
+  // the same keys the scoring screen writes with, so a number goes into a card one way and is fixed the same way
   const editor = e => {
     if (ui.expanded !== e.playerId || ui.selHole === null || !mine) return "";
-    const i = ui.selHole, v = e.scores[i], par = c.par[i], ei = r.entries.indexOf(e);
-    return `<div class="editor"><div>Hole ${c.first_hole + i} · par ${par} · SI ${c.stroke_index[i]}</div>
-      <div class="edrow"><button class="sbtn" data-act="ed" data-d="-1" data-pid="${e.playerId}">−</button>
-      <span class="sval big">${v === null ? "–" : v === 0 ? String(NO_SCORE) : v}</span>
-      <button class="sbtn" data-act="ed" data-d="1" data-pid="${e.playerId}">+</button></div>
-      ${statStrip(r, c, e, ei, i, kinds)}</div>`;
+    const i = ui.selHole, v = e.scores[i], par = c.par[i];
+    const steps = askSteps(c, e, i, kinds);
+    return `<div class="editor"><div class="edhead">Hole ${c.first_hole + i} · par ${par} · SI ${c.stroke_index[i]}</div>
+      ${padKeys(par, v)}
+      ${steps.length ? (holedOut(e, i) ? askAll(e, i, kinds, steps) : `<p class="muted small" style="margin:8px 0 0">Put the score in first.</p>`) : ""}</div>`;
   };
   const penalties = e => !mine ? "" : `<div class="pens">${(e.penalties || []).map((p, k) => `<span class="pen">+${p.strokes} on hole ${p.hole}${p.reason ? ` (${esc(p.reason)})` : ""} <button data-act="del-pen" data-pid="${e.playerId}" data-k="${k}" aria-label="remove">×</button></span>`).join("")}
     <details><summary class="muted small">Add penalty strokes</summary>
@@ -194,21 +195,28 @@ export function review(rid, keep = false) {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     const act = b.dataset.act;
-    const e = r.entries.find(x => x.playerId === b.dataset.pid);
+    // the keys and the question rows sit inside the open player's card and carry no id of their own,
+    // so they are resolved from whoever is expanded rather than from the button
+    const e = r.entries.find(x => x.playerId === (b.dataset.pid || ui.expanded));
     if (act === "share") return shareSheet(r);
     if (act === "my-card") return myCard(rid);
     if (act === "drop-round") return dropRound(rid);
     if (act === "expand") { ui.expanded = ui.expanded === e.playerId ? null : e.playerId; ui.selHole = null; return review(rid, true); }
     if (!mine) return;
     if (act === "sel-hole") { ui.expanded = e.playerId; ui.selHole = Number(b.dataset.h); return review(rid, true); }
-    if (act === "ed") {
-      const i = ui.selHole, v = e.scores[i], par = c.par[i], d = Number(b.dataset.d);
-      S.setScore(r, e, i, (v === null || v === 0) ? par : Math.max(1, Math.min(30, v + d))); return review(rid, true);
+    if (act === "pick") {
+      const i = ui.selHole, v = Number(b.dataset.v);
+      S.setScore(r, e, i, e.scores[i] === v ? null : v); return review(rid, true);
+    }
+    if (act === "more") {
+      const i = ui.selHole, v = await moreSheet(c.par[i], e.scores[i]);
+      if (v === undefined) return;
+      S.setScore(r, e, i, v); return review(rid, true);
     }
     if (["st-putt", "st-bit", "st-fw"].includes(act)) {
-      const i = ui.selHole, ent = r.entries[Number(b.dataset.i)];
-      if (!holedOut(ent, i)) return toast("Put the score in first");
-      statTap(r, ent, i, act, b);
+      const i = ui.selHole;
+      if (!holedOut(e, i)) return toast("Put the score in first");
+      statTap(r, e, i, act, b);
       return review(rid, true);
     }
     if (act === "del-pen") { e.penalties.splice(Number(b.dataset.k), 1); S.saveEntry(r, e); return review(rid, true); }

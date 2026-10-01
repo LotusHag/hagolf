@@ -920,7 +920,7 @@ export function standings(results, memberIds, bestN = 0) {
     };
   });
   out.sort((a, b) => b.counted - a.counted || b.avg - a.avg || b.best - a.best || a.name.localeCompare(b.name));
-  out.forEach((r, i) => { r.place = i + 1; r.tied = false; });
+  out.forEach((r, i) => { r.place = i + 1; });
   return { rows: out, rounds: roundsIn, bestN };
 }
 
@@ -1060,7 +1060,7 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS, ba
   const out = [...rows.values()].map(r => {
     const sorted = [...r.scores].sort((a, b) => b - a);
     const counted = bestN > 0 ? sorted.slice(0, bestN) : sorted;
-    return { ...r, played: r.scores.length, total: sum(r.scores), counted: sum(counted),
+    return { ...r, played: r.scores.length, total: sum(r.scores), counted: sum(counted), counted_n: counted.length,
       avg: r.scores.length ? sum(r.scores) / r.scores.length : 0 };
   });
   out.sort((a, b) => b.counted - a.counted || b.wins - a.wins || b.best - a.best || a.name.localeCompare(b.name));

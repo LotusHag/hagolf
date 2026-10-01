@@ -38,6 +38,8 @@ export const courseTitle = c => c.loop ? `${c.name} · ${c.loop}` : c.name;
 export const courseBy = slug => S.courseBy(slug);
 export const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
 export const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+/** Hagolf belongs on a home screen; a browser tab is only offered the way to put it there. Localhost stays open, for development and the tests. */
+export const inBrowser = () => !isStandalone() && location.protocol !== "file:" && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 export const appBase = () => `${location.origin}${location.pathname}`;
 
 /** Handicap index as typed: "19,9", "+2.1" (plus handicap), "18". */
@@ -51,8 +53,11 @@ export function parseHI(s) {
 export const hiOk = hi => hi >= -10 && hi <= 54;
 
 /** Screen state that survives a redraw but not a reload. Keyed per screen where a screen has several instances. */
-export const ui = { expanded: null, selHole: null, blobs: [], h2h: {}, h2hBasis: {}, groupFilter: 0, leagueTab: {}, reviewOrder: {}, roundsFilter: "all", plSort: {},
-  loops: {}, nineTab: {}, fmtTab: {}, statsWho: {}, rivalBasis: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
+// A league's own screen state is two keys now: which table it is being read in, and in what currency two
+// players are compared. Everything else that used to live here -- which tab, which player, which pair -- is
+// in the hash instead, so the back button works and a board can be linked to.
+export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: 0, reviewOrder: {}, roundsFilter: "all",
+  loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
 
 // ---------------------------------------------------------------- icons
 const I = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}${extra}</svg>`;
@@ -292,10 +297,15 @@ export function viewer(items, start = 0) {
 export const infoBtn = (title, text, cls = "") => `<button type="button" class="ibtn${cls ? ` ${cls}` : ""}" data-tip="${esc(title)}" aria-label="How this works${title ? `: ${esc(title)}` : ""}"><i aria-hidden="true">i</i></button><template>${text}</template>`;
 export const h2tip = (title, text) => `<div class="tiphead"><h2>${esc(title)}</h2>${infoBtn(title, text)}</div>`;
 export const tip = (text, label = "How this works") => `<div class="tiphead solo"><span>${esc(label)}</span>${infoBtn(label, text)}</div>`;
+/** A section label with the hairline running off it, and an optional link or control at the far end. */
+export const sect = (label, end = "") => `<div class="sect"><span class="caps">${esc(label)}</span><span class="fill"></span>${end}</div>`;
+/** The same, where the label is itself a control (the board's heading is its own format switch). */
+export const sectRaw = (labelHtml, end = "") => `<div class="sect">${labelHtml}<span class="fill"></span>${end}</div>`;
 document.addEventListener("click", ev => {
   const b = ev.target.closest("[data-tip]");
   const t = b && b.nextElementSibling;
   if (!t || t.tagName !== "TEMPLATE") return;
+  ev.preventDefault();   // an i inside a <summary> would otherwise toggle the fold behind the sheet
   const html = t.innerHTML.trim();
   sheet({ title: b.dataset.tip, body: `<div class="tipbody">${/^<p[\s>]/.test(html) ? html : `<p>${html}</p>`}</div>` });
 });

@@ -3,7 +3,7 @@ import * as S from "../store.js";
 import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, infoBtn, subtabs, safeCompute, ui } from "../ui.js";
 import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE } from "../model.js";
 import { statBlock, statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
-import { H2H_BASES, basisUnit, leagueResults } from "./formats.js";
+import { H2H_BASES, basisUnit } from "./formats.js";
 import { nineName } from "./play.js";
 
 const BUCKET_KEY = SCORE_BUCKETS.map(b => b.key);
@@ -11,8 +11,9 @@ export const pct = (v, t) => t ? Math.round((v / t) * 100) : 0;
 const sumc = cs => cs.reduce((a, b) => a + b, 0);
 export const parOrBetter = x => x.counts[0] + x.counts[1] + x.counts[2];
 const whereName = w => String(w || "").replace(/, 9 holes$/, "");
-export const basisPicker = (act, chosen) => `<p class="pickline">Compare them on</p>
-  ${subtabs(H2H_BASES.map(([k, label]) => `<button data-act="${act}" data-b="${k}" class="${k === chosen ? "on" : ""}">${label}</button>`).join(""), true)}`;
+/** The currency these comparisons are read in, as one line that opens a sheet rather than a row of tabs. */
+export const basisPicker = (act, chosen) => `<button class="pickrow" data-act="${act}-open">Compared on <b>${esc((H2H_BASES.find(x => x[0] === chosen) || H2H_BASES[0])[1])}</b> <i aria-hidden="true">⌄</i></button>`;
+export const basisSheetBody = chosen => `<div class="fmtpicks">${H2H_BASES.map(([k, label, rw]) => `<button class="fmtpick${k === chosen ? " on" : ""}" data-sheet="${k}"><span><b>${esc(label)}</b><small>the day goes to ${esc(rw)}</small></span></button>`).join("")}</div>`;
 
 export function donut(counts, big, small) {
   const total = sumc(counts), R = 56, W = 22, C = 2 * Math.PI * R;
@@ -223,7 +224,7 @@ function fieldStats(St, nines = "", gid = "", meId = null) {
     </div>`;
 }
 
-function playerStats(St, p, nines = "", gid = "") {
+function playerStats(St, p, nines = "", gid = "", cards = []) {
   const R = p.rest, one = p.played === 1, first = firstName(p.name);
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
   const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span><span class="muted">${value} · ${esc(whereName(r.where))} · ${esc(shortDate(r.date))}</span></a>` : "";
@@ -252,7 +253,7 @@ function playerStats(St, p, nines = "", gid = "") {
       <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} · ${fmtSigned(p.vspar, 2)} a hole against par</p></div>
     ${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this league on the right, over the ${plural(p.played, "round")} they played together. The green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixedLengths(p.rounds) ? " This league mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
     ${vsField}
-    ${rivalsBlock(St, p, gid)}
+    ${rivalsBlock(St, p, gid, cards)}
     ${one ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left: ${esc(first)}'s points ${mixedLengths(p.rounds) ? "a hole, because this league mixes nines and eighteens" : "in each round"}. The grey column behind a bar is what everyone else in the league scored that day. Tap a bar for that card.`)}${formChart(p.rounds)}`}
     ${one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear once ${esc(first)} has played a second round here.</p>` : `${h2tip("Over more than one round", `<p><b>Consistency</b> is how far a typical round sits either side of their average. <b>Form</b> is the last three rounds against every round. <b>Trend</b> compares the first half of their rounds with the second half. <b>Streak</b> counts the latest rounds in a row where they beat the rest of the field.</p>
       <p><b>Finishing</b> splits a round in two and gives the points a hole in each half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>`)}<div class="card">
@@ -267,7 +268,7 @@ function playerStats(St, p, nines = "", gid = "") {
       ${p.penalties ? line("Penalty strokes", String(p.penalties)) : ""}
       ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
     </div>`}
-    ${sgLeague(gid, p.id)}
+    ${sgLeague(cards, p.id)}
     ${p.statline.any ? `${h2tip("Putts, fairways and the rest", `${STATS_TIP}<p>Set against the rest of the league, each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>`)}${extrasCompare(p, first)}` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
@@ -283,10 +284,9 @@ function playerStats(St, p, nines = "", gid = "") {
     </div>`;
 }
 
-function sgLeague(gid, pid) {
-  const g = S.leagues().find(x => x.id === gid);
-  if (!g) return "";
-  const sg = strokesGained(leagueCards(leagueResults(g).Ms), pid);
+function sgLeague(cards, pid) {
+  if (!cards.length) return "";
+  const sg = strokesGained(cards, pid);
   if (sg.total === null || !sg.holes) return "";
   return `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sg, "the rest of this league")}`;
 }
@@ -323,11 +323,9 @@ function rivalRows(rs, me, nameOf) {
   return `<div class="card rivalrows">${rs.map(r => { const val = v => r.scale ? fix(v * r.scale) : fix(v, 2);
     return `<div class="kv"><span>${esc(r.name)}</span><span class="muted">${val(r.myAvg)} to ${val(r.theirAvg)} · ${rivalRecord(r, me, nameOf(r))}</span></div>`; }).join("")}</div>`;
 }
-function rivalsBlock(St, p, gid) {
-  const basis = H2H_BASES.some(([k]) => k === ui.rivalBasis[gid]) ? ui.rivalBasis[gid] : "points";
+function rivalsBlock(St, p, gid, cards = []) {
+  const basis = H2H_BASES.some(([k]) => k === ui.basis[gid]) ? ui.basis[gid] : "points";
   const rs = rivals(St.rounds, p.id, basis);
-  const g = S.leagues().find(x => x.id === gid);
-  const cards = g ? leagueCards(leagueResults(g).Ms) : [];
   for (const r of rs) r.sg = cards.length ? strokesGained(cards, p.id, { against: r.id }) : null;
   if (!rs.length && !rivals(St.rounds, p.id).length) return "";
   const me = esc(firstName(p.name));
@@ -449,18 +447,22 @@ export function ninesForPoster(rounds, members) {
   return out;
 }
 
-/** The Stats tab: the field, or any one player of it, chosen at the top. */
+/** The field's numbers. One player's are their own screen now, so nothing here picks a person. */
 export function leagueStatsBody(g, Ms, members) {
   const St = leagueStats(Ms, members);
   if (!St.rounds.length) return `<p class="muted center" style="margin:30px 0">No finished rounds in this league yet.</p>`;
-  const who = St.players.some(p => p.id === ui.statsWho[g.id]) ? ui.statsWho[g.id] : "";
-  const rounds = leagueRounds(g.id);
-  const chips = `<div class="chips-wrap scroll">
-    <button class="pchip ${who ? "" : "on"}" data-act="statswho" data-id="">The field<small>${plural(St.field.cards, "card")}</small></button>
-    ${St.players.map(p => `<button class="pchip ${p.id === who ? "on" : ""}" data-act="statswho" data-id="${esc(p.id)}">${esc(p.name)}<small>${plural(p.played, "round")}</small></button>`).join("")}</div>`;
-  const p = who ? St.players.find(x => x.id === who) : null;
   const mine = S.me();
-  const body = p ? playerStats(St, p, ninesPlayerBlock(rounds, p.id, firstName(p.name)), g.id)
-    : fieldStats(St, ninesFieldBlock(g.id, rounds, mine), g.id, mine && mine.id);
-  return `${chips}<div class="statsbody">${body}<a class="btn" href="#statsposter/${g.id}" style="margin-top:16px">Make stats images ›</a></div>`;
+  const body = fieldStats(St, ninesFieldBlock(g.id, leagueRounds(g.id), mine), g.id, mine && mine.id);
+  return `<div class="statsbody">${body}<a class="btn" href="#statsposter/${g.id}" style="margin-top:16px">Make stats images ›</a></div>`;
 }
+
+/** One player's season in this league, for their own screen. */
+export function leaguePlayerBody(g, Ms, members, pid) {
+  const St = leagueStats(Ms, members);
+  const p = St.players.find(x => x.id === pid);
+  if (!p) return "";
+  return `<div class="statsbody">${playerStats(St, p, ninesPlayerBlock(leagueRounds(g.id), p.id, firstName(p.name)), g.id, leagueCards(Ms))}</div>`;
+}
+
+/** That player's line in `leagueStats`, for a screen that wants the headline figures without the whole wall. */
+export const leaguePlayer = (Ms, members, pid) => leagueStats(Ms, members).players.find(x => x.id === pid) || null;
