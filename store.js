@@ -483,16 +483,10 @@ export function setStatsFor(rid, kinds) {
 }
 
 /** What unlocking opens on a card: the kinds ticked in Settings, or everything until somebody narrows it. */
-/**
- * What a card opens with when nobody has narrowed it: putts and fairways, not everything. Putts carry greens
- * in regulation, up and down, sand saves and putts per green with them, and the fairway is the only other
- * answer worth a tap on every hole; opening all four made a three-question interview for somebody who only
- * ever wanted putts. The rest are a tick away in Settings or on the card's own player list.
- */
-const STATS_AT_FIRST = { putts: true, fairway: true };
+/** Turning the extras on turns on all of them; switching one back off afterwards is one tap in the sheet. */
 export function defaultStats() {
   const on = state.settings.stats;
-  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on ? !!on[k] : !!STATS_AT_FIRST[k]]));
+  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on ? !!on[k] : true]));
 }
 
 export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
@@ -511,8 +505,7 @@ export function setImageChoice(choice) { state.settings.images = { ...imageChoic
 /** The Extras button: opens the ticked kinds for this card and every player on it, or shuts them again.
  * The only place a player's `trackStats` is turned on by default; anywhere else reads `cardKeepsStats`. */
 export function unlockStats(r, on) {
-  const want = defaultStats();
-  const kinds = Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on && (want[k] || !Object.values(want).some(Boolean))]));
+  const kinds = Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, !!on]));
   setStatsFor(r.id, kinds);
   if (on) for (const e of r.entries) if (!e.trackStats) setTrackStats(r, e, true);
 }

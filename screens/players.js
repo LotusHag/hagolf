@@ -3,7 +3,7 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, parseHI, hiOk, confirmSheet, promptSheet, avatar } from "../ui.js";
+import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, parseHI, hiOk, confirmSheet, promptSheet, avatar, sheet } from "../ui.js";
 import { handicapFor, fmtHcp, fmtIndex, STAT_SWITCHES } from "../model.js";
 
 /** Giving up on a round: it is thrown away everywhere. A finished one is deleted by whoever was on it. */
@@ -130,20 +130,7 @@ export function players(rid, keep = false) {
     }
     if (act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid); }
     if (act === "trk") { const e = r.entries[Number(b.dataset.i)]; S.setTrackStats(r, e, !e.trackStats); return players(rid, true); }
-    if (act === "trk-all") {
-      const all = b.dataset.who === "all";
-      const mine = r.entries.find(e => e.playerId === S.state.settings.meId);
-      for (const e of r.entries) S.setTrackStats(r, e, all || e === mine);
-      return players(rid, true);
-    }
-    if (act === "stat-kind") {
-      const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
-      S.setStatsFor(rid, next);
-      if (Object.values(next).some(Boolean) && !S.cardKeepsStats(r)) {
-        const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
-        if (mine) S.setTrackStats(r, mine, true);
-      }
-      return players(rid, true);
+    if (act === "x-sheet") { await extrasSheet(rid); return players(rid, true);
     }
   });
   document.querySelector("main").addEventListener("change", ev => {
@@ -186,19 +173,67 @@ export function players(rid, keep = false) {
   if (f.classList.contains("open")) nameEl.focus();
 }
 
+/**
+ * The extras, in one sheet that stays open while you work it. Turning them on turns on *all* of them, because
+ * that is the answer nine times in ten; switching one back off is one tap, and the sheet does not shut under
+ * you when you do, so turning two off costs two taps rather than two round trips.
+ */
+export async function extrasSheet(rid) {
+  const r = S.getRound(rid);
+  if (!r) return;
+  const draw = el => {
+    const kinds = S.statsFor(rid);
+    const on = Object.values(kinds).some(Boolean) && S.cardKeepsStats(r);
+    const who = r.entries.filter(e => e.trackStats);
+    const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
+    el.querySelector("#xbody").innerHTML = `
+      <button class="xmaster ${on ? "on" : ""}" data-act="x-all"><b>${on ? "Keeping them" : "Not kept"}</b>
+        <small>${on ? "Tap to stop keeping anything" : "Tap to keep putts, fairways, bunker shots and penalties"}</small></button>
+      ${on ? `<p class="muted small" style="margin:14px 0 0">All of them are on. Switch off anything you do not want; this stays open.</p>
+        <div class="statpick">${STAT_SWITCHES.map(k =>
+          `<button data-act="x-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
+        <p class="muted small" style="margin:12px 0 0">${STAT_SWITCHES.filter(k => kinds[k.key]).map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>
+        <p class="pickline" style="margin:14px 0 0">Keep them for</p>
+        <div class="statpick">
+          <button data-act="x-who" data-who="me" class="${who.length === 1 && mine && who[0] === mine ? "on" : ""}">Just me</button>
+          <button data-act="x-who" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
+        </div>` : ""}`;
+  };
+  await sheet({
+    title: "Putts, fairways and the rest",
+    lead: "Kept beside the score on every hole, for whoever on this card wants them.",
+    body: `<div id="xbody"></div>`,
+    actions: [{ label: "Done", value: "no", kind: "primary" }],
+    onOpen: el => {
+      draw(el);
+      // these carry no `data-sheet-act`, so the sheet's own handler ignores them and the popout stays put
+      el.addEventListener("click", ev => {
+        const b = ev.target.closest("[data-act]");
+        if (!b) return;
+        const act = b.dataset.act;
+        if (act === "x-all") S.unlockStats(r, !(Object.values(S.statsFor(rid)).some(Boolean) && S.cardKeepsStats(r)));
+        else if (act === "x-kind") {
+          const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
+          S.setStatsFor(rid, next);
+          if (Object.values(next).some(Boolean) && !S.cardKeepsStats(r)) {
+            const m = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
+            if (m) S.setTrackStats(r, m, true);
+          }
+        } else if (act === "x-who") {
+          const all = b.dataset.who === "all";
+          const m = r.entries.find(e => e.playerId === S.state.settings.meId);
+          for (const e of r.entries) S.setTrackStats(r, e, all || e === m);
+        } else return;
+        draw(el);
+      });
+    },
+  });
+}
+
 function statsPicker(rid, kinds, r) {
   const on = STAT_SWITCHES.filter(k => kinds[k.key]);
   const who = r.entries.filter(e => e.trackStats);
-  const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
   const line = !on.length ? "Putts, fairways and the rest: not kept"
     : `Keeping ${andList(on.map(k => k.word))}${who.length ? ` for ${andList(who.map(e => firstName(e.name)))}` : " — for nobody yet"}`;
-  return `<details class="card" id="statpick"><summary class="small">${esc(line)}</summary>
-    <p class="muted small" style="margin:8px 0 0">Tick what you want to tap in beside each score. One tap on the hole each; anything left off never appears.</p>
-    <div class="statpick">${STAT_SWITCHES.map(k => `<button data-act="stat-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
-    ${on.length ? `<p class="muted small" style="margin:10px 0 0">${on.map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>
-      <p class="pickline" style="margin:12px 0 0">Keep them for</p>
-      <div class="statpick">
-        <button data-act="trk-all" data-who="me" class="${who.length === 1 && mine && who[0] === mine ? "on" : ""}">Just me</button>
-        <button data-act="trk-all" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
-      </div>` : ""}</details>`;
+  return `<button class="card statline" id="statpick" data-act="x-sheet"><span class="small">${esc(line)}</span><span class="chev">›</span></button>`;
 }

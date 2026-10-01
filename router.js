@@ -31,8 +31,9 @@ export const gated = () => Y.enabled() && !A.signedIn();
 export function route() {
   hideToast();
   const [name, ...args] = location.hash.replace(/^#/, "").split("/");
-  // in a browser there is one screen: how to install. The link screens stay open, since a shared board or an
-  // invite is meant to be opened by somebody who has no app yet.
+  // On a desktop browser there is one screen: where to get it. A phone browser is let through -- it is the
+  // phone Hagolf is for. The link screens stay open either way, since a shared board or an invite is meant to
+  // be opened by somebody who has no app yet.
   if (desktopWeb() && !OPEN_SCREENS.includes(name)) return welcome();
   if (gated() && !OPEN_SCREENS.includes(name)) {
     if (name && name !== "home") rememberIntent(location.hash);   // finish the journey once signed in

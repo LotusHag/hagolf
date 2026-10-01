@@ -131,7 +131,9 @@ export async function person(id) {
 /** A contact on my cards: their rounds, their form, and the place their name and index are edited. */
 export function player(id) {
   const p = S.state.players.find(x => x.id === id && !x.deleted);
-  if (!p) return go("#people");
+  // a league collapses a claimed contact into the account that claimed it, so an id from a board is as often
+  // an account as a contact: send it to the page that knows about it rather than dropping it on the friends tab
+  if (!p) return S.players().some(x => x.linkedAccount === id) || id === S.myAccount() ? person(id) : go("#people");
   const me = S.me();
   const isMe = !!me && me.id === p.id;
   const rs = playerRounds(p.id);
@@ -144,7 +146,7 @@ export function player(id) {
     const { Ms, members } = leagueResults(g);
     const kind = S.cleanFormats(g.formats)[0];
     const row = standingsFor(g, Ms, members, kind).rows.find(r => r.id === S.identityOf(p.id) || r.id === p.id);
-    return row ? `<a href="#league/${g.id}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${kind in MATCH_BASIS ? plural(row.played, "match") : `${plural(row.played, "round")} counted`}</div></div><span class="pill done">${ordinal(row.place)} · ${standingValue(kind, row)}</span></a>` : "";
+    return row ? `<a href="#league/${g.id}/p/${esc(row.id)}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${kind in MATCH_BASIS ? plural(row.played, "match") : `${plural(row.played, "round")} counted`}</div></div><span class="pill done">${ordinal(row.place)} · ${standingValue(kind, row)}</span></a>` : "";
   }).filter(Boolean).join("");
   const list = rs.map(({ r, M, x }) => {
     const H = halves(M, x);

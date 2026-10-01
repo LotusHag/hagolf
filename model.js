@@ -462,8 +462,8 @@ export const STAT_KINDS = [
     blurb: "Whether the green was reached with two strokes left for par. Never asked for: it falls out of your putts, so keeping those is what turns it on." },
   { key: "penaltyShots", col: "penalty_shots", label: "Penalty shots", short: "Penalties", word: "penalty shots", perHole: "count", derived: false,
     blurb: "How many of the strokes you took were penalties — water, out of bounds, an unplayable lie. These are already inside your score and are never added to it again." },
-  { key: "bunker", col: "bunker", label: "Greenside bunkers", short: "Sand", word: "bunkers", perHole: "bit", derived: false,
-    blurb: "Whether you played from a bunker by the green. Whether you saved par from it comes from your score." },
+  { key: "bunker", col: "bunker_shots", label: "Bunker shots", short: "Sand", word: "bunker shots", perHole: "count", derived: false,
+    blurb: "How many shots you played from a greenside bunker. One is the ordinary visit; two is the hole that got away. Whether you saved par from it comes from your score." },
 ];
 export const STAT_KEYS = STAT_KINDS.map(k => k.key);
 /** The ones a card actually asks about, and so the only ones with a switch and a chip. */
@@ -510,7 +510,7 @@ export function holeStat(raw, { strokes, par }) {
     fairway: hasFairway(par) ? (x.fairway ?? null) : null,
     gir,
     penaltyShots: x.penaltyShots ?? null,
-    bunker: x.bunker === null || x.bunker === undefined ? null : !!x.bunker,
+    bunker: x.bunker === null || x.bunker === undefined ? null : (x.bunker === true ? 1 : Number(x.bunker)),
     topar: played ? strokes - par : null,
   };
 }
@@ -532,7 +532,7 @@ export function statSummary(holes) {
   const greens = girHoles.filter(h => h.gir);
   const missed = girHoles.filter(h => !h.gir && h.topar !== null);
   const fw = hs.filter(h => hasFairway(h.par) && h.fairway !== null);
-  const sand = hs.filter(h => h.bunker !== null && h.bunker);
+  const sand = hs.filter(h => h.bunker !== null && h.bunker > 0);
   const pen = hs.filter(h => h.penaltyShots !== null);
   const puttsOnGreens = withPutts.filter(h => h.gir);
   const total = xs => xs.reduce((a, h) => a + h.putts, 0);

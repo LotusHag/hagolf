@@ -8,8 +8,8 @@ import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui
 import { DATA } from "../data.js";
 import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE } from "../model.js";
 import { renderCards } from "../cards.js";
-import { statTap, statLine, holedOut } from "./extras.js";
-import { mark, keys as padKeys, askSteps, askAll, moreSheet } from "../pad.js";
+import { statTap, statStep, statLine } from "./extras.js";
+import { mark, scoreStepper, extrasRows } from "../pad.js";
 import { dropBtn, dropRound } from "./players.js";
 import { nineName } from "./play.js";
 
@@ -130,14 +130,13 @@ export function review(rid, keep = false) {
     const sel = ui.expanded === e.playerId && ui.selHole === i ? "sel" : "";
     return `<button class="chip ${sel}" data-act="sel-hole" data-pid="${e.playerId}" data-h="${i}" ${skip || !mine ? "disabled" : ""}><small>${c.first_hole + i}</small>${skip ? `<span class="mk empty">—</span>` : mark(v, par)}</button>`;
   }).join("");
-  // the same keys the scoring screen writes with, so a number goes into a card one way and is fixed the same way
+  // the same stepper and the same extras the scoring screen writes with, so a number goes into a card one way
+  // and is put right the same way
   const editor = e => {
     if (ui.expanded !== e.playerId || ui.selHole === null || !mine) return "";
-    const i = ui.selHole, v = e.scores[i], par = c.par[i];
-    const steps = askSteps(c, e, i, kinds);
+    const i = ui.selHole, par = c.par[i], ei = r.entries.indexOf(e);
     return `<div class="editor"><div class="edhead">Hole ${c.first_hole + i} · par ${par} · SI ${c.stroke_index[i]}</div>
-      ${padKeys(par, v)}
-      ${steps.length ? (holedOut(e, i) ? askAll(e, i, kinds, steps) : `<p class="muted small" style="margin:8px 0 0">Put the score in first.</p>`) : ""}</div>`;
+      ${scoreStepper(e, ei, i, par)}${extrasRows(c, e, ei, i, kinds)}</div>`;
   };
   const penalties = e => !mine ? "" : `<div class="pens">${(e.penalties || []).map((p, k) => `<span class="pen">+${p.strokes} on hole ${p.hole}${p.reason ? ` (${esc(p.reason)})` : ""} <button data-act="del-pen" data-pid="${e.playerId}" data-k="${k}" aria-label="remove">×</button></span>`).join("")}
     <details><summary class="muted small">Add penalty strokes</summary>
@@ -203,21 +202,16 @@ export function review(rid, keep = false) {
     if (act === "expand") { ui.expanded = ui.expanded === e.playerId ? null : e.playerId; ui.selHole = null; return review(rid, true); }
     if (!mine) return;
     if (act === "sel-hole") { ui.expanded = e.playerId; ui.selHole = Number(b.dataset.h); return review(rid, true); }
-    if (act === "pick") {
-      const i = ui.selHole, v = Number(b.dataset.v);
-      S.setScore(r, e, i, e.scores[i] === v ? null : v); return review(rid, true);
-    }
-    if (act === "more") {
-      const i = ui.selHole, v = await moreSheet(c.par[i], e.scores[i]);
-      if (v === undefined) return;
-      S.setScore(r, e, i, v); return review(rid, true);
-    }
-    if (["st-putt", "st-bit", "st-fw"].includes(act)) {
-      const i = ui.selHole;
-      if (!holedOut(e, i)) return toast("Put the score in first");
-      statTap(r, e, i, act, b);
+    if (["inc", "dec", "par"].includes(act)) {
+      const i = ui.selHole, v = e.scores[i], par = c.par[i];
+      if (act === "inc") S.setScore(r, e, i, (v === null || v === 0) ? par : Math.min(30, v + 1));
+      else if (act === "dec") S.setScore(r, e, i, (v === null || v === 0) ? par : Math.max(1, v - 1));
+      else if (v === null || v === 0) S.setScore(r, e, i, par);
+      else return;
       return review(rid, true);
     }
+    if (act === "x-inc" || act === "x-dec") { statStep(r, e, ui.selHole, b.dataset.k, act === "x-inc" ? 1 : -1); return review(rid, true); }
+    if (act === "st-fw") { statTap(r, e, ui.selHole, act, b); return review(rid, true); }
     if (act === "del-pen") { e.penalties.splice(Number(b.dataset.k), 1); S.saveEntry(r, e); return review(rid, true); }
     if (act === "add-pen") {
       const box = b.closest(".pens");

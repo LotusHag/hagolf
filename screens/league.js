@@ -68,6 +68,8 @@ function ctx(g) {
 }
 
 const cardKey = c => encodeURIComponent(c.key ?? c.id);
+/** Where a league member's own page lives: a contact has one, an account that claimed them has another. */
+const personHash = id => (S.state.players.find(x => x.id === id && !x.deleted) ? `#player/${id}` : `#person/${id}`);
 const dayWhere = c => (c.course && (c.course.loop || c.course.name)) || c.name || "";
 
 /** Invite, share and the rest, as icons in the header, where they cost no page at all. */
@@ -202,19 +204,22 @@ function boardView(C, keepScroll) {
   const pick = C.formats.length > 1
     ? `<button class="caps lfmt" data-act="board-pick">${esc(FORMAT_NAMES[C.kind])} <i aria-hidden="true">⌄</i></button>`
     : `<span class="caps">${esc(FORMAT_NAMES[C.kind])}</span>`;
+  const SHOWN = 6;
+  const shown = Sx.rows.length > SHOWN + 1 ? Sx.rows.slice(0, SHOWN) : Sx.rows;
   const body = `
     ${claimBanner(C)}${attachPrompt(C)}
-    ${lastDay(C, move, nCards)}
     ${yourLine(C, Sx, move)}
     ${sectRaw(pick, infoBtn(FORMAT_NAMES[C.kind], FORMAT_NOTES[C.kind]))}
     ${nCards > 1 ? stateOfPlay(C, Sx) : ""}
-    ${Sx.rows.length ? `<div class="rows lboard">${Sx.rows.map(r => boardRow(C, r, move, Sx)).join("")}</div>`
+    ${Sx.rows.length ? `<div class="rows lboard">${shown.map(r => boardRow(C, r, move, Sx)).join("")}
+      ${shown.length < Sx.rows.length ? `<a class="hrow more" href="#league/${gid}/table/${C.kind}"><span class="t"><b>The whole table</b><span>${plural(Sx.rows.length, "player")}, every column</span></span><span class="chev">›</span></a>` : ""}</div>`
       : `<p class="muted center" style="margin:22px 0">${C.kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[C.kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
     ${boardNotes(C, Sx)}
     ${alsoScored(C)}
-    <div class="btnrow"><button class="btn small" data-act="board-cols">Every column ›</button></div>
+    ${lastDay(C, move, nCards)}
     ${sect("The league")}
     <div class="rows">
+      <a class="hrow" href="#league/${gid}/table/${C.kind}"><span class="t"><b>The whole table</b><span>${esc(FORMAT_NAMES[C.kind])}, every column${C.formats.length > 1 ? `, and the other ${plural(C.formats.length - 1, "way")}` : ""}</span></span><span class="chev">›</span></a>
       <a class="hrow" href="#league/${gid}/days"><span class="t"><b>Cards</b><span>${plural(nCards, "day")} played</span></span><span class="chev">›</span></a>
       <a class="hrow" href="#league/${gid}/stats"><span class="t"><b>The numbers</b><span>How the field scores</span></span><span class="chev">›</span></a>
       ${h2hDoor(C, Sx)}
@@ -223,6 +228,53 @@ function boardView(C, keepScroll) {
     ${posterRow(gid)}`;
   shell(g, g.name, body, { keepScroll, runs: C.runs });
   wireBoard(C, Sx);
+}
+
+/**
+ * The whole table, with the page to itself. A board squeezed between a hero and a row of doors is the thing
+ * that felt claustrophobic, so here it gets the room: the name of the table at the top is also how you change
+ * which table you are reading, and nothing else competes with the rows.
+ */
+function tableView(C, fmt, keep = false) {
+  const kind = C.formats.includes(fmt) ? fmt : C.kind;
+  const Cx = { ...C, kind };
+  if (!C.Ms.length) return emptyBoard(C);
+  const Sx = standingsFor(C.g, C.Ms, C.members, kind);
+  const move = sinceLast(C.g, C.Ms, C.members, kind);
+  const mine = myRow(Sx.rows, C.me);
+  const head = C.formats.length > 1
+    ? `<button class="tblhead" data-act="table-pick">${esc(FORMAT_NAMES[kind])} <i aria-hidden="true">⌄</i></button>`
+    : `<div class="tblhead one">${esc(FORMAT_NAMES[kind])}</div>`;
+  shell(C.g, C.g.name, `
+    <div class="tblbar">${head}${infoBtn(FORMAT_NAMES[kind], FORMAT_NOTES[kind])}</div>
+    ${C.formats.length > 1 ? `<p class="muted small" style="margin:0 4px 6px">${plural(C.formats.length, "way")} of scoring these rounds${mine ? ` · you are ${ordinal(mine.place)} here` : ""}. Tap the name to change it.</p>` : ""}
+    ${stateOfPlay(Cx, Sx)}
+    ${Sx.rows.length ? `<div class="rows lboard roomy">${Sx.rows.map(r => boardRow(Cx, r, move, Sx)).join("")}</div>`
+      : `<p class="muted center" style="margin:22px 0">${kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
+    ${boardNotes(Cx, Sx)}
+    <div class="btnrow"><button class="btn small" data-act="board-cols">Every column ›</button>
+      <a class="btn small" href="#leagueposter/${C.gid}">Make a poster ›</a></div>`,
+    { back: `#league/${C.gid}`, runs: C.runs, keepScroll: keep });
+  bind(async ev => {
+    if (await common(C, ev)) return;
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    if (b.dataset.act === "board-cols") return columnsSheet(Cx, Sx);
+    if (b.dataset.act === "table-pick") {
+      const v = await formatSheet(Cx);
+      if (v) { ui.boardOf[C.gid] = v; go(`#league/${C.gid}/table/${v}`); }
+    }
+  });
+}
+
+/** Any member of the league, by name. The old screen had two selects; this is the same reach, one tap. */
+async function pickMember(C, title, exclude) {
+  const nameOf = id => { for (const M of C.Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
+  const list = C.members.filter(m => m !== exclude).sort((x, y) => nameOf(x).localeCompare(nameOf(y)));
+  const v = await sheet({ title, lead: "Anybody who has played a round in this league.",
+    body: `<div class="fmtpicks">${list.map(m => `<button class="fmtpick" data-sheet="${esc(m)}"><span><b>${esc(nameOf(m))}</b></span></button>`).join("")}</div>`,
+    actions: [{ label: "Cancel", value: "no" }] });
+  return v && v !== "no" ? v : null;
 }
 
 /** The head-to-head door names who it opens on, so it says what is behind it. */
@@ -269,10 +321,8 @@ function wireBoard(C, Sx) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === "board-set") { ui.boardOf[C.gid] = b.dataset.f; return league(C.gid, undefined, undefined, undefined, true); }
-    if (act === "board-pick") return formatSheet(C, Sx);
-    if (act === "board-cols") return sheet({ title: FORMAT_NAMES[C.kind],
-      body: `<div class="tscroll">${standingsTable(C.kind, Sx, C.g, C.me).replace('class="stand"', 'class="stand nowrap"')}</div><div class="tipbody" style="margin-top:12px">${FORMAT_NOTES[C.kind]}</div>`,
-      actions: [{ label: "Done", value: "ok", kind: "primary" }] });
+    if (act === "board-pick") { const v = await formatSheet(C); if (v) { ui.boardOf[C.gid] = v; league(C.gid); } return; }
+    if (act === "board-cols") return columnsSheet(C, Sx);
     if (act === "new-in-league") { S.setSetting("lastLeague", C.gid); return go("#new"); }
     if (act === "attach-day") {
       const d = b.dataset.date;
@@ -289,7 +339,7 @@ function wireBoard(C, Sx) {
  * How this league is scored, and where you are in each of the ways it keeps. The eight formats are two
  * choices -- what a hole or a round is settled on, and how that is paid out -- so the sheet says both.
  */
-async function formatSheet(C, Sx) {
+async function formatSheet(C) {
   const rowOf = f => {
     const T = standingsFor(C.g, C.Ms, C.members, f);
     const mine = myRow(T.rows, C.me);
@@ -301,8 +351,13 @@ async function formatSheet(C, Sx) {
     lead: "Every way this league keeps, and where you are in each. They are the same rounds read differently, so the places can disagree — that is the point.",
     body: `<div class="fmtpicks">${C.formats.map(rowOf).join("")}</div>`,
     actions: [{ label: "Cancel", value: "no" }] });
-  if (v && v !== "no" && C.formats.includes(v)) { ui.boardOf[C.gid] = v; league(C.gid); }
+  return v && v !== "no" && C.formats.includes(v) ? v : null;
 }
+
+/** Every column of the table it is called on, as the app has always drawn it, with its own words under it. */
+const columnsSheet = (C, Sx) => sheet({ title: FORMAT_NAMES[C.kind],
+  body: `<div class="tscroll">${standingsTable(C.kind, Sx, C.g, C.me, "nowrap")}</div><div class="tipbody" style="margin-top:12px">${FORMAT_NOTES[C.kind]}</div>`,
+  actions: [{ label: "Done", value: "ok", kind: "primary" }] });
 
 // ---------------------------------------------------------------- the days
 function daysView(C) {
@@ -383,13 +438,16 @@ function playerView(C, pid, keep = false) {
     <section class="inplay"><div class="rule"></div>
       <div class="k">${esc(FORMAT_NAMES[C.kind])}</div><h1>${esc(p.name)}</h1>
       <p class="where">${esc([row ? `${ordinal(row.place)} of ${Sx.rows.length}` : "not in this table", L ? `${L.value} ${L.unit}` : "", hi === undefined ? "" : `index ${fmtIndex(Number(hi))}`].filter(Boolean).join(" · "))}</p></section>
-    ${sect("Against")}
+    ${leaguePlayerBody(C.g, C.Ms, C.members, pid)}
+    ${sect(`${firstName(p.name)} against`)}
     <div class="rows">${others.slice(0, 5).map(o => `<a class="hrow" href="#league/${C.gid}/vs/${esc(pid)}/${esc(o.id)}">
       <span class="t"><b>${esc(o.name)}</b><span>${ordinal(o.place)} in this table</span></span><span class="chev">›</span></a>`).join("")}
-      ${others.length > 5 ? `<a class="hrow" href="#league/${C.gid}/vs/${esc(pid)}/${esc(others[5].id)}"><span class="t"><b>Somebody else</b><span>${plural(others.length - 5, "more player")} in this league</span></span><span class="chev">›</span></a>` : ""}</div>
-    <div class="rows"><a class="hrow" href="#player/${esc(pid)}"><span class="t"><b>Everything they have played</b><span>Every round, in every league</span></span><span class="chev">›</span></a></div>
-    ${leaguePlayerBody(C.g, C.Ms, C.members, pid)}
-    <a class="btn" href="#statsposter/${C.gid}" style="margin-top:16px">Make stats images ›</a>`,
+      ${others.length > 5 ? `<button class="hrow" data-act="pick-rival"><span class="t"><b>Somebody else</b><span>${plural(others.length - 5, "more player")} in this league</span></span><span class="chev">›</span></button>` : ""}</div>
+    ${sect("Elsewhere")}
+    <div class="rows">
+      <a class="hrow" href="${personHash(pid)}"><span class="t"><b>Everything they have played</b><span>Every round, in every league</span></span><span class="chev">›</span></a>
+      <a class="hrow" href="#statsposter/${C.gid}"><span class="t"><b>Make stats images</b><span>${esc(firstName(p.name))}'s season as sheets</span></span><span class="chev">›</span></a>
+    </div>`,
     { back: `#league/${C.gid}`, runs: C.runs, keepScroll: keep });
   bind(async ev => {
     if (await common(C, ev)) return;
@@ -398,6 +456,11 @@ function playerView(C, pid, keep = false) {
     if (b.dataset.act === "rivalbasis-open") {
       const v = await sheet({ title: "Compare them on", lead: "The same rounds, read three ways.", body: basisSheetBody(ui.basis[C.gid] || "points"), actions: [{ label: "Cancel", value: "no" }] });
       if (v && v !== "no") { ui.basis[C.gid] = v; playerView(C, pid, true); }
+      return;
+    }
+    if (b.dataset.act === "pick-rival") {
+      const v = await pickMember(C, `${firstName(p.name)} against`, pid);
+      if (v) go(`#league/${C.gid}/vs/${pid}/${v}`);
       return;
     }
     if (b.dataset.act === "seasonmode") { ui.seasonMode[C.gid] = b.dataset.m; return playerView(C, pid, true); }
@@ -424,8 +487,12 @@ function vsView(C, a, b) {
     infoBtn("Match play or stroke play?", `<p>This page keeps two scores, and they are two different games. Both are settled on ${esc(basisName.toLowerCase())}.</p>
       <p><b>Stroke play</b> settles the big score at the top: each round they played together goes to ${esc(roundWord)} that day. <b>Match play</b> settles the hole-by-hole part: every hole is its own contest, won by ${esc(holeWord)}, added up as one long match.</p>
       <p>${h2hKind ? `This league keeps a ${esc(FORMAT_NAMES[h2hKind])} table, so that is what it opens on.` : "A round only one of them finished a card for goes to the one who did, the way a hole does."}</p>`))}`;
+  const sides = `<div class="vspick">
+    <button class="vsname-btn" data-act="pick-a">${esc(A_)} <i aria-hidden="true">⌄</i></button>
+    <button class="swapb" data-act="vsswap" title="Swap">&#8646;</button>
+    <button class="vsname-btn" data-act="pick-b">${esc(B_)} <i aria-hidden="true">⌄</i></button></div>`;
   let body;
-  if (!H.rounds.length) body = `${head}<p class="muted center" style="margin:30px 0">${esc(fA)} and ${esc(fB)} have not played a round together in this league yet.</p>`;
+  if (!H.rounds.length) body = `${sides}${head}<p class="muted center" style="margin:30px 0">${esc(fA)} and ${esc(fB)} have not played a round together in this league yet.</p>`;
   else {
     const tot = H.winsA + H.ties + H.winsB;
     const pc = n => `${(n / tot) * 100}%`;
@@ -455,26 +522,21 @@ function vsView(C, a, b) {
     const list = `${h2tip("Every round together", `One line a round, newest first: the two ${esc(basisWord(basis))} totals for that day, the winner's in colour. The line underneath says how the same round went as a match, hole by hole.`)}${widestLine}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
       <div class="when"><b>${esc(fmtDate(r.date))}</b><small class="muted">${esc(r.where)} &middot; ${r.up === 0 ? "match halved" : `${Math.abs(r.up)} up ${esc(firstName(r.up > 0 ? A_ : B_))}`}</small></div>
       <div class="sc"><b class="${r.winner === "a" ? "wa" : ""}">${num(r.scoreA)}</b><s>&#8211;</s><b class="${r.winner === "b" ? "wb" : ""}">${num(r.scoreB)}</b></div></a>`).join("")}</div>`;
-    body = head + hero + formStrip + holesBlock + stats + list;
+    body = sides + head + hero + formStrip + holesBlock + stats + list;
   }
   shell(C.g, `${fA} v ${fB}`, `${body}
-    ${sect("Someone else")}<div class="rows">${C.members.filter(m => m !== a && m !== b).slice(0, 5).map(m => `<a class="hrow" href="#league/${C.gid}/vs/${esc(a)}/${esc(m)}">
-      <span class="t"><b>${esc(fA)} v ${esc(firstName(nameOf(m)))}</b></span><span class="chev">›</span></a>`).join("")}
-      ${C.members.length > 2 ? `<button class="hrow" data-act="vs-pick"><span class="t"><b>Anybody in this league</b><span>Pick both sides</span></span><span class="chev">›</span></button>` : ""}</div>
-    <div class="btnrow"><a class="btn small" href="#league/${C.gid}/vs/${esc(b)}/${esc(a)}">Swap sides</a></div>`,
+    ${C.members.length > 2 ? `${sect(`${fA} against`)}<div class="rows">${C.members.filter(m => m !== a && m !== b).slice(0, 5).map(m => `<a class="hrow" href="#league/${C.gid}/vs/${esc(a)}/${esc(m)}">
+      <span class="t"><b>${esc(firstName(nameOf(m)))}</b></span><span class="chev">›</span></a>`).join("")}</div>` : ""}`,
     { back: `#league/${C.gid}/p/${a}`, runs: C.runs });
   bind(async ev => {
     if (await common(C, ev)) return;
     const el = ev.target.closest("[data-act]");
-    if (el && el.dataset.act === "vs-pick") {
-      const pick = async (title, lead, exclude) => sheet({ title, lead,
-        body: `<div class="fmtpicks">${C.members.filter(m => m !== exclude).map(m => `<button class="fmtpick" data-sheet="${esc(m)}"><span><b>${esc(nameOf(m))}</b></span></button>`).join("")}</div>`,
-        actions: [{ label: "Cancel", value: "no" }] });
-      const x = await pick("Who comes first?", "Anybody who has played a round in this league.", null);
-      if (!x || x === "no") return;
-      const y = await pick("Against", `${firstName(nameOf(x))} against which of them?`, x);
-      if (!y || y === "no") return;
-      return go(`#league/${C.gid}/vs/${x}/${y}`);
+    if (el && el.dataset.act === "vsswap") return go(`#league/${C.gid}/vs/${b}/${a}`);
+    if (el && (el.dataset.act === "pick-a" || el.dataset.act === "pick-b")) {
+      const first = el.dataset.act === "pick-a";
+      const v = await pickMember(C, first ? "On the left" : "On the right", first ? b : a);
+      if (v) go(first ? `#league/${C.gid}/vs/${v}/${b}` : `#league/${C.gid}/vs/${a}/${v}`);
+      return;
     }
     if (el && el.dataset.act === "vsbasis") {
       const v = await sheet({ title: "Compare them on",
@@ -664,6 +726,7 @@ export function league(gid, view, a, b, keep = false) {
   const g = S.getLeague(gid);
   if (!g) return go("#leagues");
   const C = ctx(g);
+  if (view === "table") return tableView(C, a, keep);
   if (view === "days") return daysView(C);
   if (view === "day") return dayView(C, a);
   if (view === "p") return playerView(C, a);

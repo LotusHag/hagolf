@@ -12,6 +12,21 @@ import { loadFonts, makeTheme, setMarked, setMarkText } from "./draw.js";
 export const app = document.getElementById("app");
 export const scrollPos = () => app.scrollTop;
 export const scrollAt = y => { app.scrollTop = y; };
+
+/**
+ * Back goes back one, wherever you came from. A screen declares a fallback for the one case where going back
+ * would leave the app -- a link opened cold, with nothing behind it -- and otherwise the phone's own history
+ * is what answers, so a board reached from a player returns to that player and not to the top of the league.
+ */
+let wentSomewhere = 0;
+window.addEventListener("hashchange", () => { wentSomewhere++; });
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-goback]");
+  if (!b) return;
+  ev.preventDefault();
+  if (wentSomewhere > 0) history.back();
+  else location.hash = b.dataset.goback || "#home";
+});
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const go = hash => { location.hash = hash; };
 export const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -128,7 +143,7 @@ export function page(title, body, { back = "#home", bar = "", sub = "", tabs = n
     ? `<header class="top mast"><div class="acts">${bellBtn}</div>
       <div class="ttl">${brand ? `<div class="wordmark">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
       <div class="acts end">${actions}${gearBtn}</div></header>`
-    : `<header class="top">${back ? `<a class="back" href="${back}" aria-label="Back">‹</a>` : "<span class='back none'></span>"}
+    : `<header class="top">${back ? `<button class="back" data-goback="${esc(back)}" aria-label="Back">‹</button>` : "<span class='back none'></span>"}
       <div class="ttl">${brand ? `<div class="brand">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
       <div class="acts">${actions}${bellBtn}${gearBtn}</div></header>`;
   app.innerHTML = bare ? `<main class="bare">${body}</main>` : `${head}

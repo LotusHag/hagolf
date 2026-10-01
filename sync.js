@@ -116,6 +116,7 @@ const TABLES = {
         rows.push({ round_id: r.id, player_id: e.playerId, hole: h, putts: v ? v.putts : null, fairway: v ? v.fairway : null,
           gir: v && v.gir !== null && v.gir !== undefined ? !!v.gir : null, penalty_shots: v ? v.penaltyShots : null,
           bunker: v && v.bunker !== null && v.bunker !== undefined ? !!v.bunker : null,
+          bunker_shots: v && v.bunker !== null && v.bunker !== undefined ? Number(v.bunker) : null,
           deleted: !v, updated_at: e.statsTs[h] || e.updated_at, device_id: dev() });
       });
       return rows;
@@ -128,7 +129,8 @@ const TABLES = {
       if (ts(e.statsTs[row.hole]) >= ts(row.updated_at)) return false;
       e.stats[row.hole] = row.deleted ? null : { putts: row.putts, fairway: row.fairway,
         gir: row.gir === null || row.gir === undefined ? null : !!row.gir, penaltyShots: row.penalty_shots,
-        bunker: row.bunker === null || row.bunker === undefined ? null : !!row.bunker };
+        bunker: row.bunker_shots !== null && row.bunker_shots !== undefined ? Number(row.bunker_shots)
+          : row.bunker === null || row.bunker === undefined ? null : (row.bunker ? 1 : 0) };
       e.statsTs[row.hole] = iso(row.updated_at);
       return true;
     },

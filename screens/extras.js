@@ -79,8 +79,20 @@ export function statHolesOf(rounds, pid) {
 
 export const holedOut = (e, h) => e.scores[h] !== null && e.scores[h] !== 0;
 
-// The per-hole chips used to be a strip under every player row; they are now the deck's own questions in
-// pad.js, which asks one at a time in the space the keys were using. `statTap` stayed exactly as it was.
+/**
+ * A counted extra nudged by one: putts, penalty shots, shots from a bunker. Nothing and none are different
+ * answers and stay different -- the first + is one, the first − is none, and stepping below none clears the
+ * hole back to unanswered, so a hole nobody looked at never pretends to say zero.
+ */
+export function statStep(r, e, h, kind, d) {
+  const cur = (e.stats[h] || {})[kind] ?? null;
+  let next = cur === null ? (d > 0 ? 1 : 0) : cur + d;
+  if (next < 0) next = null;
+  if (next !== null && next > 9) next = 9;
+  S.setStat(r, e, h, { [kind]: next });
+}
+
+// The fairway is the one extra that is a side rather than a count, so it keeps its three chips and this tap.
 export function statTap(r, e, h, act, b) {
   const v = e.stats[h] || {};
   if (act === "st-putt") {
