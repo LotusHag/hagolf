@@ -48,11 +48,11 @@ export function sgBlock(sg, who) {
   const t = (v, label) => `<div class="stattile"><b class="${v > 0.05 ? "sgup" : v < -0.05 ? "sgdown" : ""}">${fmtSigned(v, 2)}</b><small>${esc(label)}</small></div>`;
   const per = sg.split ? sg.split.per18 : null;
   return `<div class="card">
-    <div class="muted small">Against ${esc(who)}, over the ${plural(sg.holes, "hole")} both cards finished${sg.rounds > 1 ? ` in ${plural(sg.rounds, "round")}` : ""}. Per 18 holes.</div>
+    <div class="muted small">Against ${esc(who)} · ${plural(sg.holes, "hole")}${sg.rounds > 1 ? ` in ${plural(sg.rounds, "round")}` : ""} · per 18</div>
     <div class="statgrid">${t(sg.per18, "strokes gained")}${per ? t(per.teeToGreen, "tee to green") : ""}${per ? t(per.putting, "putting") : ""}</div>
     ${per
-      ? `<p class="muted small" style="margin:10px 0 0">The split covers the ${plural(sg.split.holes, "hole")} where putts were written down on both cards. Tee to green is what is left of the total once putting is taken out.</p>`
-      : `<p class="muted small" style="margin:10px 0 0">Nobody they played against wrote their putts down, so there is no putting baseline and the total cannot be split.</p>`}</div>`;
+      ? `<p class="muted small" style="margin:10px 0 0">The split: ${plural(sg.split.holes, "hole")} where both cards kept putts</p>`
+      : `<p class="muted small" style="margin:10px 0 0">No split: nobody they played against kept putts</p>`}</div>`;
 }
 
 export function sgWords(sg, them) {

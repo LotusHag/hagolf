@@ -580,17 +580,19 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .basis b { display: block; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--ink3); }
 
 /* ---- an explanation behind an "i" */
-.tip > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 22px 4px 8px; }
-.tip:first-child > summary { margin-top: 6px; }
-.tip > summary h2 { margin: 0; }
-.tip.solo > summary { margin: 8px 4px 10px; color: var(--ink3); font-size: 13px; font-weight: 600; }
-.tip[open] > summary { color: var(--ink2); }
-.ibtn { width: 19px; height: 19px; flex: none; border-radius: 50%; border: 1.5px solid var(--line2); color: var(--ink3); display: grid; place-items: center; font: italic 700 12px/1 Georgia, "Times New Roman", serif; }
-.tip[open] .ibtn { background: var(--green); border-color: var(--green); color: var(--green-ink); }
-.tipbody { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-s); padding: 12px 14px; margin: 0 4px 14px; color: var(--ink2); font-size: 14px; }
-.tipbody p { margin: 0 0 8px; } .tipbody p:last-child { margin-bottom: 0; }
+.tiphead { display: flex; align-items: center; margin: 22px 0 8px; }
+.tiphead:first-child { margin-top: 6px; }
+.tiphead h2 { flex: 1; margin: 0; }
+.tiphead.solo { justify-content: flex-end; gap: 0; margin: 2px 0 6px; color: var(--ink3); font-size: 13px; font-weight: 600; }
+.ibtn { flex: none; width: 40px; height: 40px; margin: -10px -10px -10px 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink3); display: grid; place-items: center; cursor: pointer; }
+.ibtn > i { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line2); display: grid; place-items: center; font: italic 700 11px/1 Georgia, "Times New Roman", serif; }
+.ibtn:active > i, .ibtn:focus-visible > i { background: var(--green); border-color: var(--green); color: var(--green-ink); }
+.ibtn:focus-visible { outline: none; }
+.ibtn.corner { position: absolute; top: 2px; right: 2px; margin: 0; }
+.hasi { position: relative; }
+.tipbody { color: var(--ink2); font-size: 15px; }
+.tipbody p { margin: 0 0 10px; } .tipbody p:last-child { margin-bottom: 0; }
 .tipbody b { color: var(--ink); font-weight: 600; }
-.card .tipbody { margin: 10px 0 0; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .modeline { display: flex; align-items: center; gap: 8px; margin: 0 4px 10px; color: var(--ink3); font-size: 13px; }
 .modeline.mid { justify-content: center; text-align: center; margin: 0 0 6px; }
@@ -790,3 +792,23 @@ a.kv:active { background: var(--card2); }
 .themegrid .board { position: relative; aspect-ratio: 2.2 / 1; margin-top: 6px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--card2); }
 .themegrid .board img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
 .themegrid .board .skeleton { position: absolute; inset: 0; margin: 0; border-radius: 4px; height: auto; }
+
+/* ---- which images: a tile a kind, each with an example of it */
+.ggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; }
+.gtile { position: relative; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px 6px 8px; border-radius: 4px; border: 2px solid var(--line); background: var(--card); color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.25; font-family: inherit; text-align: left; cursor: pointer; }
+.gtile input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.gtile .gimg { display: grid; place-items: center; aspect-ratio: 2 / 1; border-radius: 3px; overflow: hidden; background: #f4f7f4; }
+.gtile .gimg img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.gtile .gname { padding: 0 2px; }
+.gtile .gname small { color: var(--ink3); font-weight: 500; }
+.gtile .gcheck { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: var(--green-ink); display: none; place-items: center; }
+.gtile svg { stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
+.gtile .gcheck svg { width: 14px; height: 14px; stroke-width: 3; }
+.gtile.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.gtile.on .gcheck { display: grid; }
+.gtile:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; }
+.gtile.locked { color: var(--ink2); }
+.gtile.locked .gimg img { opacity: .5; }
+.gtile .glock { display: flex; align-items: center; gap: 4px; padding: 0 2px; color: var(--ink3); font-size: 12px; font-weight: 600; }
+.gtile .glock svg { width: 13px; height: 13px; }
+.gmore { margin-top: 8px; }

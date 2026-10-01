@@ -1,7 +1,7 @@
 // The images: a round's boards and cards, a league's standings, and its stats, in any look the account holds.
 import * as S from "../store.js";
 import * as E from "../entitlements.js";
-import { page, bind, esc, go, toast, plural, courseBy, noCourse, themeChips, bindChips, themeNamed, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, shopBtn, app } from "../ui.js";
+import { page, bind, esc, go, toast, plural, courseBy, noCourse, themeChips, bindChips, themeNamed, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, shopBtn, app, ICONS } from "../ui.js";
 import { compute, leagueStats } from "../model.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster } from "../posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster, statsExtrasPoster } from "../statsposters.js";
@@ -9,6 +9,23 @@ import { renderCards } from "../cards.js";
 import { FORMAT_NAMES, leagueResults, standingsFor } from "./formats.js";
 import { ninesForPoster, leagueRounds } from "./stats.js";
 import { ui } from "../ui.js";
+
+// Each kind is a tile showing an example of it, drawn on the showcase round by app/tests/examples.mjs.
+const KINDS = [
+  { key: "stbl", name: "Stableford leaderboard" },
+  { key: "gross", name: "Gross leaderboard" },
+  { key: "both", name: "Both boards on one sheet", full: true },
+  { key: "holes", name: "How the holes played", full: true },
+  { key: "cards", name: "Player cards", card: true },
+];
+const exampleOf = (k, basic) => `img/examples/${k.key}${basic && !k.full ? "-basic" : ""}.webp`;
+function kindTile(k, on, extra = "") {
+  const basic = k.card ? E.cardTier() !== "full" : E.boardTier() !== "full";
+  const img = `<span class="gimg"><img src="${exampleOf(k, basic)}" alt="" width="400" height="200" loading="lazy" decoding="async"></span>`;
+  // a kind the account cannot make still shows what it would be, and opens the shop rather than ticking
+  if (k.full && basic) return `<button type="button" class="gtile locked" data-shop="boards">${img}<span class="gname">${esc(k.name)}</span><span class="glock">${ICONS.lock}In the shop</span></button>`;
+  return `<label class="gtile ${on ? "on" : ""}"><input type="checkbox" name="g" value="${k.key}" ${on ? "checked" : ""}>${img}<span class="gname">${esc(k.name)}${extra}</span><span class="gcheck" aria-hidden="true">${ICONS.check}</span></label>`;
+}
 
 export function graphics(rid) {
   const r = S.getRound(rid);
@@ -19,16 +36,18 @@ export function graphics(rid) {
   try { M = compute(c, S.toModelRound(r)); } catch (err) { return page("Images", `<div class="banner warn">${esc(err.message)}</div>`, { back: `#review/${rid}` }); }
   const leagues = S.leaguesOfRound(rid);
   const themeLeague = leagues.find(leagueTheme);
-  const themes = [themeForRound(rid).name];
-  // An image the account cannot make is not offered at all; what it is missing is one button under the list.
+  // what was made last time on this phone, less anything the account no longer holds
+  const saved = S.imageChoice();
+  const can = k => !k.full || E.boardTier() === "full";
+  const kinds = KINDS.filter(k => can(k) && (saved.kinds || []).includes(k.key)).map(k => k.key);
+  const picked = kinds.length ? kinds : ["stbl"];
+  const savedThemes = (saved.themes || []).filter(n => themeNamed(n) && E.canTheme(n));
+  const themes = themeLeague || !savedThemes.length ? [themeForRound(rid).name] : savedThemes;
   const missing = [...(E.boardTier() === "full" ? [] : ["boards"]), ...(E.cardTier() === "full" ? [] : ["card"])];
   const body = `
     <h2>Which images</h2>
-    <div class="card checks">
-      <label><input type="checkbox" name="g" value="stbl" checked> Stableford leaderboard</label>
-      <label><input type="checkbox" name="g" value="gross"> Gross leaderboard</label>
-      ${E.boardTier() === "full" ? `<label><input type="checkbox" name="g" value="both"> Both boards on one sheet</label><label><input type="checkbox" name="g" value="holes"> How the holes played</label>` : ""}
-      <label><input type="checkbox" name="g" value="cards"> Player cards <span class="muted">&nbsp;(${M.field})</span></label>
+    <div class="ggrid">${KINDS.map(k => kindTile(k, picked.includes(k.key), k.card ? ` <small>${M.field}</small>` : "")).join("")}</div>
+    <div class="card checks gmore">
       <details><summary class="muted small">Only some players' cards</summary>${M.players.map(p => `<label><input type="checkbox" name="card" value="${esc(p.name)}" checked> ${esc(p.name)}</label>`).join("")}</details>
       ${M.stats_on && E.cardTier() === "full"
         ? `<label><input type="checkbox" name="cx" ${S.statsOnImages() ? "checked" : ""}> Putts, fairways and the rest on the cards <span class="muted">&nbsp;(${plural(M.players.filter(p => p.statline.any).length, "card")} kept them)</span></label>`
@@ -41,23 +60,33 @@ export function graphics(rid) {
     <div class="themes">${themeChips(themes)}</div>
     <div id="out"></div>`;
   page("Images", body, { back: `#review/${rid}`, bar: `<button class="btn primary" data-act="generate">Generate images</button>`, sub: r.name });
+  const ticked = name => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(i => i.value);
+  let everything = false;   // "every theme" is a one-off, not a choice to offer again on the next round
+  app.querySelector(".ggrid").addEventListener("change", ev => {
+    const t = ev.target.closest(".gtile");
+    if (t) t.classList.toggle("on", ev.target.checked);
+    S.setImageChoice({ kinds: ticked("g") });
+  });
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "tick-all") {
       document.querySelectorAll("input[name=g], input[name=theme]").forEach(i => { i.checked = true; });
-      document.querySelectorAll(".tchip").forEach(l => l.classList.add("on"));
+      document.querySelectorAll(".tchip, label.gtile").forEach(l => l.classList.add("on"));
+      everything = true;
+      S.setImageChoice({ kinds: ticked("g") });
       return;
     }
     if (b.dataset.act !== "generate") return;
-    const want = [...document.querySelectorAll("input[name=g]:checked")].map(i => i.value);
-    const chosen = [...document.querySelectorAll("input[name=theme]:checked")].map(i => i.value).filter(n => E.canTheme(n) || themes.includes(n));
-    const cardNames = [...document.querySelectorAll("input[name=card]:checked")].map(i => i.value);
+    const want = ticked("g");
+    const chosen = ticked("theme").filter(n => E.canTheme(n) || themes.includes(n));
+    const cardNames = ticked("card");
     const cx = document.querySelector("input[name=cx]");
     const cardOpts = { extras: !!(cx && cx.checked) };
     if (cx) S.setStatsOnImages(cardOpts.extras);
     if (!want.length) return toast("Tick at least one image");
     if (!chosen.length) return toast("Pick at least one theme");
+    S.setImageChoice(everything || themeLeague ? { kinds: want } : { kinds: want, themes: chosen });
     const jobs = [];
     for (const tn of chosen) {
       const T = makeTheme(themeNamed(tn));

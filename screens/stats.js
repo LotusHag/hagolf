@@ -1,6 +1,6 @@
 // What a pile of rounds says: the field, one player, their rivals, and the nines they walked.
 import * as S from "../store.js";
-import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, subtabs, safeCompute, ui } from "../ui.js";
+import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, infoBtn, subtabs, safeCompute, ui } from "../ui.js";
 import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE } from "../model.js";
 import { statBlock, statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
 import { H2H_BASES, basisUnit, leagueResults } from "./formats.js";
@@ -34,6 +34,9 @@ function donutKey(counts, per = 0, unit = "round") {
   return `<ul class="dkey">${SCORE_BUCKETS.map((b, k) => `<li class="${counts[k] ? "" : "off"}"><i class="${b.key}"></i><span>${b.label}</span><b class="num">${counts[k]}</b>
     <small>${counts[k] ? `${pct(counts[k], total)}%${per ? ` · ${fix(counts[k] / per)} a ${unit}` : ""}` : "&mdash;"}</small></li>`).join("")}</ul>`;
 }
+const donutTip = lead => `<p>${lead}</p>
+  <p>Each hole is counted by its score against par, before any handicap strokes: a birdie is one under, a bogey one over. The ring is how they split, and the figure in the middle is the share played in par or better.</p>
+  <p>Beside each kind: how many, its share of every hole, and what that comes to in an average round. Under the ring, <b>pts a round</b> is what an average round is worth in Stableford points, and <b>a hole against par</b> is how far over or under par the average hole is played.</p>`;
 export const inlineKey = () => `<div class="dkeyline">${SCORE_BUCKETS.map(b => `<span><i class="${b.key}"></i>${b.short}</span>`).join("")}</div>`;
 export function distBar(counts) {
   const total = sumc(counts);
@@ -48,8 +51,8 @@ export function tapeRow(label, va, vb, lower = false, fmtv = v => v) {
 }
 const mixedLengths = rs => new Set(rs.map(r => r.n)).size > 1;
 
-function formChart(rs, who) {
-  const mixed = mixedLengths(rs), any = rs.some(r => r.fieldPts !== null);
+function formChart(rs) {
+  const mixed = mixedLengths(rs);
   const val = r => mixed ? r.pts / r.n : r.pts;
   const fld = r => r.fieldPts === null ? null : (mixed ? r.fieldPts / r.n : r.fieldPts);
   const top = Math.max(...rs.map(r => Math.max(val(r), fld(r) || 0)), 0.01);
@@ -59,8 +62,7 @@ function formChart(rs, who) {
     return `<a class="fcol" href="#review/${r.id}" title="${esc(title)}"><div class="fplot">${rs.length <= 10 ? `<b class="fval num" style="bottom:calc(${h}% + 2px)">${mixed ? fix(val(r), 2) : r.pts}</b>` : ""}
         ${f === null ? "" : `<i class="fghost" style="height:${f}%"></i>`}<i class="fbar" style="height:${h}%"></i></div><small>${esc(shortDate(r.date))}</small></a>`;
   }).join("");
-  return `<div class="card"><div class="fchart">${cols}</div>
-    <p class="muted small center" style="margin:8px 0 0">${esc(who)}'s points ${mixed ? "a hole" : "in each round"}, oldest first.${any ? " Grey is what the rest of the field scored that day." : ""} Tap a round for its card.</p></div>`;
+  return `<div class="card"><div class="fchart">${cols}</div>${mixed ? `<p class="muted small center" style="margin:8px 0 0">points a hole</p>` : ""}</div>`;
 }
 
 // ---------------------------------------------------------------- the season, left to right
@@ -118,7 +120,7 @@ function seasonChart(St, gid, meId) {
         ${order.map(i => lines[i]).join("")}
         ${dates}
       </svg>
-      <p class="muted small" style="margin:8px 0 0">${chosen ? `<b>${esc(chosen.name)}</b> picked out of` : "One line a player,"} ${plural(P.players.length, "player")}, the field dashed behind them, in ${esc(unit)}${mode === "running" ? " averaged from the first card up to each one" : ""}. ${plural(n, "card")}, ${esc(shortDate(P.cards[0].date))} to ${esc(shortDate(P.cards[n - 1].date))}.</p>
+      <p class="muted small" style="margin:8px 0 0">${chosen ? `<b>${esc(chosen.name)}</b> · ` : ""}${esc(unit)} · ${plural(n, "card")}, ${esc(shortDate(P.cards[0].date))} to ${esc(shortDate(P.cards[n - 1].date))}</p>
     </div>
     <div class="chips-wrap scroll" style="margin-top:8px">${chip("", "Nobody")}${P.players.map(p => chip(p.id, p.name)).join("")}</div>`;
 }
@@ -134,7 +136,7 @@ function extrasCompare(p, first) {
   if (!pairs.length) return statBlock(x, `${intro} Nobody else here has kept the same readings, so there is nothing to set them against.`, opts);
   const deep = statTiles(x, { ...opts, deep: true });
   return `<div class="card tapes mine">${pairs.map(r => tapeRow(r.title.toLowerCase(), r.value, r.theirs, r.lower, r.fmt)).join("")}</div>
-    <p class="muted small" style="margin:6px 4px 0">${esc(first)} on the left, everyone else in this league on the right. Each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>
+    <p class="muted small" style="margin:6px 4px 0">${esc(first)} left, the rest of the league right</p>
     ${deep ? `<details class="card morestats"><summary class="small">More of the same, for fun</summary>${deep}</details>` : ""}`;
 }
 
@@ -199,8 +201,9 @@ function fieldStats(St, nines = "", gid = "", meId = null) {
   const dist = [...St.players].sort((a, b) => pct(parOrBetter(b), b.holes) - pct(parOrBetter(a), a.holes) || a.name.localeCompare(b.name))
     .map(p => `<div class="drow"><div class="dname">${esc(p.name)}<small class="muted">${pct(parOrBetter(p), p.holes)}% par or better</small></div>${distBar(p.counts)}</div>`).join("");
   return `
-    <div class="card statcard"><div class="dwrap">${donut(F.counts, `${pct(parOrBetter(F), F.holes)}%`, "par or better")}${donutKey(F.counts, F.rounds, "round")}</div>
-      <p class="muted small" style="margin:10px 0 0">Every hole this league has played: ${plural(F.holes, "hole")} over ${plural(F.rounds, "round")} on ${plural(F.cards, "card")}. A round is worth ${fix(F.avgPts)} points, and a hole is played in ${fmtSigned(F.vspar, 2)} against par.</p></div>
+    <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(`Every hole this league has played: ${plural(F.holes, "hole")} over ${plural(F.rounds, "round")} on ${plural(F.cards, "card")}.`), "corner")}
+      <div class="dwrap">${donut(F.counts, `${pct(parOrBetter(F), F.holes)}%`, "par or better")}${donutKey(F.counts, F.rounds, "round")}</div>
+      <p class="muted small" style="margin:10px 0 0">${plural(F.holes, "hole")} · ${fix(F.avgPts)} pts a round · ${fmtSigned(F.vspar, 2)} a hole against par</p></div>
     ${seasonChart(St, gid, meId)}
     ${formTable(St)}
     ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(F.statline, `Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.`, { per18: true })}${extrasTable(St)}` : ""}
@@ -244,12 +247,13 @@ function playerStats(St, p, nines = "", gid = "") {
         : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}</p>`;
   return `
     <div class="mecard"><div class="stats">${tile(p.played, plural(p.played, "round").split(" ")[1])}${tile(fix(p.avgPts), "avg pts")}${one ? "" : tile(p.bestPts, "best")}${p.returns ? tile(fmtToPar(Math.round(p.avgTopar)), "avg to par") : ""}${p.wins ? tile(p.wins, plural(p.wins, "win").split(" ")[1]) : ""}</div></div>
-    <div class="card statcard"><div class="dwrap">${donut(p.counts, `${pct(parOrBetter(p), p.holes)}%`, "par or better")}${donutKey(p.counts, p.played, "round")}</div>
-      <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} in this league. ${esc(first)} ${birdies ? `makes ${fix(birdies / p.played)} birdies or better` : "has yet to make a birdie"} and ${fix(per(2))} pars a round, and plays a hole in ${fmtSigned(p.vspar, 2)} against par.</p></div>
+    <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(`Every hole ${esc(first)} has played in this league: ${plural(p.holes, "hole")} over ${plural(p.played, "round")}. ${esc(first)} ${birdies ? `makes ${fix(birdies / p.played)} birdies or better` : "has yet to make a birdie"} and ${fix(per(2))} pars a round.`), "corner")}
+      <div class="dwrap">${donut(p.counts, `${pct(parOrBetter(p), p.holes)}%`, "par or better")}${donutKey(p.counts, p.played, "round")}</div>
+      <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} · ${fmtSigned(p.vspar, 2)} a hole against par</p></div>
     ${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this league on the right, over the ${plural(p.played, "round")} they played together. The green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixedLengths(p.rounds) ? " This league mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
     ${vsField}
     ${rivalsBlock(St, p, gid)}
-    ${one ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left. The grey column behind a bar is what everyone else in the league scored that day. Tap a bar for that card.`)}${formChart(p.rounds, first)}`}
+    ${one ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left: ${esc(first)}'s points ${mixedLengths(p.rounds) ? "a hole, because this league mixes nines and eighteens" : "in each round"}. The grey column behind a bar is what everyone else in the league scored that day. Tap a bar for that card.`)}${formChart(p.rounds)}`}
     ${one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear once ${esc(first)} has played a second round here.</p>` : `${h2tip("Over more than one round", `<p><b>Consistency</b> is how far a typical round sits either side of their average. <b>Form</b> is the last three rounds against every round. <b>Trend</b> compares the first half of their rounds with the second half. <b>Streak</b> counts the latest rounds in a row where they beat the rest of the field.</p>
       <p><b>Finishing</b> splits a round in two and gives the points a hole in each half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>`)}<div class="card">
       ${line("Consistency", `${fix(p.consistency)} points either side of their average${mixedLengths(p.rounds) ? ", though this league mixes round lengths" : ""}`)}
@@ -264,7 +268,7 @@ function playerStats(St, p, nines = "", gid = "") {
       ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
     </div>`}
     ${sgLeague(gid, p.id)}
-    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${extrasCompare(p, first)}` : ""}
+    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", `${STATS_TIP}<p>Set against the rest of the league, each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>`)}${extrasCompare(p, first)}` : ""}
     ${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
@@ -310,7 +314,7 @@ function rivalCard(r, me, them) {
   const split = r.lift === null
     ? `<p class="muted small" style="margin:10px 0 0">Splitting ${them}'s good days from their bad ones needs two rounds of each; so far ${r.goodN} better than their own average and ${r.badN} worse.${verdict ? ` ${verdict}` : ""}</p>`
     : `<div class="split">${tile(`${them} better than their average`, r.goodN, r.onGood, mark && better(r.onGood, r.onBad))}${tile(`${them} worse than it`, r.badN, r.onBad, mark && better(r.onBad, r.onGood))}</div>
-      <p class="muted small" style="margin:10px 0 0">Both numbers are ${me}'s ${unit}: on the left the ${plural(r.goodN, "round")} where ${them} played better than their own average of ${val(r.theirAvg)}, on the right the ${r.badN} where they did not. ${verdict}</p>`;
+      ${verdict ? `<p class="muted small" style="margin:10px 0 0">${verdict}</p>` : ""}`;
   return `<div class="card rival"><div class="rhead"><b>${esc(r.name)}</b><span class="muted small">${plural(r.played, "round")} together · ${rivalRecord(r, me, them)}</span></div>
     <div class="tapes mine">${tapeRow(unit, r.myAvg, r.theirAvg, r.lower, val)}</div>
     ${r.sg && r.sg.total !== null ? `<div class="sgline">${sgWords(r.sg, them)}</div>` : ""}${split}</div>`;
@@ -334,7 +338,7 @@ function rivalsBlock(St, p, gid) {
   const shown = deep.slice(0, 5), rest = deep.slice(5);
   const mixed = mixedLengths(St.rounds.filter(x => x.pid === p.id));
   return `${h2tip("Against each player", `<p>Only the rounds the two of them played together, so neither is measured on a day the other one missed.${mixed ? " A nine and an eighteen are compared a hole at a time." : ""}</p>
-      <p>The line at the top of each card is their two averages against each other. The two boxes under it split the other player's own days: what ${me} scored on the rounds where that player played better than their own average, and on the rounds where they did not.</p>
+      <p>The line at the top of each card is their two averages against each other. The two boxes under it split the other player's own days: both are ${me}'s own figure, on the left over the rounds where that player played better than their own average, on the right over the rounds where they did not.</p>
       <p>A handful of rounds cannot settle anything, so read these as talking points rather than facts.</p>`)}
     ${basisPicker("rivalbasis", basis)}
     ${rs.length ? "" : `<p class="muted small" style="margin:14px 4px">${me} has no round against anybody where both of them finished a full card, so there is nothing to compare on ${esc(basisUnit(basis))}.</p>`}

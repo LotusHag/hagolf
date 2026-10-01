@@ -288,10 +288,17 @@ export function viewer(items, start = 0) {
 }
 
 // ---------------------------------------------------------------- explanations behind an "i", tab rows
-export const tipBody = text => `<div class="tipbody">${text}</div>`;
-export const ibtn = `<i class="ibtn" aria-hidden="true">i</i>`;
-export const h2tip = (title, text) => `<details class="tip"><summary><h2>${esc(title)}</h2>${ibtn}<span class="sr">what this means</span></summary>${tipBody(text)}</details>`;
-export const tip = (text, label = "What this means") => `<details class="tip solo"><summary>${ibtn}<span>${esc(label)}</span></summary>${tipBody(text)}</details>`;
+// The words ride in a <template> beside the button, built where the numbers are built, and open in a sheet.
+export const infoBtn = (title, text, cls = "") => `<button type="button" class="ibtn${cls ? ` ${cls}` : ""}" data-tip="${esc(title)}" aria-label="How this works${title ? `: ${esc(title)}` : ""}"><i aria-hidden="true">i</i></button><template>${text}</template>`;
+export const h2tip = (title, text) => `<div class="tiphead"><h2>${esc(title)}</h2>${infoBtn(title, text)}</div>`;
+export const tip = (text, label = "How this works") => `<div class="tiphead solo"><span>${esc(label)}</span>${infoBtn(label, text)}</div>`;
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-tip]");
+  const t = b && b.nextElementSibling;
+  if (!t || t.tagName !== "TEMPLATE") return;
+  const html = t.innerHTML.trim();
+  sheet({ title: b.dataset.tip, body: `<div class="tipbody">${/^<p[\s>]/.test(html) ? html : `<p>${html}</p>`}</div>` });
+});
 export const subtabs = (buttons, small = false) => `<div class="tabrow"><div class="subtabs${small ? " small" : ""}">${buttons}</div><span class="cue l">&#8249;</span><span class="cue r">&#8250;</span></div>`;
 export function cueTabs() {
   document.querySelectorAll(".tabrow").forEach(w => {
