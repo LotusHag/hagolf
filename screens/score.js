@@ -2,8 +2,9 @@
 // of the hole, and every extra that card is keeping on the same stepper right beside it, so a player is filled
 // in all at once and the whole hole reads in one look. Only the block you touched redraws, so the thumb stays
 // where it was.
-// Everything that is reference rather than scoring -- the other holes, the groups, who keeps what -- is one tap
-// away behind the hole number, instead of charging rent on all eighteen.
+// The whole loop sits along the top as a strip of chips -- where the card is up to, and a tap straight to any
+// hole of it. Everything else that is reference rather than scoring -- the groups, the board, who keeps what --
+// is one tap away behind the hole number.
 import * as S from "../store.js";
 import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet } from "../ui.js";
 import { handicapFor, stableford } from "../model.js";
@@ -40,12 +41,6 @@ function block(r, c, e, i, h, kinds) {
 async function holeSheet(rid, h) {
   const r = S.getRound(rid), c = courseBy(r.course);
   const metres = c.tees[r.defaultTee] && c.tees[r.defaultTee].metres;
-  const grid = c.par.map((_, k) => {
-    const playing = r.entries.filter(e => (e.fromHole || 1) - 1 <= k);
-    const done = playing.length && playing.every(e => e.scores[k] !== null);
-    const some = r.entries.some(e => e.scores[k] !== null);
-    return `<button class="hchip ${k === h ? "cur" : ""} ${done ? "done" : some ? "some" : ""}" data-act="go-${k}" data-sheet-act>${c.first_hole + k}</button>`;
-  }).join("");
   const groups = [...new Set(r.entries.map(e => e.group || 1))].sort();
   const gf = groupOf(rid);
   const board = r.entries.map(e => {
@@ -56,15 +51,13 @@ async function holeSheet(rid, h) {
   const v = await sheet({
     title: `Hole ${c.first_hole + h}`,
     lead: `Par ${c.par[h]}${metres ? ` · ${metres[h]} m` : ""} · stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${c.n}`,
-    body: `<div class="holegrid">${grid}</div>
-      ${groups.length > 1 ? `<h2>Groups</h2><div class="filter">${["0", ...groups].map(g => `<button data-act="gf-${g}" data-sheet-act class="${gf === Number(g) ? "on" : ""}">${g === "0" ? "All" : `Group ${g}`}</button>`).join("")}</div>` : ""}
+    body: `${groups.length > 1 ? `<h2>Groups</h2><div class="filter">${["0", ...groups].map(g => `<button data-act="gf-${g}" data-sheet-act class="${gf === Number(g) ? "on" : ""}">${g === "0" ? "All" : `Group ${g}`}</button>`).join("")}</div>` : ""}
       <h2>Where everyone is</h2><div class="hboard">${board}</div>`,
     actions: [{ label: "Putts, fairways and the rest", value: "extras" },
       { label: "Add or remove players", value: "players" },
       { label: "Discard this round", value: "drop", kind: "danger" }, { label: "Close", value: "no" }],
   });
   if (v === null || v === "no") return;
-  if (String(v).startsWith("go-")) return go(`#score/${rid}/${Number(String(v).slice(3))}`);
   if (String(v).startsWith("gf-")) { ui.groupFilter[rid] = Number(String(v).slice(3)); return score(rid, h); }
   if (v === "extras") { await extrasSheet(rid); return score(rid, h); }
   if (v === "players") return go(`#players/${rid}`);
@@ -87,21 +80,44 @@ export function score(rid, hArg) {
   const kinds = S.statsFor(rid);
   const metres = c.tees[r.defaultTee] && c.tees[r.defaultTee].metres;
 
+  // the whole loop along the top: where the card is up to, and a tap straight to any hole of it
+  const rows = Math.ceil(n / 9);
+  const strip = c.par.map((_, k) => {
+    const playing = r.entries.filter(e => (e.fromHole || 1) - 1 <= k);
+    const done = playing.length && playing.every(e => e.scores[k] !== null);
+    const some = r.entries.some(e => e.scores[k] !== null);
+    return `<a class="hstep num ${k === h ? "cur" : ""} ${done ? "done" : some ? "some" : ""}" href="#score/${rid}/${k}" data-h="${k}"
+      ${k === h ? 'aria-current="true"' : ""} aria-label="Hole ${c.first_hole + k}${done ? ", all in" : some ? ", part in" : ""}">${c.first_hole + k}</a>`;
+  }).join("");
+
   const body = `
     <div class="holebar">
       <button class="hnum num" data-act="hole-sheet">${c.first_hole + h}</button>
       <button class="hmeta" data-act="hole-sheet"><b>Par ${c.par[h]}</b>${metres ? ` · ${metres[h]} m` : ""} · SI ${c.stroke_index[h]}<span class="chev">▾</span></button>
       ${gf ? `<button class="gfchip" data-act="hole-sheet">Group ${gf}</button>` : ""}
     </div>
+    <div class="holestrip" style="grid-template-columns:repeat(${Math.ceil(n / rows)},1fr)">${strip}</div>
     <div class="prows" id="rows">${shown.map(([e, i]) => block(r, c, e, i, h, kinds)).join("")}</div>
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}`;
 
   page(r.name, body, { back: "#play", bar: navBar(r, c, h, rid), sub: courseTitle(c), bell: false });
 
+  /** The strip chip and the way onward both say whether this hole is finished, so a score re-marks both. */
+  const remark = () => {
+    const playing = r.entries.filter(e => (e.fromHole || 1) - 1 <= h);
+    const done = !!(playing.length && playing.every(e => e.scores[h] !== null));
+    const some = r.entries.some(e => e.scores[h] !== null);
+    const chip = document.querySelector(`.holestrip [data-h="${h}"]`);
+    if (chip) { chip.classList.toggle("done", done); chip.classList.toggle("some", !done && some); }
+    const onward = document.querySelector("footer.bar a:last-child");
+    if (onward) onward.classList.toggle("primary", done);
+  };
+
   /** Only the block that was touched is rewritten, so nothing under the thumb moves. */
   const refresh = i => {
     const el = document.querySelector(`.prow[data-i="${i}"]`);
     if (el) el.outerHTML = block(r, c, r.entries[i], i, h, kinds);
+    remark();
   };
 
   bind(async ev => {

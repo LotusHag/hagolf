@@ -3,7 +3,7 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, tip, parseHI, hiOk, confirmSheet, promptSheet, avatar, sheet } from "../ui.js";
+import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, tip, parseHI, hiOk, confirmSheet, promptSheet, avatar, sheet, teeColor, ui } from "../ui.js";
 import { handicapFor, fmtHcp, fmtIndex, STAT_SWITCHES } from "../model.js";
 
 /** Giving up on a round: it is thrown away everywhere. A finished one is deleted by whoever was on it. */
@@ -40,6 +40,9 @@ export function players(rid, keep = false) {
   const roster = S.players().filter(p => !inRound.has(p.id) && !friends.some(f => f.id === p.linkedAccount && !inRoundAccounts.has(f.id))).sort((a, b) => a.name.localeCompare(b.name));
   const showGroups = r.entries.length > 4 || r.entries.some(e => (e.group || 1) > 1);
   const kinds = S.statsFor(rid), statsOn = S.anyStatsOn(rid);
+  // every row the same shape: one tile a field, each with its label over a control of the same height, so a
+  // card reads down a column instead of across a line of boxes that are all a different size
+  const field = (label, control, wide = false) => `<div class="efield${wide ? " wide" : ""}"><span class="flab">${label}</span>${control}</div>`;
   const rows = r.entries.map((e, i) => {
     let hc = "", missing = false;
     const ov = e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee);
@@ -47,16 +50,24 @@ export function players(rid, keep = false) {
     try { const h = handicapFor(c, { ...e, courseHandicap: ov }, r.defaultTee, r.allowance); hc = `course hcp ${fmtHcp(h.ch)}`; }
     catch (err) { hc = `<span class="warn">${esc(err.message)}</span>`; missing = true; }
     const isMe = me && e.playerId === me.id;
+    // the handicap pair, then the tee, then the rest; an odd one left over takes the whole line rather than
+    // sitting beside a hole in the grid
+    const hcp = [
+      ["Index", `<input class="efv hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="Handicap index">`],
+      ...(missing || hasOv ? [["Course hcp", `<input class="efv" data-act="pch" data-i="${i}" inputmode="numeric" value="${hasOv ? ov : ""}" placeholder="club table" aria-label="Course handicap from the club table">`]] : []),
+    ];
+    const rest = [
+      ["Starts at", `<select class="efv" data-act="from" data-i="${i}" aria-label="Starts at hole">${c.par.map((_, k) => `<option value="${k + 1}" ${(e.fromHole || 1) === k + 1 ? "selected" : ""}>Hole ${c.first_hole + k}</option>`).join("")}</select>`],
+      ...(showGroups ? [["Group", `<div class="eseg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</div>`]] : []),
+      ...(statsOn ? [["Extras", `<div class="eseg"><button data-act="trk" data-i="${i}" class="${e.trackStats ? "on" : ""}">${e.trackStats ? "keeping" : "not kept"}</button></div>`]] : []),
+    ];
+    const pair = fs => fs.map(([l, ctl], k) => field(l, ctl, fs.length % 2 === 1 && k === fs.length - 1)).join("");
+    // the tee is a colour on the ground, so it is picked as that colour and not read off a list of words
+    const teePick = field(`Tee · ${esc(e.tee)}`, `<div class="tees">${tees.map(t => `<button class="tee ${t === e.tee ? "on" : ""}" style="--c:${teeColor(t)}" data-act="tee" data-i="${i}" data-t="${esc(t)}" aria-label="${esc(t)} tee" aria-pressed="${t === e.tee}"><i></i></button>`).join("")}</div>`, true);
+    const fields = pair(hcp) + teePick + pair(rest);
     return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}${isMe ? ` <span class="pill done">you</span>` : ""}</div><div class="muted small">${e.gender === "f" ? "women's" : "men's"} rating · ${hc}${hasOv ? " (club table)" : ""}</div></div>
         <button class="x" data-act="remove-entry" data-i="${i}" aria-label="Remove">×</button></div>
-      <div class="entry-tools">
-        <span class="tool"><span class="seg-label">index</span><input class="hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="Handicap index"></span>
-        <select data-act="tee" data-i="${i}" aria-label="Tee">${tees.map(t => `<option ${t === e.tee ? "selected" : ""}>${esc(t)} tee</option>`).join("")}</select>
-        ${showGroups ? `<span class="tool"><span class="seg-label">group</span><span class="seg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</span></span>` : ""}
-        <select data-act="from" data-i="${i}" title="Joins at hole"><option value="1" ${(e.fromHole || 1) === 1 ? "selected" : ""}>from hole 1</option>${c.par.slice(1).map((_, k) => `<option value="${k + 2}" ${(e.fromHole || 1) === k + 2 ? "selected" : ""}>joins at hole ${c.first_hole + k + 1}</option>`).join("")}</select>
-        ${missing || hasOv ? `<input data-act="pch" data-i="${i}" inputmode="numeric" value="${hasOv ? ov : ""}" placeholder="course hcp (club table)" aria-label="Course handicap from the club table">` : ""}
-        ${statsOn ? `<span class="tool"><span class="seg-label">extras</span><span class="seg"><button data-act="trk" data-i="${i}" class="${e.trackStats ? "on" : ""}">${e.trackStats ? "keeping" : "not kept"}</button></span></span>` : ""}
-      </div></div>`;
+      <div class="efields">${fields}</div></div>`;
   }).join("");
   const chip = (act, id, name, sub, on = false) => `<button class="pchip ${on ? "on" : ""}" data-act="${act}" data-id="${esc(id)}"><span><span class="plus">+</span>${esc(name)}</span><small>${esc(sub)}</small></button>`;
   const body = `
@@ -129,21 +140,37 @@ export function players(rid, keep = false) {
       S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
       return players(rid);
     }
-    if (act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid); }
+    if (act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid, true); }
+    if (act === "tee") { const e = r.entries[Number(b.dataset.i)]; e.tee = b.dataset.t; S.saveEntry(r, e); return players(rid, true); }
     if (act === "trk") { const e = r.entries[Number(b.dataset.i)]; S.setTrackStats(r, e, !e.trackStats); return players(rid, true); }
-    if (act === "x-sheet") { await extrasSheet(rid); return players(rid, true);
+    // the panel itself: the tick turns all of them on or all of them off, the chevron only folds the detail away
+    if (act === "x-all") { S.unlockStats(r, !(Object.values(S.statsFor(rid)).some(Boolean) && S.cardKeepsStats(r))); ui.extrasOpen = true; return players(rid, true); }
+    if (act === "x-fold") { ui.extrasOpen = !ui.extrasOpen; return players(rid, true); }
+    if (act === "x-kind") {
+      const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
+      S.setStatsFor(rid, next);
+      if (Object.values(next).some(Boolean) && !S.cardKeepsStats(r)) {
+        const m = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
+        if (m) S.setTrackStats(r, m, true);
+      }
+      return players(rid, true);
+    }
+    if (act === "x-who") {
+      const all = b.dataset.who === "all";
+      const m = r.entries.find(e => e.playerId === S.state.settings.meId);
+      for (const e of r.entries) S.setTrackStats(r, e, all || e === m);
+      return players(rid, true);
     }
   });
   document.querySelector("main").addEventListener("change", ev => {
     const el = ev.target.closest("[data-act]");
     if (!el) return;
     const e = r.entries[Number(el.dataset.i)];
-    if (el.dataset.act === "tee") { e.tee = el.value; S.saveEntry(r, e); players(rid); }
-    if (el.dataset.act === "from") { e.fromHole = Number(el.value); S.saveEntry(r, e); players(rid); }
+    if (el.dataset.act === "from") { e.fromHole = Number(el.value); S.saveEntry(r, e); players(rid, true); }
     if (el.dataset.act === "hi") {
       const hi = parseHI(el.value);
       if (!hiOk(hi)) { el.value = fmtIndex(Number(e.hi)); return toast("Handicap index between +10 and 54, e.g. 18,4"); }
-      S.setEntryHi(r, e, hi); players(rid);
+      S.setEntryHi(r, e, hi); players(rid, true);
     }
     if (el.dataset.act === "pch") {
       const raw = el.value.trim(), v = Number(raw);
@@ -151,7 +178,7 @@ export function players(rid, keep = false) {
       e.courseHandicap = null;
       S.saveEntry(r, e);
       S.setPch(e.playerId, r.course, e.tee, raw === "" ? null : v);
-      players(rid);
+      players(rid, true);
     }
   });
   const f = document.getElementById("addf"), nameEl = document.getElementById("pname");
@@ -232,10 +259,33 @@ export async function extrasSheet(rid) {
   });
 }
 
+/**
+ * Before you start: one checkbox. Ticked, it folds out into what is kept and who it is kept for, and the fold
+ * shuts again without switching anything off -- so narrowing it is taps on the page, not a trip to a sheet.
+ */
 function statsPicker(rid, kinds, r) {
-  const on = STAT_SWITCHES.filter(k => kinds[k.key]);
+  const on = Object.values(kinds).some(Boolean) && S.cardKeepsStats(r);
+  const open = on && ui.extrasOpen;
+  const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
   const who = r.entries.filter(e => e.trackStats);
-  const line = !on.length ? "Putts, fairways and the rest: not kept"
-    : `Keeping ${andList(on.map(k => k.word))}${who.length ? ` for ${andList(who.map(e => firstName(e.name)))}` : " — for nobody yet"}`;
-  return `<button class="card statline" id="statpick" data-act="x-sheet"><span class="small">${esc(line)}</span><span class="chev">›</span></button>`;
+  const justMe = who.length === 1 && mine && who[0] === mine;
+  const kept = STAT_SWITCHES.filter(k => kinds[k.key]);
+  const line = !on ? "Just the score on every hole"
+    : `${andList(kept.map(k => k.short.toLowerCase()))}${who.length ? ` · ${justMe ? "just me" : who.length === r.entries.length ? "everyone here" : andList(who.map(e => firstName(e.name)))}` : " · for nobody yet"}`;
+  return `<div class="card xpanel" id="statpick">
+    <div class="xhead">
+      <button class="xcheck" data-act="x-all" role="switch" aria-checked="${on}">
+        <span class="tick ${on ? "on" : ""}">${on ? "✓" : ""}</span>
+        <span class="xcw"><b>Keep putts, fairways and the rest</b><small>${esc(line)}</small></span></button>
+      ${on ? `<button class="xfold ${open ? "open" : ""}" data-act="x-fold" aria-expanded="${open}" aria-label="What is kept">▾</button>` : ""}
+    </div>
+    ${open ? `<div class="xmore">
+      <p class="pickline">Keeping</p>
+      <div class="statpick">${STAT_SWITCHES.map(k => `<button data-act="x-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
+      ${tip(STAT_SWITCHES.map(k => `<p><b>${esc(k.label)}</b> — ${esc(k.blurb)}</p>`).join(""), "What each one is")}
+      <p class="pickline">Keep them for</p>
+      <div class="statpick">
+        <button data-act="x-who" data-who="me" class="${justMe ? "on" : ""}">Just me</button>
+        <button data-act="x-who" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
+      </div></div>` : ""}</div>`;
 }

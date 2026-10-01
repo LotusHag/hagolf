@@ -39,33 +39,32 @@ export function scoreStepper(e, i, h, par) {
 // up and down, sand saves and putts per green with it.
 const COUNTS = [["putts", "Putts"], ["bunker", "Sand"], ["penaltyShots", "Pen"]];
 
-/**
- * Every extra this card is keeping, for one player, all of them at once and all on the same control as the
- * score. The fairway is the one answer that is not a number, so it stays three chips with a side to it; a par 3
- * is not asked about one, because it has none.
- */
+/** Every extra this card keeps, for one player, in one row of tiles: three counts and the fairway, which a par 3 has none of. */
 export function extrasRows(c, e, i, h, kinds) {
   if (!e.trackStats) return "";
   const x = e.stats[h] || {};
   const on = COUNTS.filter(([k]) => kinds[k]);
   const fw = kinds.fairway && hasFairway(c.par[h]);
   if (!on.length && !fw) return "";
-  // Nothing starts blank: a hole opens on the ordinary answer -- two putts, no sand, no penalty, the fairway
-  // hit -- and is nudged off it. Until the hole is scored that answer is only a suggestion, drawn muted.
+  // Putts open on the ordinary two and are nudged off it; sand and penalties open on nothing and read as
+  // nothing, so a quiet hole stays quiet. Until the hole is scored the opening answer is drawn muted.
   const step = ([k, label]) => {
     const v = x[k] ?? null, shown = v === null ? STAT_START[k] : v;
-    // the card's own notation on the greens: one ring for a one-putt, two for a two-putt, nothing above that
-    const ring = k === "putts" && (shown === 1 || shown === 2) ? ` p${shown}` : "";
+    // the card's notation on the greens: a two-putt rings once, anything better rings twice, worse rings not
+    const ring = k !== "putts" ? "" : shown === 2 ? " r1" : shown <= 1 ? " r2" : "";
+    const none = k !== "putts" && shown === 0;
     return `<div class="xst"><span class="xlab">${label}</span><div class="xrow">
       <button class="xb" data-act="x-dec" data-k="${k}" data-i="${i}" aria-label="${label}, one fewer">−</button>
-      <b class="xv num${v === null ? " soft" : " on"}${ring}">${shown}</b>
+      <b class="xv num ${none ? "none" : v === null ? "soft" : "on"}${ring}">${none ? "–" : shown}</b>
       <button class="xb" data-act="x-inc" data-k="${k}" data-i="${i}" aria-label="${label}, one more">+</button></div></div>`;
   };
+  // the fairway is the one answer that is a side rather than a count, so it keeps three chips -- but in a tile
+  // the shape of the others rather than a row of its own, which cost a whole line per player
   const cur = x.fairway ?? STAT_START.fairway;
-  const opt = (val, label) => `<button class="xfwb ${cur === val ? (x.fairway === null ? "on soft" : "on") : ""}" data-act="st-fw" data-v="${val}" data-i="${i}" aria-pressed="${x.fairway === val}">${label}</button>`;
+  const opt = (val, glyph, label) => `<button class="xfwb ${cur === val ? (x.fairway === null ? "on soft" : "on") : ""}" data-act="st-fw" data-v="${val}" data-i="${i}" aria-label="${label}" aria-pressed="${x.fairway === val}">${glyph}</button>`;
   return `<div class="pxtra">
     ${on.map(step).join("")}
-    ${fw ? `<div class="xfw"><span class="xlab">Fairway</span>${opt("left", "← left")}${opt("hit", "hit ✓")}${opt("right", "right →")}</div>` : ""}</div>`;
+    ${fw ? `<div class="xfw"><span class="xlab">Fairway</span><div class="xrow3">${opt("left", "←", "Missed left")}${opt("hit", "✓", "Fairway hit")}${opt("right", "→", "Missed right")}</div></div>` : ""}</div>`;
 }
 
 /** The running Stableford for one player over the holes they have actually finished. */

@@ -32,6 +32,11 @@ export const go = hash => { location.hash = hash; };
 export const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 export const andList = xs => xs.length < 2 ? (xs[0] || "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 export const firstName = n => String(n || "").trim().split(/\s+/)[0];
+/** Tees are named after the markers' colour, so the picker shows the colour itself. */
+const TEE_INK = { white: "#FFFFFF", yellow: "#EFC63C", blue: "#2E6FB7", red: "#C8433A", black: "#17181A", orange: "#E07B23",
+  green: "#2E8B57", gold: "#D4A017", silver: "#B9BDC1", grey: "#8A9095", gray: "#8A9095", brown: "#8A6D3B",
+  pink: "#E58FA6", purple: "#7A5AA8", bronze: "#D9A46A" };
+export const teeColor = t => TEE_INK[String(t || "").toLowerCase()] || "var(--card2)";
 export const inits = n => String(n || "").trim().split(/\s+/).slice(0, 2).map(w => [...w][0].toUpperCase()).join("");
 export const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
 export const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -81,7 +86,7 @@ export const hiOk = hi => hi >= -10 && hi <= 54;
 // A league's own screen state is two keys now: which table it is being read in, and in what currency two
 // players are compared. Everything else that used to live here -- which tab, which player, which pair -- is
 // in the hash instead, so the back button works and a board can be linked to.
-export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: {}, reviewOrder: {}, roundsFilter: "all",
+export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: {}, reviewOrder: {}, roundsFilter: "all", extrasOpen: true,
   loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
 
 // ---------------------------------------------------------------- icons

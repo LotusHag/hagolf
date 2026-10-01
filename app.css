@@ -322,29 +322,37 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .rec b { font-size: 16px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec span { font-size: 13px; color: var(--ink2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .rec small { margin-top: auto; padding-top: 4px; font-size: 12px; font-weight: 600; color: var(--green); }
-.chips-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
-.pchip { display: inline-flex; flex-direction: column; align-items: flex-start; padding: 8px 14px; border-radius: 4px; border: 1px solid var(--line2); background: var(--card); color: var(--ink); font-weight: 600; font-size: 15px; min-height: 48px; }
-.pchip small { color: var(--ink3); font-weight: 500; font-size: 11px; }
+/* one box a person, every one the same size: names are all different lengths and a row of boxes that are too
+   reads as a mess rather than as a list */
+.chips-wrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.pchip { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 8px 12px; border-radius: 4px; border: 1px solid var(--line2); background: var(--card); color: var(--ink); font-weight: 600; font-size: 15px; min-height: 52px; text-align: left; }
+.pchip > span { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pchip small { color: var(--ink3); font-weight: 500; font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pchip.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .pchip .plus { margin-right: 4px; }
 .entry { padding: 12px 14px; }
 .entry .row .name { font-size: 16px; }
-.entry-tools { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-.entry-tools select { width: auto; margin: 0; padding: 7px 30px 7px 12px; font-size: 14px; border-radius: 3px; min-height: 36px; }
-.entry-tools input { width: 150px; margin: 0; padding: 7px 12px; font-size: 14px; border-radius: 3px; }
-.entry-tools input.hi { width: 86px; text-align: center; }
-.entry-tools .tool { display: inline-flex; align-items: center; gap: 8px; }
-.seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 3px; overflow: hidden; background: var(--card); }
-.seg button { min-width: 38px; height: 36px; border: 0; background: transparent; color: var(--ink2); font-weight: 700; }
-.seg button.on { background: var(--green); color: var(--green-ink); }
-.seg-label { font-size: 12px; color: var(--ink3); margin-right: -2px; }
+/* every field on an entry is the same tile: a small caps label over a control of one height, two to a line, so
+   a card reads as a form rather than as a line of boxes each a different size and filled in a different way */
+.efields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.efield { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.efield.wide { grid-column: 1 / -1; }
+.flab { font-size: 9px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--ink3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.efv, .eseg, .tees { height: 42px; border: 1px solid var(--line2); border-radius: var(--r-s); background: var(--card); }
+.efv { width: 100%; margin: 0; padding: 0 10px; font: inherit; font-size: 15px; color: var(--ink); }
+select.efv { padding: 0 28px 0 10px; }
+input.efv.hi { text-align: center; font-weight: 600; }
+.eseg { display: flex; overflow: hidden; padding: 0; }
+.eseg button { flex: 1 1 0; min-width: 0; border: 0; background: none; color: var(--ink2); font-size: 14px; font-weight: 600; }
+.eseg button.on { background: var(--green); color: var(--green-ink); }
+/* the tee is a colour on the ground, so it is picked as that colour */
+.tees { display: flex; align-items: center; justify-content: space-around; gap: 2px; padding: 0 4px; }
+.tee { flex: 1 1 0; min-width: 0; height: 100%; max-width: 44px; display: grid; place-items: center; border: 0; background: none; padding: 0; }
+/* a grey hairline rather than a black one, so the white marker still reads as a circle on a dark theme */
+.tee i { width: 20px; height: 20px; border-radius: 50%; background: var(--c); border: 1px solid rgba(128, 128, 128, .5); }
+.tee.on i { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--green); }
 
-/* kept where they still earn their place: the hole chips (now in the hole sheet), the segmented filter and
-   the scope bar on Rounds */
-.hchip { height: 44px; border-radius: var(--r-s); display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); color: var(--ink3); font-weight: 700; font-size: 15px; }
-.hchip.some { color: var(--ink); border-color: var(--line2); }
-.hchip.done { background: var(--green-soft); border-color: transparent; color: var(--green); }
-.hchip.cur { background: var(--green); border-color: var(--green); color: var(--green-ink); }
 .filter { display: flex; gap: 6px; margin: 0 0 10px; background: var(--card2); padding: 4px; border-radius: 3px; }
 .filter button { flex: 1; min-height: 36px; border-radius: 3px; border: 0; background: transparent; color: var(--ink2); font-weight: 600; }
 .filter button.on { background: var(--card); color: var(--ink); }
@@ -371,9 +379,16 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .mk.pk { color: var(--pick); font-size: 17px; }
 .mk.empty { color: var(--line2); font-size: 19px; }
 
-.holebar { display: flex; align-items: center; gap: 12px; padding: 2px 0 10px; }
-.hnum { font-size: 52px; font-weight: 600; line-height: 1; color: var(--green); min-width: 62px; text-align: center;
+.holebar { display: flex; align-items: center; gap: 12px; padding: 2px 0 8px; }
+.hnum { font-size: 44px; font-weight: 600; line-height: 1; color: var(--green); min-width: 54px; text-align: center;
   border: 0; background: none; padding: 0; }
+/* the whole loop along the top: how far the card has got, and a tap straight to any hole of it */
+.holestrip { display: grid; gap: 3px; margin: 0 0 12px; }
+.hstep { display: grid; place-items: center; min-height: 26px; border-radius: var(--r-xs); border: 1px solid var(--line);
+  background: var(--card); color: var(--ink3); font-size: 13px; font-weight: 500; }
+.hstep.some { color: var(--ink); border-color: var(--line2); }
+.hstep.done { background: var(--green-soft); border-color: transparent; color: var(--green); }
+.hstep.cur { background: var(--green); border-color: var(--green); color: var(--green-ink); font-weight: 600; }
 .hmeta { flex: 1; text-align: left; border: 0; background: none; padding: 0; min-height: var(--tap); color: var(--ink3); font-size: 13px; }
 .hmeta b { color: var(--ink); font-size: 15px; font-weight: 700; }
 .hmeta .chev { color: var(--ink3); margin-left: 6px; }
@@ -404,26 +419,27 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 
 /* the extras, on the same stepper as the score so one hand learns one control; smaller, because they are
    the second question on the hole and never the first */
-/* the counts sit three across with the label over them, so each is the same shape and the row never stretches */
-.pxtra { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 5px; }
-.xst { border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card); padding: 3px 2px 1px; text-align: center; }
+/* one row of tiles, all the same shape, the fairway among them rather than on a line of its own underneath */
+.pxtra { display: flex; gap: 5px; margin-top: 5px; }
+.xst, .xfw { flex: 1 1 0; min-width: 0; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card); padding: 3px 2px 1px; text-align: center; }
+.xfw { flex: 1.5 1 0; }
 .xrow { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.xrow3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
 .xlab { display: block; font-size: 9px; color: var(--ink3); font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }
 .xb { height: 32px; border: 0; background: none; color: var(--ink2); font-size: 19px; line-height: 1; padding: 0; }
 .xb:active { color: var(--green); }
 .xv { display: inline-grid; place-items: center; justify-self: center; width: 24px; height: 24px; line-height: 1;
   font-size: 15px; color: var(--ink3); border: 1.5px solid transparent; border-radius: 50%; }
 .xv.on { color: var(--ink); font-weight: 600; }
-/* the card's notation carried onto the greens: a one-putt rings once, a two-putt twice, three and up plain */
-.xv.p1 { color: var(--under); border-color: var(--under); }
-.xv.p2 { color: var(--under); border-color: var(--under); box-shadow: 0 0 0 1.5px var(--card), 0 0 0 3px var(--under); }
+/* the card's notation carried onto the greens: the ordinary two-putt rings once, anything better rings twice */
+.xv.r1 { color: var(--under); border-color: var(--under); }
+.xv.r2 { color: var(--under); border-color: var(--under); box-shadow: 0 0 0 1.5px var(--card), 0 0 0 3px var(--under); }
+/* sand and penalties start at nothing, and nothing is a dash, not a nought to be read as a number */
+.xv.none { color: var(--line2); font-weight: 500; }
 /* the standard answer, shown before the hole is scored: there to be read, not yet written down */
 .xv.soft { opacity: .45; }
-.xfw { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; border: 1px solid var(--line);
-  border-radius: var(--r-s); background: var(--card); padding: 2px 5px 2px 9px; }
-.xfw .xlab { margin-right: 2px; }
-.xfwb { flex: 1 1 0; min-width: 0; min-height: 32px; border-radius: 3px; border: 1px solid transparent;
-  background: none; color: var(--ink2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.xfwb { min-width: 0; min-height: 32px; border-radius: 3px; border: 1px solid transparent; padding: 0;
+  background: none; color: var(--ink3); font-size: 15px; font-weight: 700; line-height: 1; }
 .xfwb:active { background: var(--card2); }
 .xfwb.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .xfwb.soft { opacity: .5; }
@@ -435,11 +451,25 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .xmaster small { display: block; color: var(--ink3); font-size: 12px; margin-top: 2px; }
 .xmaster.on { border-color: var(--green); background: var(--green-soft); }
 .xmaster.on b { color: var(--green); }
-.statline { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  text-align: left; border: 1px solid var(--line); }
+/* before you start: a tick that turns the lot on, and a chevron that folds out what is kept and for whom --
+   so narrowing it is taps on the page in front of you rather than a trip into a sheet */
+.xpanel { padding: 4px 6px 4px 8px; }
+.xpanel:has(.xmore) { padding-bottom: 14px; }
+.xhead { display: flex; align-items: center; gap: 4px; }
+.xcheck { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 2px;
+  border: 0; background: none; text-align: left; }
+.xcheck .tick { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-xs);
+  border: 1.5px solid var(--line2); background: var(--card); color: var(--green-ink); font-size: 15px; font-weight: 700; line-height: 1; }
+.xcheck .tick.on { border-color: var(--green); background: var(--green); }
+.xcw { min-width: 0; }
+.xcw b { display: block; font-size: 15px; font-weight: 700; }
+.xcw small { display: block; color: var(--ink3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xfold { flex: none; width: 40px; height: 40px; border: 0; background: none; color: var(--ink3); font-size: 15px; line-height: 1; }
+.xfold.open { color: var(--green); transform: rotate(180deg); }
+.xmore { padding: 2px 2px 0; border-top: 1px solid var(--line); margin-top: 2px; }
+.xmore .pickline:first-child { margin-top: 12px; }
 
 /* the hole sheet: everything that is reference rather than scoring */
-.holegrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin: 10px 0 4px; }
 .hboard { display: flex; flex-direction: column; }
 .hrowb { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 36px;
   border-bottom: 1px solid var(--line); }
@@ -771,7 +801,7 @@ a.kv:active { background: var(--card2); }
 .sside small i { display: block; font-style: normal; font-weight: 500; font-size: 11px; color: var(--ink3); }
 .sside b { font-size: 22px; font-weight: 600; line-height: 1.3; }
 .sside.up b { color: var(--green); }
-.chips-wrap.scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; }
+.chips-wrap.scroll { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; }
 .chips-wrap.scroll::-webkit-scrollbar { display: none; }
 .chips-wrap.scroll .pchip { flex: none; }
 
