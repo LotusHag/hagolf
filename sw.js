@@ -1,5 +1,5 @@
 // Offline cache. The version is stamped by app/build.py; a new version replaces the whole cache on next load.
-const VERSION = "20260930-214448";
+const VERSION = "20261001-131537";
 const CACHE = `hagolf-${VERSION}`;
 // Stamped by app/build.py from what dist/ actually holds, so a new screen file is never missing offline.
 const SHELL = ["./", "./app.css", "./app.js", "./auth.js", "./boot.js", "./cards.js", "./data.js", "./draw.js", "./entitlements.js", "./idb.js", "./index.html", "./manifest.webmanifest", "./model.js", "./notify.js", "./posters.js", "./router.js", "./sample.js", "./sheet.js", "./social.js", "./statsposters.js", "./store.js", "./sync.js", "./ui.js", "./fonts/libre-baskerville/LibreBaskerville-Bold.ttf", "./fonts/libre-baskerville/LibreBaskerville-Regular.ttf", "./fonts/libre-baskerville/LibreBaskerville-SemiBold.ttf", "./fonts/montserrat/Montserrat-Bold.ttf", "./fonts/montserrat/Montserrat-Regular.ttf", "./fonts/montserrat/Montserrat-SemiBold.ttf", "./fonts/oswald/Oswald-Variable.ttf", "./fonts/source-sans-3/SourceSans3-Variable.ttf", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./screens/course.js", "./screens/extras.js", "./screens/formats.js", "./screens/gate.js", "./screens/graphics.js", "./screens/home.js", "./screens/kinds.js", "./screens/league.js", "./screens/leagues.js", "./screens/legal.js", "./screens/me.js", "./screens/people.js", "./screens/play.js", "./screens/players.js", "./screens/public.js", "./screens/review.js", "./screens/score.js", "./screens/shop.js", "./screens/stats.js", "./screens/updates.js", "./vendor/qrcode.js"];
@@ -41,8 +41,14 @@ self.addEventListener("notificationclick", e => {
   })());
 });
 
+// The Worker answers these paths on the app's own origin (run_worker_first in cloudflare/wrangler.toml); they are
+// live data and must never be answered from, or written into, the offline cache.
+const API = /^\/(rest|functions|auth|account|club|league|notifications|push|public|shop|friends|round|health)(\/|$)/;
+
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+  if (url.origin === location.origin && API.test(url.pathname)) return;
   e.respondWith(caches.open(CACHE).then(c => c.match(e.request, { ignoreSearch: true })).then(hit => hit || fetch(e.request).then(res => {
     if (res.ok && new URL(e.request.url).origin === location.origin) {
       const copy = res.clone();
