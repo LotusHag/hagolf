@@ -62,14 +62,29 @@ export const isAndroid = () => /Android/.test(navigator.userAgent);
 export const onPhone = () => isIOS() || isAndroid();
 export const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 /**
- * Only a desktop browser is turned away. A phone browser is already the phone Hagolf is for, so it goes
- * straight in and is offered the home screen from inside, where it is an offer and not a wall: a wall there
- * is a dead end, since the address the wall hands out is the page you are standing on. Localhost stays open,
- * for development and the tests.
+ * A browser inside another app -- WhatsApp, Instagram, Facebook, LinkedIn -- which is exactly where a shared
+ * card or an invite lands. On iOS it can install nothing at all; on Android it has no install prompt either.
+ * It is the reason the door always keeps one way through: told to install and unable to, you would be stuck.
+ * Chrome and Firefox on iOS keep "Safari" in the string and are not caught by the fallback.
  */
-export const desktopWeb = () => !isStandalone() && !onPhone() && location.protocol !== "file:" && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
-/** A phone still reading Hagolf in a browser tab: the one audience for the home-screen nudge. */
-export const canInstall = () => onPhone() && !isStandalone() && !window.__installed;
+export const inAppBrowser = () => /FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Line\/|Snapchat|Twitter|WhatsApp|MicroMessenger/.test(navigator.userAgent)
+  || (isIOS() && !/Safari/.test(navigator.userAgent));
+/** What this particular browser can actually be asked to do about installing. One of the door's panels. */
+export function installRoute() {
+  if (window.__installPrompt) return "prompt";          // Chrome and Edge hand over their own, and one tap does it
+  if (inAppBrowser()) return isIOS() ? "ios-elsewhere" : "android-elsewhere";
+  if (isIOS()) return "ios";
+  if (isAndroid()) return "android";
+  return "desktop";
+}
+/**
+ * The door: app.hagolf.app is where you get Hagolf, not where you use it. Anything that is not already the
+ * installed app is shown how to become one, and there is no way past. Two things are never behind it: the
+ * screens a link opens, which are meant for people with no app yet, and localhost and file:, which is how
+ * this is developed and tested.
+ */
+export const atDoor = () => !isStandalone() && location.protocol !== "file:"
+  && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 export const appBase = () => `${location.origin}${location.pathname}`;
 
 /** Handicap index as typed: "19,9", "+2.1" (plus handicap), "18". */
@@ -234,22 +249,6 @@ export function sheet({ title = "", lead = "", body = "", actions = [], onOpen =
     document.addEventListener("keydown", onKey);
     document.body.appendChild(wrap);
     if (onOpen) onOpen(wrap.querySelector(".sheet"), close);
-  });
-}
-/**
- * Put it on the home screen, offered rather than demanded. Chrome hands over its own prompt and we spend it;
- * Safari has no such event, so iOS can only be shown where its Share button is.
- */
-export async function addToHomeScreen() {
-  if (window.__installPrompt) { const p = window.__installPrompt; window.__installPrompt = null; p.prompt(); return; }
-  await sheet({
-    title: "Put Hagolf on your home screen",
-    lead: "It opens full screen from its own icon, and keeps scoring with no signal.",
-    body: isIOS()
-      ? `<ol class="steps"><li>Tap <b>Share</b> <span class="ios-share">&#8679;</span> in Safari's bar.</li><li>Scroll down and choose <b>Add to Home Screen</b>.</li><li>Open Hagolf from the new icon.</li></ol>
-         <p class="muted small">Reading this in another app's browser? Open <b>app.hagolf.app</b> in Safari first &mdash; only Safari can add it.</p>`
-      : `<ol class="steps"><li>Open Chrome's menu (&#8942;).</li><li>Choose <b>Install app</b>, or <b>Add to Home screen</b>.</li><li>Open Hagolf from your home screen or app drawer.</li></ol>`,
-    actions: [{ label: "Got it", kind: "primary", value: "ok" }],
   });
 }
 /** Yes or no, with the destructive button drawn as such. Resolves true or false. */

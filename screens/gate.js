@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, desktopWeb, canInstall, addToHomeScreen, ICONS } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, ICONS } from "../ui.js";
 import { fmtIndex } from "../model.js";
 
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
@@ -22,40 +22,77 @@ function settle(a) {
 }
 
 export function welcome() {
-  if (desktopWeb()) return install();
+  if (atDoor()) return door();
   const acct = A.account();
   if (!Y.config()) return page("Hagolf", `<div class="gate"><div class="gatemark">Hagolf</div><p class="tag">This phone is not connected to a backend.</p><a class="btn" href="#me/backend">Connect</a></div>`, { bare: true });
   if (!acct) return gate();
   onboarding(acct);
 }
 
+// The signed Android package, once there is one: the door hands over this file rather than asking Chrome to
+// install the web app. Empty means there is none yet, and Android is shown its browser's own install instead.
+const ANDROID_APK = "";
+
 /**
- * A desktop browser is the one place Hagolf cannot be used, because it is not the thing you carry round the
- * course. So it is handed the address and a QR code for the phone that will, and nothing else -- on a phone
- * that same screen would be a dead end, offering you the page you are already reading. Desktop Chrome can
- * still install it for itself, and is let.
+ * The door. app.hagolf.app hands out Hagolf; it is not where Hagolf is used. Every browser that is not already
+ * the installed app meets one card with one button, and the button always says the same thing, because from
+ * where the reader stands it is always the same thing: get the app onto this device.
+ *
+ * What it does underneath is whatever that device actually permits. Android is handed a signed package, or
+ * failing that Chrome's own install prompt. An iPhone cannot be handed a file by anybody -- Apple allows no
+ * install outside the App Store -- so there the button opens Safari's Add to Home Screen, which produces the
+ * same app: own icon, full screen, offline. A browser living inside WhatsApp or Instagram can install nothing
+ * at all and is shown the way out first. A desktop is not the thing you carry round a course, so it is given
+ * the address and a QR for the phone that is.
+ *
+ * There is no way past, by design. The screens a link opens never arrive here, so a shared card, a board or an
+ * invite still opens for somebody who has no app yet; this is only the front door.
  */
-function install() {
-  const addr = appBase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+function door() {
+  const kind = ANDROID_APK && (installRoute() === "android" || installRoute() === "android-elsewhere" || installRoute() === "prompt") ? "apk" : installRoute();
+  const under = {
+    apk: "Android package &middot; installs from your downloads",
+    prompt: "Installs straight from this browser",
+    ios: "Adds it to your home screen &mdash; nothing to download",
+    "ios-elsewhere": "Open it in Safari first",
+    android: "Adds it to your home screen",
+    "android-elsewhere": "Open it in Chrome first",
+    desktop: "Hagolf lives on the phone you carry round the course",
+  }[kind];
+  const btn = kind === "apk"
+    ? `<a class="btn primary wide big" href="${esc(ANDROID_APK)}" download>Download Hagolf</a>`
+    : `<button class="btn primary wide big" data-act="get">Download Hagolf</button>`;
   page("Hagolf", `<div class="gate">
       <div class="gatemark">Hagolf</div>
       <p class="tag">Score rounds, keep leagues with friends, make the posters.</p>
       <div class="card install">
-        <h3>Hagolf lives on your phone</h3>
-        <p class="muted">Scan this with your phone's camera, or open the address there. It installs from the page itself &mdash; there is nothing to download.</p>
-        ${qrHtml(appBase())}
-        <a class="linkbox" href="${esc(appBase())}">${esc(addr)}</a>
-        <button class="btn wide" data-act="copy" style="margin-top:12px">Copy the address</button>
-        ${window.__installPrompt ? `<button class="btn ghost wide" data-act="install" style="margin-top:10px">Or install it on this computer</button>` : ""}
+        <h3>Hagolf on your phone</h3>
+        <p class="muted">It opens full screen from its own icon, and goes on scoring when there is no signal.</p>
+        ${btn}
+        <p class="muted small center under">${under}</p>
       </div>
       <p class="legal">Versions for the App Store and Google Play are on the way. You sign in once it is open on your phone; only your name is ever shown to other people.</p>
     </div>`, { bare: true });
-  bind(ev => {
-    const b = ev.target.closest("[data-act]");
-    if (!b) return;
-    if (b.dataset.act === "install" && window.__installPrompt) { window.__installPrompt.prompt(); window.__installPrompt = null; }
-    if (b.dataset.act === "copy") shareLink(appBase(), "Hagolf", "Install Hagolf");
-  });
+  bind(ev => { if (ev.target.closest("[data-act=get]")) howTo(kind); });
+}
+
+/** What the button does on a device that cannot simply be handed the app: its own browser's steps. */
+function howTo(kind) {
+  if (kind === "prompt" && window.__installPrompt) { const p = window.__installPrompt; window.__installPrompt = null; return p.prompt(); }
+  const steps = {
+    ios: { title: "Add Hagolf to your home screen", lead: "Three taps, and it is the same app: its own icon, full screen, and scoring with no signal.",
+      body: `<ol class="steps"><li>Tap <b>Share</b> <span class="ios-share">&#8679;</span> in Safari's bar.</li><li>Scroll down and choose <b>Add to Home Screen</b>.</li><li>Open Hagolf from the new icon.</li></ol>
+             <p class="muted small">Apple allows no app to be installed from a file, so this is how every iPhone app that is not in the App Store arrives.</p>` },
+    "ios-elsewhere": { title: "Open this in Safari first", lead: "You are reading this inside another app, and only Safari can put Hagolf on an iPhone's home screen.",
+      body: `<ol class="steps"><li>Tap <b>Share</b> or <b>&#8230;</b> in this app's bar.</li><li>Choose <b>Open in Safari</b>.</li><li>There, Share &#8679; &rarr; <b>Add to Home Screen</b>.</li></ol>` },
+    android: { title: "Add Hagolf to your home screen", lead: "It opens full screen from its own icon, and goes on scoring with no signal.",
+      body: `<ol class="steps"><li>Open the browser's menu (&#8942;).</li><li>Choose <b>Install app</b>, or <b>Add to Home screen</b>.</li><li>Open Hagolf from your home screen.</li></ol>` },
+    "android-elsewhere": { title: "Open this in Chrome first", lead: "You are reading this inside another app, which cannot install anything.",
+      body: `<ol class="steps"><li>Open the menu (&#8942;) in this app's bar.</li><li>Choose <b>Open in Chrome</b>, or <b>Open in browser</b>.</li><li>Install it from there.</li></ol>` },
+    desktop: { title: "Hagolf lives on your phone", lead: "Scan this with your phone's camera, or open the address there.",
+      body: `${qrHtml(appBase())}<a class="linkbox" href="${esc(appBase())}">${esc(appBase().replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>` },
+  }[kind] || {};
+  sheet({ ...steps, actions: [{ label: "Got it", kind: "primary", value: "ok" }] });
 }
 
 /** The gate: the mark, one line, one button. */
@@ -68,11 +105,9 @@ function gate() {
           <button class="btn primary wide" type="submit" style="margin-top:12px">Email me a code</button></form>` : ""}
         ${ui.signinEmail ? `<form id="codef"><p class="muted small">A code went to <b>${esc(ui.signinEmail)}</b>.</p><label>Code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn primary wide" type="submit" style="margin-top:12px">Sign in</button></form>` : ""}
         <p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></div>
-      ${canInstall() ? `<button class="btn ghost wide" data-act="addhome" style="margin-top:12px">Put Hagolf on your home screen</button><p class="muted small center">It opens full screen from its own icon, and keeps scoring with no signal. You can sign in there.</p>` : ""}
       <p class="legal">By continuing you agree to the <a href="#legal/terms">terms</a> and the <a href="#legal/privacy">privacy policy</a>. Only your name is ever shown to other people.</p>
     </div>`, { bare: true });
   googleButton(settle);
-  bind(ev => { if (ev.target.closest("[data-act=addhome]")) addToHomeScreen(); });
   const signinf = document.getElementById("signinf");
   if (signinf) signinf.addEventListener("submit", async ev => {
     ev.preventDefault();

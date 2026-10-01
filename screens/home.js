@@ -6,7 +6,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect, canInstall, addToHomeScreen } from "../ui.js";
+import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect } from "../ui.js";
 import { compute, handicapFor, stableford, fix, fmtIndex } from "../model.js";
 import { leagueResults, standingsFor, standingValue, FORMAT_NAMES } from "./formats.js";
 import { noteLine } from "./updates.js";
@@ -129,7 +129,6 @@ export function home() {
   if (Y.sync.status === "error") banners.push(`<button class="banner warn" data-act="retry">Couldn't sync: ${esc(Y.sync.error || "")}. Tap to retry.</button>`);
   if (Y.sync.status === "signedout") banners.push(`<a class="banner warn" href="#welcome">Signed out. Everything is kept on this phone; sign in to keep syncing.</a>`);
   if (window.__updateReady) banners.push(`<button class="banner accent" data-act="update">A new version is ready. Tap to reload.</button>`);
-  if (canInstall() && !S.state.settings.noInstallNudge) banners.push(`<div class="banner act"><span>Put Hagolf on your home screen: it opens full screen and keeps scoring without a signal.</span><button class="btn small" data-act="addhome">How</button><button class="x" data-act="nonudge" aria-label="Not now">&times;</button></div>`);
   const open = rounds.filter(r => r.status !== "done");
   const mine = me ? myRounds(me) : [];
   const fresh = N.held().filter(n => !n.seen).slice(0, 3);
@@ -150,7 +149,5 @@ export function home() {
     if (b.dataset.act === "retry") { await Y.pushAndPull(); return home(); }
     if (b.dataset.act === "resync") return resyncNow();
     if (b.dataset.act === "update") { if (window.__updateWorker) window.__updateWorker.postMessage("skipWaiting"); }
-    if (b.dataset.act === "nonudge") { S.setSetting("noInstallNudge", true); return home(); }
-    if (b.dataset.act === "addhome") return addToHomeScreen();
   });
 }

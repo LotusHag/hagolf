@@ -3,7 +3,7 @@
 import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
-import { ui, paint, themeHere, hideToast, rememberIntent, desktopWeb } from "./ui.js";
+import { ui, paint, themeHere, hideToast, rememberIntent, atDoor } from "./ui.js";
 import { welcome, signin, join, add } from "./screens/gate.js";
 import { home } from "./screens/home.js";
 import { play, newRound, loops } from "./screens/play.js";
@@ -31,10 +31,11 @@ export const gated = () => Y.enabled() && !A.signedIn();
 export function route() {
   hideToast();
   const [name, ...args] = location.hash.replace(/^#/, "").split("/");
-  // On a desktop browser there is one screen: where to get it. A phone browser is let through -- it is the
-  // phone Hagolf is for. The link screens stay open either way, since a shared board or an invite is meant to
-  // be opened by somebody who has no app yet.
-  if (desktopWeb() && !OPEN_SCREENS.includes(name)) return welcome();
+  // In any browser there is one screen: how to get Hagolf onto this device. The link screens stay open, since
+  // a shared board, a card or an invite is meant to be opened by somebody who has no app yet, and the door
+  // keeps its own way through for anyone it cannot actually help. The hash is left alone, so whoever walks
+  // through arrives at the screen they asked for.
+  if (atDoor() && !OPEN_SCREENS.includes(name)) return welcome();
   if (gated() && !OPEN_SCREENS.includes(name)) {
     if (name && name !== "home") rememberIntent(location.hash);   // finish the journey once signed in
     return welcome();
