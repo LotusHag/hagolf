@@ -453,7 +453,7 @@ export function leagueStatsBody(g, Ms, members) {
   if (!St.rounds.length) return `<p class="muted center" style="margin:30px 0">No finished rounds in this league yet.</p>`;
   const mine = S.me();
   const body = fieldStats(St, ninesFieldBlock(g.id, leagueRounds(g.id), mine), g.id, mine && mine.id);
-  return `<div class="statsbody">${body}<a class="btn" href="#statsposter/${g.id}" style="margin-top:16px">Make stats images ›</a></div>`;
+  return `<div class="statsbody">${body}<a class="btn" href="#leagueimages/${g.id}" style="margin-top:16px">Make these as images ›</a></div>`;
 }
 
 /** One player's season in this league, for their own screen. */

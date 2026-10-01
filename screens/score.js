@@ -8,7 +8,7 @@ import * as S from "../store.js";
 import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet } from "../ui.js";
 import { handicapFor, stableford } from "../model.js";
 import { scoreStepper, extrasRows, navBar, ptsSoFar } from "../pad.js";
-import { statTap, statStep } from "./extras.js";
+import { statTap, statStep, seedStats } from "./extras.js";
 import { dropRound, extrasSheet } from "./players.js";
 
 const groupOf = rid => ui.groupFilter[rid] || 0;
@@ -121,6 +121,7 @@ export function score(rid, hArg) {
       else if (act === "dec") S.setScore(r, e, h, (v === null || v === 0) ? par : Math.max(1, v - 1));
       else if (v === null || v === 0) S.setScore(r, e, h, par);
       else return;
+      seedStats(r, e, h, c, kinds);
       return refresh(i);
     }
     if (act === "x-inc" || act === "x-dec") { statStep(r, e, h, b.dataset.k, act === "x-inc" ? 1 : -1); return refresh(i); }

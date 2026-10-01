@@ -6,7 +6,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect, sheet, canInstall, isIOS } from "../ui.js";
+import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect, canInstall, addToHomeScreen } from "../ui.js";
 import { compute, handicapFor, stableford, fix, fmtIndex } from "../model.js";
 import { leagueResults, standingsFor, standingValue, FORMAT_NAMES } from "./formats.js";
 import { noteLine } from "./updates.js";
@@ -121,23 +121,6 @@ const recent = (me, mine) => mine.length ? `${sect(mine.length === 1 ? "Last rou
 const starters = () => `${sect("To begin")}<div class="rows">
   <a class="hrow" href="#leagues"><span class="t"><b>Join a league</b><span>With a link from the organiser, or start your own</span></span><span class="chev">›</span></a>
   <a class="hrow" href="#people"><span class="t"><b>Find your friends</b><span>Search by name, or share your link</span></span><span class="chev">›</span></a></div>`;
-
-/**
- * The home screen, offered rather than demanded. Chrome hands over its own prompt and we spend it; Safari has
- * no such event, so iOS can only be shown where its Share button is.
- */
-async function addToHomeScreen() {
-  if (window.__installPrompt) { const p = window.__installPrompt; window.__installPrompt = null; p.prompt(); return; }
-  await sheet({
-    title: "Put Hagolf on your home screen",
-    lead: "It opens full screen from its own icon, and keeps scoring with no signal.",
-    body: isIOS()
-      ? `<ol class="steps"><li>Tap <b>Share</b> <span class="ios-share">&#8679;</span> in Safari's bar.</li><li>Scroll down and choose <b>Add to Home Screen</b>.</li><li>Open Hagolf from the new icon.</li></ol>
-         <p class="muted small">Reading this in another app's browser? Open <b>app.hagolf.app</b> in Safari first &mdash; only Safari can add it.</p>`
-      : `<ol class="steps"><li>Open Chrome's menu (&#8942;).</li><li>Choose <b>Install app</b>, or <b>Add to Home screen</b>.</li><li>Open Hagolf from your home screen or app drawer.</li></ol>`,
-    actions: [{ label: "Got it", kind: "primary", value: "ok" }],
-  });
-}
 
 export function home() {
   const rounds = S.rounds();

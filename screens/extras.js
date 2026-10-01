@@ -1,7 +1,7 @@
 // Putts, fairways and the rest: what one tap on the hole writes, and the tiles that read them all back.
 import * as S from "../store.js";
 import { esc, plural } from "../ui.js";
-import { statReadings, fmtSigned } from "../model.js";
+import { statReadings, fmtSigned, hasFairway, STAT_START } from "../model.js";
 
 /**
  * The extras read back, as tiles. Only what was actually recorded appears, and `deep` decides whether the
@@ -80,16 +80,28 @@ export function statHolesOf(rounds, pid) {
 export const holedOut = (e, h) => e.scores[h] !== null && e.scores[h] !== 0;
 
 /**
- * A counted extra nudged by one: putts, penalty shots, shots from a bunker. Nothing and none are different
- * answers and stay different -- the first + is one, the first − is none, and stepping below none clears the
- * hole back to unanswered, so a hole nobody looked at never pretends to say zero.
+ * A counted extra nudged by one: putts, penalty shots, shots from a bunker. A hole that has been scored already
+ * carries the ordinary answer, so stepping is a correction of something, never the first word -- and a hole
+ * nobody has scored still says nothing at all, because `seedStats` is what writes the ordinary answer down.
  */
 export function statStep(r, e, h, kind, d) {
-  const cur = (e.stats[h] || {})[kind] ?? null;
-  let next = cur === null ? (d > 0 ? 1 : 0) : cur + d;
-  if (next < 0) next = null;
-  if (next !== null && next > 9) next = 9;
-  S.setStat(r, e, h, { [kind]: next });
+  const cur = (e.stats[h] || {})[kind] ?? STAT_START[kind] ?? 0;
+  S.setStat(r, e, h, { [kind]: Math.max(0, Math.min(9, cur + d)) });
+}
+
+/**
+ * The ordinary answer, written into a hole the moment it is scored: two putts, no sand, no penalty, the
+ * fairway hit. Only what is still unanswered is filled, so nothing already tapped in is overwritten, and a
+ * hole with no score -- or one picked up -- is left alone, because it has nothing to say.
+ */
+export function seedStats(r, e, h, c, kinds) {
+  if (!e.trackStats) return;
+  const v = e.scores[h];
+  if (v === null || v === 0) return;
+  const x = e.stats[h] || {}, patch = {};
+  for (const k of ["putts", "penaltyShots", "bunker"]) if (kinds[k] && (x[k] ?? null) === null) patch[k] = STAT_START[k];
+  if (kinds.fairway && hasFairway(c.par[h]) && (x.fairway ?? null) === null) patch.fairway = STAT_START.fairway;
+  if (Object.keys(patch).length) S.setStat(r, e, h, patch);
 }
 
 // The fairway is the one extra that is a side rather than a count, so it keeps its three chips and this tap.

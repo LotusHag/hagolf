@@ -491,6 +491,9 @@ export function girFrom(strokes, putts, par) {
 /** An empty per-hole record, which is what every hole starts as. */
 export const blankStat = () => ({ putts: null, fairway: null, gir: null, penaltyShots: null, bunker: null });
 
+/** What a scored hole starts at: the ordinary answer, there to be nudged rather than typed out. */
+export const STAT_START = { putts: 2, fairway: "hit", penaltyShots: 0, bunker: 0 };
+
 /** True when a per-hole record says nothing at all, and so need not be stored or synced. */
 export const emptyStat = x => !x || STAT_KEYS.every(k => x[k] === null || x[k] === undefined);
 

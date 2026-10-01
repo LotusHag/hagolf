@@ -88,3 +88,27 @@ export function showcaseLeague() {
   const g = { id: "showcase-league", name: "Heron's Reach Sunday league", formats: ["stableford"], bestN: 0, theme: null };
   return { g, Ms, members: SHOWCASE_PLAYERS.map(p => p.id), rounds: [] };
 }
+
+/**
+ * The showcase course as two named loops, for the nines image: every half lifted out of the four rounds and
+ * averaged. Invented like the rest of it, so the thumbnail shows the shape of the sheet and nobody's real golf.
+ */
+export function showcaseNines(Ms) {
+  const mean = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  return [{ name: "Heron nine", from: 0 }, { name: "Brook nine", from: 9 }].map(({ name, from }) => {
+    const par = SHOWCASE_COURSE.par.slice(from, from + 9).reduce((a, b) => a + b, 0);
+    const by = new Map();
+    for (const M of Ms) for (const p of M.players) {
+      const sc = p.scores.slice(from, from + 9);
+      if (sc.some(s => s === null)) continue;
+      if (!by.has(p.id)) by.set(p.id, { name: p.name, gs: [], pts: [] });
+      const e = by.get(p.id);
+      e.gs.push(sc.reduce((a, b) => a + b, 0));
+      e.pts.push(p.hpts.slice(from, from + 9).reduce((a, b) => a + b, 0));
+    }
+    const all = [...by.values()], avgGross = mean(all.flatMap(e => e.gs));
+    return { name, par, cards: all.reduce((a, e) => a + e.pts.length, 0), avgPts: mean(all.flatMap(e => e.pts)),
+      avgGross, avgTopar: avgGross === null ? null : avgGross - par,
+      players: all.map(e => ({ name: e.name, cards: e.pts.length, avgPts: mean(e.pts), avgGross: mean(e.gs) })) };
+  });
+}

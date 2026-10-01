@@ -5,7 +5,7 @@
 // Both screens draw it: the scoring screen once per player, and the check screen for the hole being corrected,
 // so a number goes into a card one way and is put right the same way.
 import { esc } from "./ui.js";
-import { hasFairway, stableford, NO_SCORE } from "./model.js";
+import { hasFairway, stableford, NO_SCORE, STAT_START } from "./model.js";
 
 /** Nested rings for under par, nested squares for over, plain ink for par: `scoreGlyph` in draw.js, in CSS. */
 export const markCls = d => d <= -2 ? "c2" : d === -1 ? "c1" : d === 0 ? "" : d === 1 ? "s1" : "s2";
@@ -50,14 +50,19 @@ export function extrasRows(c, e, i, h, kinds) {
   const on = COUNTS.filter(([k]) => kinds[k]);
   const fw = kinds.fairway && hasFairway(c.par[h]);
   if (!on.length && !fw) return "";
+  // Nothing starts blank: a hole opens on the ordinary answer -- two putts, no sand, no penalty, the fairway
+  // hit -- and is nudged off it. Until the hole is scored that answer is only a suggestion, drawn muted.
   const step = ([k, label]) => {
-    const v = x[k] ?? null;
+    const v = x[k] ?? null, shown = v === null ? STAT_START[k] : v;
+    // the card's own notation on the greens: one ring for a one-putt, two for a two-putt, nothing above that
+    const ring = k === "putts" && (shown === 1 || shown === 2) ? ` p${shown}` : "";
     return `<div class="xst"><span class="xlab">${label}</span><div class="xrow">
       <button class="xb" data-act="x-dec" data-k="${k}" data-i="${i}" aria-label="${label}, one fewer">−</button>
-      <b class="xv num ${v ? "on" : ""}">${v === null ? "–" : v}</b>
+      <b class="xv num${v === null ? " soft" : " on"}${ring}">${shown}</b>
       <button class="xb" data-act="x-inc" data-k="${k}" data-i="${i}" aria-label="${label}, one more">+</button></div></div>`;
   };
-  const opt = (val, label) => `<button class="xfwb ${x.fairway === val ? "on" : ""}" data-act="st-fw" data-v="${val}" data-i="${i}" aria-pressed="${x.fairway === val}">${label}</button>`;
+  const cur = x.fairway ?? STAT_START.fairway;
+  const opt = (val, label) => `<button class="xfwb ${cur === val ? (x.fairway === null ? "on soft" : "on") : ""}" data-act="st-fw" data-v="${val}" data-i="${i}" aria-pressed="${x.fairway === val}">${label}</button>`;
   return `<div class="pxtra">
     ${on.map(step).join("")}
     ${fw ? `<div class="xfw"><span class="xlab">Fairway</span>${opt("left", "← left")}${opt("hit", "hit ✓")}${opt("right", "right →")}</div>` : ""}</div>`;
@@ -77,6 +82,7 @@ export function navBar(r, c, h, rid) {
   const playing = r.entries.filter(x => (x.fromHole || 1) - 1 <= h);
   const done = playing.length && playing.every(x => x.scores[h] !== null);
   const onward = h < n - 1 ? `Hole ${c.first_hole + h + 1}` : "Check the card";
-  return `${h === 0 ? `<a class="btn" href="#players/${rid}">‹ Players</a>` : `<a class="btn" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`}
-    <a class="btn ${done ? "primary" : ""}" href="${h < n - 1 ? `#score/${rid}/${h + 1}` : `#review/${rid}`}">${esc(onward)} ›</a>`;
+  // both halves the same width: the way back and the way on are the same move, and the bar should not lean
+  return `${h === 0 ? `<a class="btn half" href="#players/${rid}">‹ Players</a>` : `<a class="btn half" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`}
+    <a class="btn half ${done ? "primary" : ""}" href="${h < n - 1 ? `#score/${rid}/${h + 1}` : `#review/${rid}`}">${esc(onward)} ›</a>`;
 }

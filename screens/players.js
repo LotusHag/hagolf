@@ -3,7 +3,7 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, parseHI, hiOk, confirmSheet, promptSheet, avatar, sheet } from "../ui.js";
+import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, tip, parseHI, hiOk, confirmSheet, promptSheet, avatar, sheet } from "../ui.js";
 import { handicapFor, fmtHcp, fmtIndex, STAT_SWITCHES } from "../model.js";
 
 /** Giving up on a round: it is thrown away everywhere. A finished one is deleted by whoever was on it. */
@@ -60,11 +60,12 @@ export function players(rid, keep = false) {
   }).join("");
   const chip = (act, id, name, sub, on = false) => `<button class="pchip ${on ? "on" : ""}" data-act="${act}" data-id="${esc(id)}"><span><span class="plus">+</span>${esc(name)}</span><small>${esc(sub)}</small></button>`;
   const body = `
+    <h2>Before you start</h2>
+    ${statsPicker(rid, kinds, r)}
     ${h2tip(`${plural(r.entries.length, "player")} on this card`, `<p>Each player's handicap index is turned into a course handicap for the tee they are standing on: the index is stretched by this course's slope and shifted by its rating, so the same index gives more strokes off a harder tee.</p>
       <p>Index and tee are asked again every round, filled in with what that player last used, because both change. Type over either one and the course handicap follows.</p>
       <p>If the club's own table gives a different number, put it in the course handicap box and that is what counts; it is remembered for this course and tee.</p>`)}
     ${rows || `<p class="muted small">Nobody yet. Tap names below to add them.</p>`}
-    ${statsPicker(rid, kinds, r)}
     ${me && !inRound.has(me.id) ? `<h2>You</h2><div class="chips-wrap">${chip("add-roster", me.id, me.name, S.currentIndex(me) !== null && S.currentIndex(me) !== undefined ? `index ${fmtIndex(Number(S.currentIndex(me)))}` : "add your index", true)}</div>` : ""}
     ${friendChips.length ? `<h2>Friends</h2><div class="chips-wrap">${friendChips.map(f => chip("add-friend", f.id, f.name, f.hi !== null && f.hi !== undefined ? `index ${fmtIndex(Number(f.hi))}` : "no index yet")).join("")}</div>` : ""}
     ${roster.filter(p => !me || p.id !== me.id).length ? `<h2>Played with before</h2><div class="chips-wrap">${roster.filter(p => !me || p.id !== me.id).map(p => chip("add-roster", p.id, p.name, p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))}` : "no index yet")).join("")}</div>` : ""}
@@ -186,14 +187,15 @@ export async function extrasSheet(rid) {
     const on = Object.values(kinds).some(Boolean) && S.cardKeepsStats(r);
     const who = r.entries.filter(e => e.trackStats);
     const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
+    // what each one is lives behind the i, so the sheet stays a set of switches rather than a page of prose
     el.querySelector("#xbody").innerHTML = `
       <button class="xmaster ${on ? "on" : ""}" data-act="x-all"><b>${on ? "Keeping them" : "Not kept"}</b>
         <small>${on ? "Tap to stop keeping anything" : "Tap to keep putts, fairways, bunker shots and penalties"}</small></button>
-      ${on ? `<p class="muted small" style="margin:14px 0 0">All of them are on. Switch off anything you do not want; this stays open.</p>
+      ${on ? `<p class="pickline" style="margin:14px 0 0">Keeping</p>
         <div class="statpick">${STAT_SWITCHES.map(k =>
           `<button data-act="x-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
-        <p class="muted small" style="margin:12px 0 0">${STAT_SWITCHES.filter(k => kinds[k.key]).map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>
-        <p class="pickline" style="margin:14px 0 0">Keep them for</p>
+        ${tip(STAT_SWITCHES.map(k => `<p><b>${esc(k.label)}</b> — ${esc(k.blurb)}</p>`).join(""), "What each one is")}
+        <p class="pickline">Keep them for</p>
         <div class="statpick">
           <button data-act="x-who" data-who="me" class="${who.length === 1 && mine && who[0] === mine ? "on" : ""}">Just me</button>
           <button data-act="x-who" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
@@ -201,7 +203,7 @@ export async function extrasSheet(rid) {
   };
   await sheet({
     title: "Putts, fairways and the rest",
-    lead: "Kept beside the score on every hole, for whoever on this card wants them.",
+    lead: "Kept beside the score on every hole. Switch off anything you do not want; this stays open.",
     body: `<div id="xbody"></div>`,
     actions: [{ label: "Done", value: "no", kind: "primary" }],
     onOpen: el => {

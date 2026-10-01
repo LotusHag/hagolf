@@ -8,7 +8,7 @@ import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui
 import { DATA } from "../data.js";
 import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE } from "../model.js";
 import { renderCards } from "../cards.js";
-import { statTap, statStep, statLine } from "./extras.js";
+import { statTap, statStep, statLine, seedStats } from "./extras.js";
 import { mark, scoreStepper, extrasRows } from "../pad.js";
 import { dropBtn, dropRound } from "./players.js";
 import { nineName } from "./play.js";
@@ -208,6 +208,7 @@ export function review(rid, keep = false) {
       else if (act === "dec") S.setScore(r, e, i, (v === null || v === 0) ? par : Math.max(1, v - 1));
       else if (v === null || v === 0) S.setScore(r, e, i, par);
       else return;
+      seedStats(r, e, i, c, kinds);
       return review(rid, true);
     }
     if (act === "x-inc" || act === "x-dec") { statStep(r, e, ui.selHole, b.dataset.k, act === "x-inc" ? 1 : -1); return review(rid, true); }

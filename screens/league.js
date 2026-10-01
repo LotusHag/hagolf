@@ -81,8 +81,7 @@ function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = f
 
 /** The pieces of chrome every view under a league carries at its foot. */
 const posterRow = gid => `${sect("Make something")}<div class="rows">
-  <a class="hrow" href="#leagueposter/${gid}"><span class="t"><b>A standings poster</b><span>The table, in any look</span></span><span class="chev">›</span></a>
-  <a class="hrow" href="#statsposter/${gid}"><span class="t"><b>Stats images</b><span>The field's numbers as sheets</span></span><span class="chev">›</span></a></div>`;
+  <a class="hrow" href="#leagueimages/${gid}"><span class="t"><b>Images</b><span>The standings and the season's sheets, in any look</span></span><span class="chev">›</span></a></div>`;
 
 // ---------------------------------------------------------------- the board
 /**
@@ -253,7 +252,7 @@ function tableView(C, fmt, keep = false) {
       : `<p class="muted center" style="margin:22px 0">${kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
     ${boardNotes(Cx, Sx)}
     <div class="btnrow"><button class="btn small" data-act="board-cols">Every column ›</button>
-      <a class="btn small" href="#leagueposter/${C.gid}">Make a poster ›</a></div>`,
+      <a class="btn small" href="#leagueimages/${C.gid}">Make images ›</a></div>`,
     { back: `#league/${C.gid}`, runs: C.runs, keepScroll: keep });
   bind(async ev => {
     if (await common(C, ev)) return;
@@ -446,7 +445,7 @@ function playerView(C, pid, keep = false) {
     ${sect("Elsewhere")}
     <div class="rows">
       <a class="hrow" href="${personHash(pid)}"><span class="t"><b>Everything they have played</b><span>Every round, in every league</span></span><span class="chev">›</span></a>
-      <a class="hrow" href="#statsposter/${C.gid}"><span class="t"><b>Make stats images</b><span>${esc(firstName(p.name))}'s season as sheets</span></span><span class="chev">›</span></a>
+      <a class="hrow" href="#leagueimages/${C.gid}"><span class="t"><b>Make images</b><span>${esc(firstName(p.name))}'s season as sheets, and the standings</span></span><span class="chev">›</span></a>
     </div>`,
     { back: `#league/${C.gid}`, runs: C.runs, keepScroll: keep });
   bind(async ev => {
@@ -709,12 +708,10 @@ async function common(C, ev) {
   if (act === "share-board") { await boardShare(C.g); return true; }
   if (act === "lgmore") {
     const v = await sheet({ title: C.g.name, body: `<div class="list">
-      <button data-sheet="poster"><div><div class="name">Make a standings poster</div></div><span class="chev">›</span></button>
-      <button data-sheet="stats"><div><div class="name">Make stats images</div></div><span class="chev">›</span></button>
+      <button data-sheet="images"><div><div class="name">Make images</div></div><span class="chev">›</span></button>
       <button data-sheet="admin"><div><div class="name">${C.runs ? "Running the league" : "Members and this league"}</div></div><span class="chev">›</span></button></div>`,
       actions: [{ label: "Close", value: "no" }] });
-    if (v === "poster") go(`#leagueposter/${C.gid}`);
-    if (v === "stats") go(`#statsposter/${C.gid}`);
+    if (v === "images") go(`#leagueimages/${C.gid}`);
     if (v === "admin") go(`#league/${C.gid}/admin`);
     return true;
   }

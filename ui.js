@@ -231,6 +231,22 @@ export function sheet({ title = "", lead = "", body = "", actions = [], onOpen =
     if (onOpen) onOpen(wrap.querySelector(".sheet"), close);
   });
 }
+/**
+ * Put it on the home screen, offered rather than demanded. Chrome hands over its own prompt and we spend it;
+ * Safari has no such event, so iOS can only be shown where its Share button is.
+ */
+export async function addToHomeScreen() {
+  if (window.__installPrompt) { const p = window.__installPrompt; window.__installPrompt = null; p.prompt(); return; }
+  await sheet({
+    title: "Put Hagolf on your home screen",
+    lead: "It opens full screen from its own icon, and keeps scoring with no signal.",
+    body: isIOS()
+      ? `<ol class="steps"><li>Tap <b>Share</b> <span class="ios-share">&#8679;</span> in Safari's bar.</li><li>Scroll down and choose <b>Add to Home Screen</b>.</li><li>Open Hagolf from the new icon.</li></ol>
+         <p class="muted small">Reading this in another app's browser? Open <b>app.hagolf.app</b> in Safari first &mdash; only Safari can add it.</p>`
+      : `<ol class="steps"><li>Open Chrome's menu (&#8942;).</li><li>Choose <b>Install app</b>, or <b>Add to Home screen</b>.</li><li>Open Hagolf from your home screen or app drawer.</li></ol>`,
+    actions: [{ label: "Got it", kind: "primary", value: "ok" }],
+  });
+}
 /** Yes or no, with the destructive button drawn as such. Resolves true or false. */
 export async function confirmSheet(title, lead, { label = "Confirm", danger = false, cancel = "Cancel" } = {}) {
   const v = await sheet({ title, lead, actions: [{ label, value: "ok", kind: danger ? "danger fill" : "primary" }, { label: cancel, value: "no" }] });
@@ -354,7 +370,7 @@ export const appTheme = () => clubTheme() || themeNamed(S.state.settings.theme) 
 export const leagueTheme = g => (g && themeNamed(g.theme)) || null;
 export const themeFor = g => leagueTheme(g) || appTheme();
 export const themeForRound = rid => S.leaguesOfRound(rid).map(leagueTheme).find(Boolean) || appTheme();
-const LEAGUE_SCREENS = ["league", "leagueposter", "statsposter"];
+const LEAGUE_SCREENS = ["league", "leagueimages", "leagueposter", "statsposter"];
 const ROUND_SCREENS = ["players", "score", "review", "attach", "graphics"];
 export function themeHere() {
   const [name, arg] = location.hash.replace(/^#/, "").split("/");
@@ -417,6 +433,30 @@ export function themeChips(selected) {
   return familyFolds(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name)),
     t => selected.includes(t.name), selected) + moreLooks(selected);
 }
+/** What the folded look row says it is set to: the swatches, then the name or how many. */
+const lookSays = sel => {
+  const ts = sel.map(themeNamed).filter(Boolean);
+  return `${familyStrip(ts)}<span class="fname">${ts.length === 1 ? esc(ts[0].name) : plural(ts.length, "look")}</span>`;
+};
+/**
+ * A hundred looks are a screen of their own, and on a screen that is really about something else they are a
+ * wall to scroll past. So they fold to one row that says what is set, and open on a tap -- or already open
+ * when more than one look is ticked, which is never what the row alone could say.
+ */
+export const themePicker = (selected, note = "") => `<details class="lookfold" ${selected.length > 1 ? "open" : ""}>
+  <summary>${lookSays(selected)}</summary>
+  ${note ? `<p class="muted small lookwhy">${note}</p>` : ""}
+  <div class="themes">${themeChips(selected)}</div></details>`;
+/** Keeps that row saying what is ticked under it. */
+export function bindLook(el, onPick = null) {
+  if (!el) return;
+  const says = el.querySelector(":scope > summary");
+  bindChips(el, v => {
+    says.innerHTML = lookSays([...el.querySelectorAll("input[name=theme]:checked")].map(i => i.value));
+    if (onPick) onPick(v);
+  });
+}
+
 export function themeRadios(name, sel, dflt = null) {
   const none = dflt ? `<div class="tgrid">${tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel)}</div>` : "";
   return none + familyFolds(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel),

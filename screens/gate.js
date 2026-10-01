@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, desktopWeb, ICONS } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, desktopWeb, canInstall, addToHomeScreen, ICONS } from "../ui.js";
 import { fmtIndex } from "../model.js";
 
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
@@ -68,9 +68,11 @@ function gate() {
           <button class="btn primary wide" type="submit" style="margin-top:12px">Email me a code</button></form>` : ""}
         ${ui.signinEmail ? `<form id="codef"><p class="muted small">A code went to <b>${esc(ui.signinEmail)}</b>.</p><label>Code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn primary wide" type="submit" style="margin-top:12px">Sign in</button></form>` : ""}
         <p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></div>
+      ${canInstall() ? `<button class="btn ghost wide" data-act="addhome" style="margin-top:12px">Put Hagolf on your home screen</button><p class="muted small center">It opens full screen from its own icon, and keeps scoring with no signal. You can sign in there.</p>` : ""}
       <p class="legal">By continuing you agree to the <a href="#legal/terms">terms</a> and the <a href="#legal/privacy">privacy policy</a>. Only your name is ever shown to other people.</p>
     </div>`, { bare: true });
   googleButton(settle);
+  bind(ev => { if (ev.target.closest("[data-act=addhome]")) addToHomeScreen(); });
   const signinf = document.getElementById("signinf");
   if (signinf) signinf.addEventListener("submit", async ev => {
     ev.preventDefault();

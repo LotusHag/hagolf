@@ -10,7 +10,7 @@ import { play, newRound, loops } from "./screens/play.js";
 import { players } from "./screens/players.js";
 import { score } from "./screens/score.js";
 import { review, attach } from "./screens/review.js";
-import { graphics, leaguePoster, statsPoster } from "./screens/graphics.js";
+import { graphics, leagueImages } from "./screens/graphics.js";
 import { leagues } from "./screens/leagues.js";
 import { league } from "./screens/league.js";
 import { people, person, player } from "./screens/people.js";
@@ -22,7 +22,7 @@ import { privacy, terms } from "./screens/legal.js";
 import { shop } from "./screens/shop.js";
 
 const screens = { home, welcome, signin, join, add, board, card, shop, play, new: newRound, loops, players, score, review, attach, graphics,
-  people, person, player, leagues, league, leagueposter: leaguePoster, statsposter: statsPoster, updates, me, newcourse: newCourse, scan,
+  people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan,
   legal: which => (which === "terms" ? terms() : privacy()) };
 
 const OPEN_SCREENS = ["welcome", "signin", "board", "card", "join", "add", "legal"];
