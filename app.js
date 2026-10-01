@@ -4,7 +4,7 @@ import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import * as N from "./notify.js";
 import * as F from "./social.js";
-import { applyBrand, toast, inBrowser } from "./ui.js";
+import { applyBrand, toast, desktopWeb } from "./ui.js";
 import { route } from "./router.js";
 import { home } from "./screens/home.js";
 
@@ -24,7 +24,7 @@ Y.onChange(({ changed, status }) => {
 S.setOnSave(Y.schedulePush);
 
 window.addEventListener("hashchange", route);
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); window.__installPrompt = e; if (inBrowser()) route(); else if (onHome()) home(); });
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); window.__installPrompt = e; if (desktopWeb()) route(); else if (onHome()) home(); });
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").then(reg => {
     const watch = w => w && w.addEventListener("statechange", () => {

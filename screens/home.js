@@ -6,7 +6,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect } from "../ui.js";
+import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect, sheet, canInstall, isIOS } from "../ui.js";
 import { compute, handicapFor, stableford, fix, fmtIndex } from "../model.js";
 import { leagueResults, standingsFor, standingValue, FORMAT_NAMES } from "./formats.js";
 import { noteLine } from "./updates.js";
@@ -122,6 +122,23 @@ const starters = () => `${sect("To begin")}<div class="rows">
   <a class="hrow" href="#leagues"><span class="t"><b>Join a league</b><span>With a link from the organiser, or start your own</span></span><span class="chev">›</span></a>
   <a class="hrow" href="#people"><span class="t"><b>Find your friends</b><span>Search by name, or share your link</span></span><span class="chev">›</span></a></div>`;
 
+/**
+ * The home screen, offered rather than demanded. Chrome hands over its own prompt and we spend it; Safari has
+ * no such event, so iOS can only be shown where its Share button is.
+ */
+async function addToHomeScreen() {
+  if (window.__installPrompt) { const p = window.__installPrompt; window.__installPrompt = null; p.prompt(); return; }
+  await sheet({
+    title: "Put Hagolf on your home screen",
+    lead: "It opens full screen from its own icon, and keeps scoring with no signal.",
+    body: isIOS()
+      ? `<ol class="steps"><li>Tap <b>Share</b> <span class="ios-share">&#8679;</span> in Safari's bar.</li><li>Scroll down and choose <b>Add to Home Screen</b>.</li><li>Open Hagolf from the new icon.</li></ol>
+         <p class="muted small">Reading this in another app's browser? Open <b>app.hagolf.app</b> in Safari first &mdash; only Safari can add it.</p>`
+      : `<ol class="steps"><li>Open Chrome's menu (&#8942;).</li><li>Choose <b>Install app</b>, or <b>Add to Home screen</b>.</li><li>Open Hagolf from your home screen or app drawer.</li></ol>`,
+    actions: [{ label: "Got it", kind: "primary", value: "ok" }],
+  });
+}
+
 export function home() {
   const rounds = S.rounds();
   const me = S.me();
@@ -129,6 +146,7 @@ export function home() {
   if (Y.sync.status === "error") banners.push(`<button class="banner warn" data-act="retry">Couldn't sync: ${esc(Y.sync.error || "")}. Tap to retry.</button>`);
   if (Y.sync.status === "signedout") banners.push(`<a class="banner warn" href="#welcome">Signed out. Everything is kept on this phone; sign in to keep syncing.</a>`);
   if (window.__updateReady) banners.push(`<button class="banner accent" data-act="update">A new version is ready. Tap to reload.</button>`);
+  if (canInstall() && !S.state.settings.noInstallNudge) banners.push(`<div class="banner act"><span>Put Hagolf on your home screen: it opens full screen and keeps scoring without a signal.</span><button class="btn small" data-act="addhome">How</button><button class="x" data-act="nonudge" aria-label="Not now">&times;</button></div>`);
   const open = rounds.filter(r => r.status !== "done");
   const mine = me ? myRounds(me) : [];
   const fresh = N.held().filter(n => !n.seen).slice(0, 3);
@@ -149,5 +167,7 @@ export function home() {
     if (b.dataset.act === "retry") { await Y.pushAndPull(); return home(); }
     if (b.dataset.act === "resync") return resyncNow();
     if (b.dataset.act === "update") { if (window.__updateWorker) window.__updateWorker.postMessage("skipWaiting"); }
+    if (b.dataset.act === "nonudge") { S.setSetting("noInstallNudge", true); return home(); }
+    if (b.dataset.act === "addhome") return addToHomeScreen();
   });
 }

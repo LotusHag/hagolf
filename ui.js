@@ -36,10 +36,20 @@ export function ago(iso) {
 }
 export const courseTitle = c => c.loop ? `${c.name} · ${c.loop}` : c.name;
 export const courseBy = slug => S.courseBy(slug);
-export const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+// iPadOS calls itself a Macintosh in Safari's default desktop mode, so touch points are what give an iPad away.
+export const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+export const isAndroid = () => /Android/.test(navigator.userAgent);
+export const onPhone = () => isIOS() || isAndroid();
 export const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-/** Hagolf belongs on a home screen; a browser tab is only offered the way to put it there. Localhost stays open, for development and the tests. */
-export const inBrowser = () => !isStandalone() && location.protocol !== "file:" && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+/**
+ * Only a desktop browser is turned away. A phone browser is already the phone Hagolf is for, so it goes
+ * straight in and is offered the home screen from inside, where it is an offer and not a wall: a wall there
+ * is a dead end, since the address the wall hands out is the page you are standing on. Localhost stays open,
+ * for development and the tests.
+ */
+export const desktopWeb = () => !isStandalone() && !onPhone() && location.protocol !== "file:" && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+/** A phone still reading Hagolf in a browser tab: the one audience for the home-screen nudge. */
+export const canInstall = () => onPhone() && !isStandalone() && !window.__installed;
 export const appBase = () => `${location.origin}${location.pathname}`;
 
 /** Handicap index as typed: "19,9", "+2.1" (plus handicap), "18". */
@@ -56,7 +66,7 @@ export const hiOk = hi => hi >= -10 && hi <= 54;
 // A league's own screen state is two keys now: which table it is being read in, and in what currency two
 // players are compared. Everything else that used to live here -- which tab, which player, which pair -- is
 // in the hash instead, so the back button works and a board can be linked to.
-export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: 0, reviewOrder: {}, roundsFilter: "all",
+export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: {}, reviewOrder: {}, roundsFilter: "all",
   loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
 
 // ---------------------------------------------------------------- icons

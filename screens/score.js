@@ -10,7 +10,7 @@ import { deck, mark, askSteps, moreSheet, saidLine, ptsSoFar } from "../pad.js";
 import { statTap, holedOut } from "./extras.js";
 import { dropRound } from "./players.js";
 
-const selOf = rid => ui.sel[rid] ?? null;
+const groupOf = rid => ui.groupFilter[rid] || 0;
 const infoFor = (r, c, e) => {
   try { return handicapFor(c, { ...e, courseHandicap: e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee) }, r.defaultTee, r.allowance); }
   catch (err) { return null; }
@@ -27,9 +27,9 @@ function row(r, c, e, i, h, kinds, sel) {
   const entered = e.scores.some(x => x !== null);
   const said = saidLine(e, h, kinds);
   const pts = v !== null && v !== 0 && info ? stableford(v, par, st) : null;
-  return `<button class="prow ${sel ? "sel" : ""}" data-act="sel" data-i="${i}">
+  return `<button class="prow ${sel ? "sel" : ""}" data-act="sel" data-i="${i}" aria-current="${sel}" aria-label="${esc(e.name)}, ${v === null ? "no score" : v === 0 ? "picked up" : `${v} strokes`}">
     ${mark(v, par)}
-    <span class="pname">${esc(e.name)}${st ? `<i class="dots" aria-label="${plural(st, "stroke")}">${"•".repeat(Math.min(st, 4))}</i>` : ""}
+    <span class="pname">${esc(e.name)}${st ? `<i class="dots"><span class="vis">${"•".repeat(Math.min(st, 4))}</span><span class="sr">${plural(st, "stroke")}</span></i>` : ""}
       ${said ? `<small class="said">${esc(said)}</small>` : ""}</span>
     ${pts === null && !entered ? "" : `<span class="ppts"><b class="num">${pts === null ? ptsSoFar(e, info) : pts}</b><small>${pts === null ? "so far" : "pts"}</small></span>`}</button>`;
 }
@@ -44,8 +44,9 @@ async function holeSheet(rid, h) {
     const some = r.entries.some(e => e.scores[k] !== null);
     return `<button class="hchip ${k === h ? "cur" : ""} ${done ? "done" : some ? "some" : ""}" data-act="go-${k}" data-sheet-act>${c.first_hole + k}</button>`;
   }).join("");
+  const kept = S.anyStatsOn(rid) && S.cardKeepsStats(r);
   const groups = [...new Set(r.entries.map(e => e.group || 1))].sort();
-  const gf = groups.includes(ui.groupFilter) ? ui.groupFilter : 0;
+  const gf = groupOf(rid);
   const board = r.entries.map(e => {
     const info = infoFor(r, c, e);
     const entered = e.scores.filter(x => x !== null).length;
@@ -57,12 +58,17 @@ async function holeSheet(rid, h) {
     body: `<div class="holegrid">${grid}</div>
       ${groups.length > 1 ? `<h2>Groups</h2><div class="filter">${["0", ...groups].map(g => `<button data-act="gf-${g}" data-sheet-act class="${gf === Number(g) ? "on" : ""}">${g === "0" ? "All" : `Group ${g}`}</button>`).join("")}</div>` : ""}
       <h2>Where everyone is</h2><div class="hboard">${board}</div>`,
-    actions: [{ label: "Putts, fairways and the rest", value: "extras" }, { label: "Add or remove players", value: "players" }, { label: "Discard this round", value: "drop", kind: "danger" }, { label: "Close", value: "no" }],
+    actions: [
+      // one tap turns them on, the way the old "+ Extras" button did; choosing what and who is a step further in
+      kept ? { label: "Stop keeping putts and the rest", value: "noextras" } : { label: "Keep putts, fairways and the rest", value: "extras" },
+      ...(kept ? [{ label: "Choose what, and for whom", value: "players" }] : []),
+      { label: "Add or remove players", value: "players" },
+      { label: "Discard this round", value: "drop", kind: "danger" }, { label: "Close", value: "no" }],
   });
   if (v === null || v === "no") return;
   if (String(v).startsWith("go-")) return go(`#score/${rid}/${Number(String(v).slice(3))}`);
-  if (String(v).startsWith("gf-")) { ui.groupFilter = Number(String(v).slice(3)); return score(rid, h); }
-  if (v === "extras") return go(`#players/${rid}`);
+  if (String(v).startsWith("gf-")) { ui.groupFilter[rid] = Number(String(v).slice(3)); return score(rid, h); }
+  if (v === "extras" || v === "noextras") { S.unlockStats(r, v === "extras"); return score(rid, h); }
   if (v === "players") return go(`#players/${rid}`);
   if (v === "drop") return dropRound(rid);
 }
@@ -78,28 +84,39 @@ export function score(rid, hArg) {
   if (r.status === "setup") { r.status = "scoring"; S.saveRound(r); }
   if (S.holeOf(r) !== h) S.setHole(r, h);
   const groups = [...new Set(r.entries.map(e => e.group || 1))].sort();
-  const gf = groups.includes(ui.groupFilter) ? ui.groupFilter : 0;
+  const gf = groups.includes(groupOf(rid)) ? groupOf(rid) : 0;
   const shown = r.entries.map((e, i) => [e, i]).filter(([e]) => !gf || (e.group || 1) === gf);
   const kinds = S.statsFor(rid);
   const metres = c.tees[r.defaultTee] && c.tees[r.defaultTee].metres;
 
-  // the selection: whoever was picked, else the first player this hole is still waiting on
-  const playable = i => { const e = r.entries[i]; return e && (e.fromHole || 1) - 1 <= h && (!gf || (e.group || 1) === gf); };
+  // Only somebody who has actually teed off can be written to: a player who joins at hole 12 has no score on
+  // hole 3 to enter, and `scores[h] === null` cannot tell the difference between "not yet played" and "not yet
+  // entered". Every path to the selection goes through this list, so neither the fallback nor the advance can
+  // land on them.
+  const playing = shown.filter(([e]) => (e.fromHole || 1) - 1 <= h);
   const nextOwing = from => {
-    const order = shown.map(([, i]) => i);
-    const k = order.indexOf(from);
-    for (let j = 1; j <= order.length; j++) { const i = order[(k + j + order.length) % order.length]; if (r.entries[i].scores[h] === null) return i; }
+    if (!playing.length) return null;
+    const k = playing.findIndex(([, i]) => i === from);
+    for (let j = 1; j <= playing.length; j++) {
+      const [e, i] = playing[(k + j + playing.length) % playing.length];
+      if (e.scores[h] === null) return i;
+    }
     return null;
   };
-  let sel = selOf(rid);
-  if (sel === null || !playable(sel)) sel = shown.find(([e]) => e.scores[h] === null) ? shown.find(([e]) => e.scores[h] === null)[1] : (shown[0] ? shown[0][1] : null);
-  ui.sel[rid] = sel;
+  // The aim is held by player, never by position: removing somebody on the player list shifts every later
+  // entry down one, and an index would quietly re-aim at whoever slid into that slot.
+  const pick = playing.find(([e]) => e.playerId === (ui.sel[rid] ?? null))
+    || playing.find(([e]) => e.scores[h] === null) || playing[0] || null;
+  let sel = pick ? pick[1] : null;
+  const aim = i => { sel = i; ui.sel[rid] = i === null ? null : r.entries[i].playerId; };
+  aim(sel);
   if (ui.ask && (ui.ask.rid !== rid || ui.ask.h !== h || ui.ask.i !== sel)) ui.ask = null;
 
   const body = `
     <div class="holebar">
       <button class="hnum num" data-act="hole-sheet">${c.first_hole + h}</button>
       <button class="hmeta" data-act="hole-sheet"><b>Par ${c.par[h]}</b>${metres ? ` · ${metres[h]} m` : ""} · SI ${c.stroke_index[h]}<span class="chev">▾</span></button>
+      ${gf ? `<button class="gfchip" data-act="hole-sheet">Group ${gf}</button>` : ""}
     </div>
     <div class="prows" id="rows">${shown.map(([e, i]) => row(r, c, e, i, h, kinds, i === sel)).join("")}</div>
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}`;
@@ -113,15 +130,15 @@ export function score(rid, hArg) {
   /** Redraw the rows and the deck in place: the page is never rebuilt, so nothing under the thumb moves. */
   const paint = () => {
     const rows = document.getElementById("rows");
-    if (rows) rows.innerHTML = shown.map(([e, i]) => row(r, c, e, i, h, kinds, i === ui.sel[rid])).join("");
-    if (bar) bar.innerHTML = deck(r, c, h, ui.sel[rid], kinds, ui.ask);
+    if (rows) rows.innerHTML = shown.map(([e, i]) => row(r, c, e, i, h, kinds, i === sel)).join("");
+    if (bar) bar.innerHTML = deck(r, c, h, sel, kinds, ui.ask);
   };
   /** After a score lands: ask this card's questions, or move on to whoever is still owed. */
   const after = i => {
     const steps = askSteps(c, r.entries[i], h, kinds);
     if (steps.length) { ui.ask = { rid, h, i, step: 0, steps }; return paint(); }
     const nx = nextOwing(i);
-    if (nx !== null) ui.sel[rid] = nx;
+    if (nx !== null) aim(nx);
     paint();
   };
 
@@ -137,15 +154,14 @@ export function score(rid, hArg) {
       const i = Number(b.dataset.i);
       // tapping whoever is already aimed at starts their questions again from the top, which is how a putt
       // written down wrong is put right; tapping anybody else aims at them and leaves the questions behind
-      if (i === ui.sel[rid]) {
+      if (i === sel) {
         const steps = askSteps(c, r.entries[i], h, kinds);
         if (steps.length && holedOut(r.entries[i], h)) { ui.ask = { rid, h, i, step: 0, steps }; return paint(); }
       }
-      ui.sel[rid] = i; ui.ask = null;
+      aim(i); ui.ask = null;
       return paint();
     }
-    const sel = ui.sel[rid];
-    if (sel === null || sel === undefined) return;
+    if (sel === null) return;
     const e = r.entries[sel];
     if (act === "pick") {
       const v = Number(b.dataset.v);
@@ -163,7 +179,7 @@ export function score(rid, hArg) {
     if (act === "ask-skip") {
       if (!ui.ask) return;
       ui.ask.step++;
-      if (ui.ask.step >= ui.ask.steps.length) { ui.ask = null; const nx = nextOwing(sel); if (nx !== null) ui.sel[rid] = nx; }
+      if (ui.ask.step >= ui.ask.steps.length) { ui.ask = null; const nx = nextOwing(sel); if (nx !== null) aim(nx); }
       return paint();
     }
     if (["st-putt", "st-fw", "st-bit"].includes(act)) {
@@ -172,7 +188,7 @@ export function score(rid, hArg) {
       // a bit is a toggle, so you leave that question yourself; an answer to the others is the answer
       if (act !== "st-bit" && ui.ask) {
         ui.ask.step++;
-        if (ui.ask.step >= ui.ask.steps.length) { ui.ask = null; const nx = nextOwing(sel); if (nx !== null) ui.sel[rid] = nx; }
+        if (ui.ask.step >= ui.ask.steps.length) { ui.ask = null; const nx = nextOwing(sel); if (nx !== null) aim(nx); }
       }
       return paint();
     }
@@ -187,7 +203,7 @@ export function score(rid, hArg) {
       if (x0 === null) return;
       const t = ev.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
       x0 = null;
-      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (Math.abs(dx) < 110 || Math.abs(dx) < Math.abs(dy) * 2) return;
       if (dx < 0 && h < n - 1) go(`#score/${rid}/${h + 1}`);
       else if (dx > 0 && h > 0) go(`#score/${rid}/${h - 1}`);
     }, { passive: true });

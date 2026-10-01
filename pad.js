@@ -31,7 +31,8 @@ function keys(par, v) {
   const key = d => {
     const n = par + d;
     if (n < 1) return `<button class="key off" disabled></button>`;   // a par 3 has no par−2
-    return `<button class="key ${v === n ? "on" : ""}" data-act="pick" data-v="${n}" aria-label="${n}">${mark(n, par)}</button>`;
+    const says = d === 0 ? "par" : d === -1 ? "birdie" : d <= -2 ? "eagle" : d === 1 ? "bogey" : `${d} over`;
+    return `<button class="key ${v === n ? "on" : ""}" data-act="pick" data-v="${n}" aria-pressed="${v === n}" aria-label="${n}, ${says}">${mark(n, par)}</button>`;
   };
   return `<div class="keys">${DELTAS.map(key).join("")}
     <button class="key more ${v !== null && v !== 0 && (v < par - 2 || v > par + 4) ? "on" : ""}" data-act="more" aria-label="Another score">${
@@ -76,7 +77,7 @@ const QW = { putts: "Putts", fairway: "Fairway", rest: "Anything else?" };
 function qRow(q, e, h, kinds) {
   const x = e.stats[h] || {};
   const opt = (act, val, label, on, cls = "") =>
-    `<button class="aopt ${cls} ${on ? "on" : ""}" data-act="${act}" data-${act === "st-bit" ? "k" : "v"}="${esc(String(val))}">${label}</button>`;
+    `<button class="aopt ${cls} ${on ? "on" : ""}" data-act="${act}" aria-pressed="${!!on}" data-${act === "st-bit" ? "k" : "v"}="${esc(String(val))}">${label}</button>`;
   if (q === "putts") {
     const p = x.putts ?? null, over = p !== null && p > 3 ? p : null;
     return [0, 1, 2, 3].map(n => opt("st-putt", n, n, p === n)).join("") + opt("st-putt", 4, over !== null ? over : "4+", over !== null);
@@ -84,14 +85,15 @@ function qRow(q, e, h, kinds) {
   if (q === "fairway")
     return opt("st-fw", "left", "← left", x.fairway === "left") + opt("st-fw", "hit", "hit ✓", x.fairway === "hit") + opt("st-fw", "right", "right →", x.fairway === "right");
   return (kinds.bunker ? opt("st-bit", "bunker", "Sand", !!x.bunker) : "")
-    + (kinds.penaltyShots ? opt("st-bit", "penaltyShots", `Penalty${x.penaltyShots ? ` +${x.penaltyShots}` : ""}`, false, x.penaltyShots ? "pen" : "") : "");
+    + (kinds.penaltyShots ? opt("st-bit", "penaltyShots", `Penalty${x.penaltyShots ? ` +${x.penaltyShots}` : ""}`, false, x.penaltyShots ? "pen" : "") : "")
+    + `<button class="aopt go" data-act="ask-skip">${x.bunker || x.penaltyShots ? "Done ›" : "Neither ›"}</button>`;
 }
 
 /** The chain, on the hole just played: one question, a way past it, and how many are left. */
 function askHtml(e, h, kinds, steps, step) {
   const q = steps[step];
   return `<div class="ask">
-    <div class="askq"><span>${QW[q]}</span><button class="askskip" data-act="ask-skip">${q === "rest" ? "Done ›" : "Skip ›"}</button></div>
+    <div class="askq"><span>${QW[q]}</span>${q === "rest" ? "" : `<button class="askskip" data-act="ask-skip">Skip ›</button>`}</div>
     <div class="arow">${qRow(q, e, h, kinds)}</div>
     <div class="adots">${steps.map((_, k) => `<i class="${k === step ? "on" : k < step ? "was" : ""}"></i>`).join("")}</div></div>`;
 }
@@ -123,10 +125,14 @@ export function deck(r, c, h, i, kinds, ask) {
     ? `<span class="dwho">Hole ${c.first_hole + h}</span>`
     : `<span class="dwho">${esc(e.name)}</span><span class="dsub">par ${par}${playing.length > 1 ? ` · ${playing.length - left} of ${playing.length} in` : ""}</span>`;
   const body = ask ? askHtml(e, h, kinds, ask.steps, ask.step) : e ? keys(par, e.scores[h]) : `<div class="keys"></div>`;
+  const onward = h < n - 1 ? `Hole ${c.first_hole + h + 1}` : "Check the card";
+  // the way on only takes the width once the hole is finished *and* nothing is still being asked -- while a
+  // question is open the caption has to keep saying whose card it is writing to
+  const wide = done && !ask;
   return `<div class="dnav">
       <button class="dstep" data-act="prev" aria-label="${h === 0 ? "Players" : `Hole ${c.first_hole + h - 1}`}">‹</button>
-      <div class="dcap">${cap}</div>
-      <button class="dstep ${done ? "go" : ""}" data-act="next" aria-label="${h < n - 1 ? `Hole ${c.first_hole + h + 1}` : "Check the card"}">${h < n - 1 ? "›" : "✓"}</button>
+      ${wide ? "" : `<div class="dcap">${cap}</div>`}
+      <button class="dstep ${wide ? "go wide" : done ? "go" : ""}" data-act="next" aria-label="${esc(onward)}">${wide ? `${esc(onward)} ›` : h < n - 1 ? "›" : "✓"}</button>
     </div>${body}`;
 }
 

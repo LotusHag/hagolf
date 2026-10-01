@@ -1,10 +1,7 @@
-// Putts, fairways and the rest: the one-tap strip under a score, and the tiles that read them back.
+// Putts, fairways and the rest: what one tap on the hole writes, and the tiles that read them all back.
 import * as S from "../store.js";
 import { esc, plural } from "../ui.js";
-import { STAT_SWITCHES, hasFairway, statReadings, fmtSigned } from "../model.js";
-
-const PUTT_CHIPS = [0, 1, 2, 3];
-const MARK = { yes: "✓", no: "✗" };
+import { statReadings, fmtSigned } from "../model.js";
 
 /**
  * The extras read back, as tiles. Only what was actually recorded appears, and `deep` decides whether the
@@ -82,38 +79,8 @@ export function statHolesOf(rounds, pid) {
 
 export const holedOut = (e, h) => e.scores[h] !== null && e.scores[h] !== 0;
 
-function bitChip(i, kind, label, state, extra = "") {
-  const mark = state === "yes" ? ` ${MARK.yes}` : state === "no" ? ` ${MARK.no}` : "";
-  return `<button class="schip wide ${state}" data-act="st-bit" data-i="${i}" data-k="${kind}">${label}${extra}${mark}</button>`;
-}
-
-export function statStrip(r, c, e, i, h, kinds) {
-  if (!e.trackStats) return "";
-  const on = STAT_SWITCHES.filter(k => kinds[k.key]);
-  if (!on.length) return "";
-  const v = e.stats[h] || {};
-  const par = c.par[h], live = holedOut(e, h);
-  const lines = [];
-  if (kinds.putts) {
-    const p = v.putts ?? null, over = p !== null && p > 3 ? p : null;
-    lines.push(`<div class="srow"><span class="slab">Putts</span>${PUTT_CHIPS.map(n =>
-      `<button class="schip ${p === n ? "on" : ""}" data-act="st-putt" data-i="${i}" data-v="${n}">${n}</button>`).join("")}<button class="schip ${over !== null ? "on" : ""}" data-act="st-putt" data-i="${i}" data-v="4">${over !== null ? over : "4+"}</button></div>`);
-  }
-  if (kinds.fairway && hasFairway(par)) {
-    const f = v.fairway ?? null;
-    const opt = (val, label) => `<button class="schip ${f === val ? (val === "hit" ? "on" : "no") : ""}" data-act="st-fw" data-i="${i}" data-v="${val}">${label}</button>`;
-    lines.push(`<div class="srow"><span class="slab">Fairway</span>${opt("left", "← left")}${opt("hit", "hit ✓")}${opt("right", "right →")}</div>`);
-  }
-  const bits = [];
-  if (kinds.penaltyShots) {
-    const n = v.penaltyShots ?? null;
-    bits.push(`<button class="schip wide ${n ? "pen" : "off"}" data-act="st-bit" data-i="${i}" data-k="penaltyShots">Penalty${n ? ` +${n}` : ""}</button>`);
-  }
-  if (kinds.bunker) bits.push(bitChip(i, "bunker", "Sand", v.bunker ? "yes" : "off"));
-  if (bits.length) lines.push(`<div class="srow">${bits.join("")}</div>`);
-  return `<div class="sstrip ${live ? "" : "off"}" data-strip="${i}">${lines.join("")}</div>`;
-}
-
+// The per-hole chips used to be a strip under every player row; they are now the deck's own questions in
+// pad.js, which asks one at a time in the space the keys were using. `statTap` stayed exactly as it was.
 export function statTap(r, e, h, act, b) {
   const v = e.stats[h] || {};
   if (act === "st-putt") {

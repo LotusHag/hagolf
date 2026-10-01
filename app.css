@@ -267,7 +267,7 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .gate .install .muted { margin: 0; font-size: 15px; }
 .gate .install .steps { margin: 14px 0 0; padding-left: 20px; display: grid; gap: 8px; color: var(--ink2); font-size: 15px; }
 .gate .install .qr { width: 190px; height: 190px; }
-.gate .install .linkbox { text-align: center; }
+.gate .install .linkbox { display: block; text-align: center; text-decoration: none; }
 .onb h1 { font-size: 27px; margin: 8px 0 4px; letter-spacing: .2px; }
 .onb .lead { color: var(--ink2); margin: 0 0 12px; }
 .onb label { text-align: left; }
@@ -355,22 +355,24 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 /* The notation, as the posters draw it (scoreGlyph in draw.js): a ring is a birdie, two rings an eagle, a
    square a bogey, two squares a double or worse, plain ink a par. Shape reads before colour does -- in
    sunlight, through a colour deficiency, at arm's length -- which a 2px coloured border never did. */
-.mk { display: inline-grid; place-items: center; box-sizing: border-box; width: 40px; height: 40px;
+/* padding: 0 is load-bearing -- `.empty` is also the empty-state utility, which carries 28px of it */
+.mk { display: inline-grid; place-items: center; box-sizing: border-box; width: 40px; height: 40px; padding: 0;
   flex: none; align-self: center; justify-self: center; line-height: 1;
   font-family: "Oswald", sans-serif; font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 500;
   color: var(--ink); border: 2px solid transparent; border-radius: 50%; }
 .mk .num { font-size: inherit; font-weight: inherit; line-height: 1; }
-.mk.c1 { border-color: var(--under); color: var(--under); }
-.mk.c2 { border-color: var(--under); color: var(--under); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--under); }
-.mk.s1 { border-color: var(--bogey); color: var(--bogey); border-radius: var(--r-xs); }
-.mk.s2 { border-color: var(--double); color: var(--double); border-radius: var(--r-xs); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--double); }
-.mk.pk { color: var(--pick); border-color: var(--pick); border-style: dotted; border-radius: var(--r-xs); }
-.mk.empty { color: var(--ink3); border-color: var(--line2); border-style: dashed; border-radius: var(--r-xs); font-size: 18px; }
+.mk.c1 { border-color: var(--under); }
+.mk.c2 { border-color: var(--under); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--under); }
+.mk.s1 { border-color: var(--bogey); border-radius: var(--r-xs); }
+.mk.s2 { border-color: var(--double); border-radius: var(--r-xs); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--double); }
+.mk.pk { color: var(--pick); font-size: 18px; }
+.mk.empty { color: var(--line2); font-size: 20px; }
 
 .holebar { display: flex; align-items: center; gap: 12px; padding: 2px 0 10px; }
 .hnum { font-size: 52px; font-weight: 600; line-height: 1; color: var(--green); min-width: 62px; text-align: center;
   border: 0; background: none; padding: 0; }
-.hmeta { flex: 1; text-align: left; border: 0; background: none; padding: 0; color: var(--ink3); font-size: 13px; }
+.hmeta { flex: 1; text-align: left; border: 0; background: none; padding: 0; min-height: var(--tap); color: var(--ink3); font-size: 13px; }
+.gfchip { flex: none; min-height: 30px; padding: 0 10px; border-radius: 3px; border: 1px solid var(--green); background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 700; }
 .hmeta b { color: var(--ink); font-size: 15px; font-weight: 700; }
 .hmeta .chev { color: var(--ink3); margin-left: 6px; }
 
@@ -393,15 +395,16 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .bar.deck { flex-direction: column; gap: 6px; padding: 6px 16px calc(10px + var(--sab)); }
 .bar.deck > * { flex: none; width: 100%; }
 .dnav { display: flex; align-items: center; gap: 8px; min-height: 40px; }
-.dstep { width: 46px; height: 40px; flex: none; border-radius: var(--r-s); border: 1px solid var(--line2);
+.dstep { width: 46px; height: var(--tap); flex: none; border-radius: var(--r-s); border: 1px solid var(--line2);
   background: var(--card); color: var(--ink2); font-size: 22px; line-height: 1; }
+.dstep.wide { width: auto; flex: 1; font-size: 16px; font-weight: 700; }
 .dstep.go { background: var(--green); border-color: var(--green); color: var(--green-ink); }
 .dstep:active { background: var(--card2); }
 .dcap { flex: 1; min-width: 0; text-align: center; }
 .dwho { display: block; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dsub { display: block; font-size: 11px; color: var(--ink3); text-transform: uppercase; letter-spacing: 1.2px; }
 
-.keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; min-height: 128px; align-content: end; }
 .key { height: 60px; border-radius: var(--r-s); border: 1px solid var(--line2); background: var(--card);
   display: grid; place-items: center; color: var(--ink); font-size: 22px; font-weight: 600; padding: 0; }
 .key:active { background: var(--card2); }
@@ -411,11 +414,11 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .morekeys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 10px 0 4px; }
 
 /* the questions: same rectangle, same height as the keys -- the extras borrow it and give it back */
-.ask { display: flex; flex-direction: column; gap: 5px; }
-.askq { display: flex; align-items: center; min-height: 20px; font-size: 10px; font-weight: 700;
+.ask { display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; min-height: 128px; }
+.askq { display: flex; align-items: center; min-height: var(--tap); font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 2.2px; color: var(--ink3); }
-.askskip { margin-left: auto; border: 0; background: none; color: var(--green); font-size: 13px;
-  font-weight: 600; letter-spacing: 0; text-transform: none; min-height: 20px; padding: 0; }
+.askskip { margin-left: auto; border: 0; background: none; color: var(--green); font-size: 14px;
+  font-weight: 700; letter-spacing: 0; text-transform: none; min-height: var(--tap); padding: 0 4px 0 20px; }
 .arow { display: flex; gap: 5px; }
 .aopt { flex: 1 1 0; min-width: 0; height: 60px; border-radius: var(--r-s); border: 1px solid var(--line2);
   background: var(--card); color: var(--ink); font-size: 17px; font-weight: 600; padding: 0 4px;
@@ -436,7 +439,7 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
   border-bottom: 1px solid var(--line); }
 .hrowb:last-child { border-bottom: 0; }
 
-main.with-deck { padding-bottom: calc(176px + var(--sab)); }
+main.with-deck { padding-bottom: calc(196px + var(--sab)); }
 
 /* ---- review */
 .pl { padding: 12px 14px; }
@@ -462,17 +465,6 @@ main.with-deck { padding-bottom: calc(176px + var(--sab)); }
 .askall .askq { margin-top: 4px; }
 .askall .aopt { height: 48px; font-size: 15px; }
 
-.sstrip { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding: 8px 0 2px; }
-.sstrip.off { opacity: .4; }
-.srow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.slab { font-size: 12px; color: var(--ink3); flex: none; width: 42px; }
-.schip { flex: 1 1 0; min-width: 0; height: 38px; border-radius: 3px; border: 1px solid var(--line); background: var(--card); color: var(--ink2); font-size: 14px; font-weight: 600; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.schip.wide { flex: 1 1 42%; font-size: 13px; }
-.schip:active { background: var(--card2); }
-.schip.on, .schip.yes { border-color: var(--green); background: var(--green-soft); color: var(--green); }
-.schip.no { border-color: var(--bogey); color: var(--bogey); }
-.schip.pen { border-color: var(--pick); background: transparent; color: var(--pick); }
-.schip .auto { font-style: normal; font-size: 10px; font-weight: 500; opacity: .6; margin-left: 4px; }
 .statpick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .statpick button { flex: 1 1 108px; height: 38px; border-radius: 3px; border: 1px solid var(--line); background: var(--card); color: var(--ink2); font-size: 13px; font-weight: 600; }
 .statpick button.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
@@ -492,7 +484,7 @@ main.with-deck { padding-bottom: calc(176px + var(--sab)); }
 .morestats { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
 .morestats > summary { color: var(--ink3); cursor: pointer; }
 .morestats .statgrid { margin-top: 8px; }
-.pen { display: inline-flex; align-items: center; gap: 6px; background: var(--gold-soft); color: var(--gold-ink); border-radius: 2px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin: 4px 4px 0 0; }
+.pen { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--pick); color: var(--pick); border-radius: 2px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin: 4px 4px 0 0; }
 .pen button { border: 0; background: transparent; color: inherit; font-size: 16px; padding: 0; }
 .pens { margin-top: 8px; } .pens summary { cursor: pointer; margin-top: 6px; } .pens .btn { margin-top: 10px; }
 
@@ -913,3 +905,6 @@ a.dayl:active { color: var(--green); }
 .pickrow b { color: var(--ink); font-weight: 600; }
 .pickrow i { font-style: normal; color: var(--ink3); }
 .pickrow:active { background: var(--card2); }
+
+/* said to a screen reader, never drawn: the strokes a player gets on this hole */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }

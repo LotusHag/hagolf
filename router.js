@@ -3,7 +3,7 @@
 import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
-import { ui, paint, themeHere, hideToast, rememberIntent, inBrowser } from "./ui.js";
+import { ui, paint, themeHere, hideToast, rememberIntent, desktopWeb } from "./ui.js";
 import { welcome, signin, join, add } from "./screens/gate.js";
 import { home } from "./screens/home.js";
 import { play, newRound, loops } from "./screens/play.js";
@@ -33,7 +33,7 @@ export function route() {
   const [name, ...args] = location.hash.replace(/^#/, "").split("/");
   // in a browser there is one screen: how to install. The link screens stay open, since a shared board or an
   // invite is meant to be opened by somebody who has no app yet.
-  if (inBrowser() && !OPEN_SCREENS.includes(name)) return welcome();
+  if (desktopWeb() && !OPEN_SCREENS.includes(name)) return welcome();
   if (gated() && !OPEN_SCREENS.includes(name)) {
     if (name && name !== "home") rememberIntent(location.hash);   // finish the journey once signed in
     return welcome();

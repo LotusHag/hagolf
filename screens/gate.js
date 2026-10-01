@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, isIOS, inBrowser, ICONS } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, desktopWeb, ICONS } from "../ui.js";
 import { fmtIndex } from "../model.js";
 
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
@@ -22,7 +22,7 @@ function settle(a) {
 }
 
 export function welcome() {
-  if (inBrowser()) return install();
+  if (desktopWeb()) return install();
   const acct = A.account();
   if (!Y.config()) return page("Hagolf", `<div class="gate"><div class="gatemark">Hagolf</div><p class="tag">This phone is not connected to a backend.</p><a class="btn" href="#me/backend">Connect</a></div>`, { bare: true });
   if (!acct) return gate();
@@ -30,27 +30,25 @@ export function welcome() {
 }
 
 /**
- * A browser tab is not where Hagolf is used, it is where you install it. Chrome hands over its own prompt,
- * Safari can only be told where its Share button is, and anything else gets the address and a QR code for the
- * phone that will actually carry it.
+ * A desktop browser is the one place Hagolf cannot be used, because it is not the thing you carry round the
+ * course. So it is handed the address and a QR code for the phone that will, and nothing else -- on a phone
+ * that same screen would be a dead end, offering you the page you are already reading. Desktop Chrome can
+ * still install it for itself, and is let.
  */
 function install() {
   const addr = appBase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-  const body = window.__installPrompt
-    ? `<h3>Put Hagolf on your home screen</h3><p class="muted">It opens full screen from its own icon and keeps scoring without a signal.</p>
-       <button class="btn primary wide" data-act="install" style="margin-top:14px">Install Hagolf</button>`
-    : isIOS()
-      ? `<h3>Put Hagolf on your home screen</h3><p class="muted">Two taps in Safari, and it opens full screen from its own icon, signal or no signal.</p>
-         <ol class="steps"><li>Tap <b>Share</b> <span class="ios-share">⎋</span> at the bottom of Safari.</li><li>Choose <b>Add to Home Screen</b>.</li><li>Open Hagolf from the new icon.</li></ol>`
-      : `<h3>Hagolf lives on your phone</h3><p class="muted">Scan this with your phone's camera, then add it to the home screen.</p>
-         ${qrHtml(appBase())}<div class="linkbox">${esc(addr)}</div>
-         <button class="btn wide" data-act="copy">Copy the address</button>
-         <p class="muted small" style="margin-top:14px">iPhone: Safari, <b>Share</b>, <b>Add to Home Screen</b>. Android: Chrome, <b>Install app</b>.</p>`;
   page("Hagolf", `<div class="gate">
       <div class="gatemark">Hagolf</div>
       <p class="tag">Score rounds, keep leagues with friends, make the posters.</p>
-      <div class="card install">${body}</div>
-      <p class="legal">Versions for the App Store and Google Play are on the way. You sign in once it is on your home screen; only your name is ever shown to other people.</p>
+      <div class="card install">
+        <h3>Hagolf lives on your phone</h3>
+        <p class="muted">Scan this with your phone's camera, or open the address there. It installs from the page itself &mdash; there is nothing to download.</p>
+        ${qrHtml(appBase())}
+        <a class="linkbox" href="${esc(appBase())}">${esc(addr)}</a>
+        <button class="btn wide" data-act="copy" style="margin-top:12px">Copy the address</button>
+        ${window.__installPrompt ? `<button class="btn ghost wide" data-act="install" style="margin-top:10px">Or install it on this computer</button>` : ""}
+      </div>
+      <p class="legal">Versions for the App Store and Google Play are on the way. You sign in once it is open on your phone; only your name is ever shown to other people.</p>
     </div>`, { bare: true });
   bind(ev => {
     const b = ev.target.closest("[data-act]");

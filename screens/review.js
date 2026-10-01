@@ -127,9 +127,8 @@ export function review(rid, keep = false) {
   const chips = e => c.par.map((par, i) => {
     const v = e.scores[i];
     const skip = (e.fromHole || 1) - 1 > i;
-    const cls = skip ? "empty" : v === null ? "empty" : v === 0 ? "pick" : ["under", "par", "bogey", "double"][outcome(v - par)];
     const sel = ui.expanded === e.playerId && ui.selHole === i ? "sel" : "";
-    return `<button class="chip ${cls} ${sel}" data-act="sel-hole" data-pid="${e.playerId}" data-h="${i}" ${skip || !mine ? "disabled" : ""}><small>${c.first_hole + i}</small>${skip ? `<span class="mk empty">—</span>` : mark(v, par)}</button>`;
+    return `<button class="chip ${sel}" data-act="sel-hole" data-pid="${e.playerId}" data-h="${i}" ${skip || !mine ? "disabled" : ""}><small>${c.first_hole + i}</small>${skip ? `<span class="mk empty">—</span>` : mark(v, par)}</button>`;
   }).join("");
   // the same keys the scoring screen writes with, so a number goes into a card one way and is fixed the same way
   const editor = e => {

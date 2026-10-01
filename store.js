@@ -483,9 +483,16 @@ export function setStatsFor(rid, kinds) {
 }
 
 /** What unlocking opens on a card: the kinds ticked in Settings, or everything until somebody narrows it. */
+/**
+ * What a card opens with when nobody has narrowed it: putts and fairways, not everything. Putts carry greens
+ * in regulation, up and down, sand saves and putts per green with them, and the fairway is the only other
+ * answer worth a tap on every hole; opening all four made a three-question interview for somebody who only
+ * ever wanted putts. The rest are a tick away in Settings or on the card's own player list.
+ */
+const STATS_AT_FIRST = { putts: true, fairway: true };
 export function defaultStats() {
   const on = state.settings.stats;
-  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on ? !!on[k] : true]));
+  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on ? !!on[k] : !!STATS_AT_FIRST[k]]));
 }
 
 export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
