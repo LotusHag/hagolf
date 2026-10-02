@@ -57,7 +57,7 @@ export function people() {
       if (act === "request") { await F.request(id); toast("Request sent"); ui.found = null; ui.search = ""; }
       if (act === "accept") { await F.accept(id); toast("You are now friends"); }
       if (act === "decline") { await F.decline(id); }
-      if (act === "mylink") return shareLink(myLink(), "Add me on Hagolf", `Add me on Hagolf: ${myLink()}`);
+      if (act === "mylink") return shareLink(myLink(), "Add me on Hagolf", "Add me on Hagolf");
       if (act === "myqr") return sheet({ title: "Your friend link", lead: "Let them scan this with their camera.", body: `${qrHtml(myLink())}<div class="linkbox">${esc(myLink())}</div>`, actions: [{ label: "Done", value: "ok", kind: "primary" }] });
     } catch (e) { toast(e.message, 5000); }
     people();

@@ -229,7 +229,9 @@ function keyOf(table, row) {
   return row.id;
 }
 
-const CFG_KEY = "hagolf-sync-config", CURSOR_KEY = "hagolf-sync-cursors", ACCOUNT_KEY = "hagolf-sync-account";
+const CFG_KEY = "hagolf-sync-config", CURSOR_KEY = "hagolf-sync-cursors", ACCOUNT_KEY = "hagolf-sync-account", FULL_KEY = "hagolf-sync-full";
+// A row deleted outright on the server never reaches a phone as a change, so only a read from the start lets go of it.
+const FULL_EVERY = 24 * 3600 * 1000;
 
 function cursors() { try { return JSON.parse(localStorage.getItem(CURSOR_KEY)) || {}; } catch (e) { return {}; } }
 /** Whom the phone reads as: the account id, or "" on the shared key. */
@@ -383,6 +385,7 @@ async function doPull(again = false) {
   sync.pulling = true;
   sync.status = "syncing";
   emit({ status: true });
+  if (Date.now() - ts(localStorage.getItem(FULL_KEY)) > FULL_EVERY) localStorage.removeItem(CURSOR_KEY);
   const cur = cursors();  // one cursor per table: a row landing in an already-read table during the pull is not skipped
   const full = !Object.keys(cur).length, seen = {};   // a read from the start says what this account may see, in full
   const leaguesBefore = S.myLeagueIds();
@@ -410,7 +413,7 @@ async function doPull(again = false) {
     const orphanStats = S.state.orphanStats.splice(0);
     for (const row of orphanStats) { if (TABLES.hole_stats.apply(row)) changed = true; }
     if (full && sweep(seen)) changed = true;
-    if (full) localStorage.setItem(ACCOUNT_KEY, accountId());
+    if (full) { localStorage.setItem(ACCOUNT_KEY, accountId()); localStorage.setItem(FULL_KEY, new Date().toISOString()); }
     if (changed || orphans.length || S.state.orphanScores.length) S.afterPull();
     // A card just handed to me is older than every cursor, so it is fetched by name rather than by re-reading
     // everything: shares are far more common than joining a league, and one is four small requests.

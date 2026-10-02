@@ -4,7 +4,7 @@ import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import * as N from "./notify.js";
 import * as F from "./social.js";
-import { applyBrand, toast, atDoor } from "./ui.js";
+import { applyBrand, toast, atDoor, TABS } from "./ui.js";
 import { route } from "./router.js";
 import { home } from "./screens/home.js";
 
@@ -23,7 +23,10 @@ Y.onChange(({ changed, status }) => {
 });
 S.setOnSave(Y.schedulePush);
 
-window.addEventListener("hashchange", route);
+// Landing on a tab is when you look to see what changed, so it fetches; only on navigation, since route() also
+// runs after every pull that changed something and syncing there would loop.
+const onTab = () => { const h = location.hash || "#home"; return TABS.some(([, href]) => href === h); };
+window.addEventListener("hashchange", () => { route(); if (onTab()) Y.pushAndPull(); });
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); window.__installPrompt = e; if (atDoor()) route(); else if (onHome()) home(); });
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").then(reg => {

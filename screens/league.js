@@ -43,7 +43,7 @@ export async function inviteSheet(g) {
   } else if (v === "link" || v === "qr") {
     try {
       const r = await F.inviteLink(g.id, runs);
-      if (v === "link") await shareLink(r.url, `Join ${g.name} on Hagolf`, `Join ${g.name} on Hagolf: ${r.url}`);
+      if (v === "link") await shareLink(r.url, `Join ${g.name} on Hagolf`, `Join ${g.name} on Hagolf`);
       else await sheet({ title: g.name, lead: runs ? "Anyone who scans this joins. It works for 30 days; reset it under Settings." : "This link works once, for the person who scans it.", body: `${qrHtml(r.url)}<div class="linkbox">${esc(r.url)}</div>`, actions: [{ label: "Done", value: "ok", kind: "primary" }] });
     } catch (e) { toast(e.message, 5000); }
   }
@@ -55,7 +55,7 @@ async function boardShare(g) {
     if (!ok) return;
     try { const r = await F.setVisibility(g.id, { visibility: "link" }); Object.assign(g, { visibility: r.visibility, token: r.token }); S.afterPull(); } catch (e) { return toast(e.message, 5000); }
   }
-  await shareLink(`${location.origin}${location.pathname}#board/${g.token}`, `${g.name} on Hagolf`, `The ${g.name} table: ${location.origin}${location.pathname}#board/${g.token}`);
+  await shareLink(`${location.origin}${location.pathname}#board/${g.token}`, `${g.name} on Hagolf`, `The ${g.name} table`);
 }
 
 // ---------------------------------------------------------------- the pieces every view shares

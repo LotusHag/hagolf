@@ -87,7 +87,7 @@ function account() {
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
-    if (b.dataset.act === "mylink") return shareLink(myLink(), "Add me on Hagolf", `Add me on Hagolf: ${myLink()}`);
+    if (b.dataset.act === "mylink") return shareLink(myLink(), "Add me on Hagolf", "Add me on Hagolf");
     if (b.dataset.act === "myqr") return sheet({ title: "Your friend link", lead: "Let them scan this with their camera.", body: `${qrHtml(myLink())}<div class="linkbox">${esc(myLink())}</div>`, actions: [{ label: "Done", value: "ok", kind: "primary" }] });
     if (b.dataset.act === "signout-all") { if (await confirmSheet("Sign out everywhere?", "Every phone signed in as you is signed out, and notifications stop.", { label: "Sign out everywhere", danger: true })) { await A.signOut(true); go("#welcome"); } }
   });

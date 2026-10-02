@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, isAndroid, ICONS } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, isAndroid, ICONS } from "../ui.js";
 import { fmtIndex } from "../model.js";
 
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
@@ -174,13 +174,13 @@ function loadGis() {
   }
   return gisLoading;
 }
-async function googleButton(settleFn) {
+async function googleButton(settleFn, redraw = gate) {
   const slot = document.getElementById("gbtn");
   if (!slot) return;
   let cfg;
   try { cfg = await A.config(); } catch (e) { return; }
   const m = (cfg.methods || ["google"]).join(",");
-  if (m !== ui.authMethods.join(",")) { ui.authMethods = cfg.methods || ["google"]; return gate(); }
+  if (m !== ui.authMethods.join(",")) { ui.authMethods = cfg.methods || ["google"]; return redraw(); }
   const none = document.getElementById("gnone");
   if (!cfg.google) { if (none && ui.authMethods.join(",") === "google") none.hidden = false; return; }
   try { await loadGis(); } catch (e) { if (none) { none.hidden = false; none.textContent = "Google's sign-in could not be loaded. Check the connection and try again."; } return; }
@@ -205,12 +205,23 @@ export async function signin(token) {
   settle(a);
 }
 
-/** A page a link opens for somebody who is not signed in: what it is about, and one button. */
+/**
+ * A page a link opens for somebody who is not signed in: what it is about, and Google's button right here. The
+ * sign-in happens in this browser, never via #welcome, which in a browser is the door and would drop the link.
+ */
 function previewPage(title, body, intent) {
-  page(title, `<div class="gate"><div class="gatemark">Hagolf</div><div class="card preview">${body}</div>
-    <button class="btn primary big" data-act="go">Continue with Google</button>
-    <p class="legal">You only need a Google account and a name. <a href="#legal/privacy">Privacy</a></p></div>`, { bare: true });
-  bind(ev => { if (ev.target.closest("[data-act=go]")) { rememberIntent(intent); go("#welcome"); } });
+  const draw = () => {
+    page(title, `<div class="gate"><div class="gatemark">Hagolf</div><div class="card preview">${body}</div>
+      <div class="card"><div id="gbtn"></div><p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></div>
+      <p class="legal">You only need a Google account and a name. <a href="#legal/privacy">Privacy</a></p></div>`, { bare: true });
+    googleButton(a => {
+      if (!a || !a.name) return welcome();
+      S.linkMe(a);
+      // the link is usually still the hash, and assigning the same hash fires nothing
+      if (location.hash === intent) dispatchEvent(new HashChangeEvent("hashchange")); else go(intent);
+    }, draw);
+  };
+  draw();
 }
 
 /** `#join/<token>`: an invite to a league. (An old-style connection payload still connects the phone.) */
