@@ -6,7 +6,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, saveFiles, slugFile, ICONS, makeTheme, loadFonts, themeForRound } from "../ui.js";
 import { DATA } from "../data.js";
-import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE } from "../model.js";
+import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar } from "../model.js";
 import { renderCards } from "../cards.js";
 import { statTap, statStep, statLine, seedStats } from "./extras.js";
 import { mark, scoreStepper, extrasRows } from "../pad.js";
@@ -135,7 +135,7 @@ export function review(rid, keep = false) {
   const editor = e => {
     if (ui.expanded !== e.playerId || ui.selHole === null || !mine) return "";
     const i = ui.selHole, par = c.par[i], ei = r.entries.indexOf(e);
-    return `<div class="editor"><div class="edhead">Hole ${c.first_hole + i} · par ${par} · SI ${c.stroke_index[i]}</div>
+    return `<div class="editor"><div class="edhead">Hole ${c.first_hole + i} · par ${par}${c.unlisted ? "" : ` · SI ${c.stroke_index[i]}`}</div>
       ${scoreStepper(e, ei, i, par)}${extrasRows(c, e, ei, i, kinds)}</div>`;
   };
   const penalties = e => !mine ? "" : `<div class="pens">${(e.penalties || []).map((p, k) => `<span class="pen">+${p.strokes} on hole ${p.hole}${p.reason ? ` (${esc(p.reason)})` : ""} <button data-act="del-pen" data-pid="${e.playerId}" data-k="${k}" aria-label="remove">×</button></span>`).join("")}
@@ -148,7 +148,7 @@ export function review(rid, keep = false) {
     <div class="card pl ${ui.expanded === e.playerId ? "open" : ""}">
       <button class="row plain" data-act="expand" data-pid="${e.playerId}">
         <div class="who"><span class="pos ${p.splace === 1 ? "p1" : ""}">${p.splace}</span><div><div class="name">${esc(p.name)}${p.penalty_total ? ` <span class="pen">pen +${p.penalty_total}</span>` : ""}</div>
-          <div class="muted small">hcp ${fmtHcp(p.ph)} · ${esc(p.tee)}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.filled.some(Boolean) ? ` · ${plural(p.filled.filter(Boolean).length, "hole")} counted ${NO_SCORE}` : ""}</div>${nineLine(M, p)}${p.statline.any ? `<div class="muted small">${esc(statLine(p.statline))}</div>` : ""}</div></div>
+          <div class="muted small">hcp ${fmtHcp(p.ph)}${c.unlisted ? "" : ` · ${esc(p.tee)}`}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.filled.some(Boolean) ? ` · ${plural(p.filled.filter(Boolean).length, "hole")} counted ${NO_SCORE}` : ""}</div>${nineLine(M, p)}${p.statline.any ? `<div class="muted small">${esc(statLine(p.statline))}</div>` : ""}</div></div>
         <div class="nums"><span><b class="num">${p.gross === null ? "NR" : p.gross}</b><small>gross${p.topar !== null ? " " + fmtToPar(p.topar) : ""}</small></span>
           <span><b class="num">${p.net === null ? "NR" : p.net}</b><small>net</small></span><span class="acc"><b class="num">${p.pts}</b><small>pts</small></span></div></button>
       ${ui.expanded === e.playerId ? `<div class="chips">${chips(e)}</div>${editor(e)}${penalties(e)}` : ""}</div>`).join("");
@@ -157,18 +157,21 @@ export function review(rid, keep = false) {
     return `<div class="card row warnrow"><div><div class="name">${esc(e.name)}</div><div class="muted small">missing hole${holes.length === 1 ? "" : "s"} ${holes.join(", ")}</div></div>
       ${mine ? `<a class="btn small" href="#score/${rid}/${holes[0] - c.first_hole}">Enter</a>` : ""}</div>`;
   }).join("");
+  const noPar = holesWithoutPar(c);
   const lg = S.leaguesOfRound(rid);
   const shares = S.sharesOf(rid);
   const sharedWithMe = S.sharedWithMe().has(rid);
   const body = `
     ${sharedWithMe ? `<div class="banner accent">Shared with you. You can look, not change.</div>` : ""}
+    ${noPar.length ? `<div class="card row warnrow"><div><div class="name">No par yet</div><div class="muted small">hole${noPar.length === 1 ? "" : "s"} ${noPar.map(h => c.first_hole + h).join(", ")}</div></div>
+      ${mine ? `<a class="btn small" href="#score/${rid}/${noPar[0]}">Fill in</a>` : ""}</div>` : ""}
     ${missing ? `<h2>Not finished</h2>${missing}` : ""}
     ${rows ? `${h2tip("Stableford order", `<p>Stableford scores each hole on its own, against the par you get with your handicap strokes: a net double bogey or worse is 0 points, a net bogey 1, a net par 2, a net birdie 3, and so on up.</p>
       <p>Each row shows that player's <b>gross</b> (every stroke they took), their <b>net</b> (gross less their course handicap) and their <b>points</b>. The board is ordered on points.</p>`)}${mine ? `<p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score.</p>` : ""}${rows}` : `<p class="muted center">No complete scorecards yet.</p>`}
     ${done && me && M.players.some(p => p.id === me.id) ? `<div class="btnrow"><button class="btn" data-act="my-card">${ICONS.card} Save my card as an image</button><a class="btn" href="#graphics/${rid}">${ICONS.chart} Posters and cards</a></div>` : ""}
     <h2>Round</h2>
     <div class="list">
-      <a href="${mine ? `#attach/${rid}` : "#leagues"}"><span class="lead">${ICONS.trophy}<div><div class="name">Counts for</div><div class="muted small">${lg.length ? esc(lg.map(g => g.name).join(", ")) : "no league yet"}</div></div></span>${mine ? `<span class="chev">›</span>` : ""}</a>
+      ${c.unlisted ? "" : `<a href="${mine ? `#attach/${rid}` : "#leagues"}"><span class="lead">${ICONS.trophy}<div><div class="name">Counts for</div><div class="muted small">${lg.length ? esc(lg.map(g => g.name).join(", ")) : "no league yet"}</div></div></span>${mine ? `<span class="chev">›</span>` : ""}</a>`}
       ${mine ? `<a href="#players/${rid}"><span class="lead">${ICONS.people}<div><div class="name">Players, tees and handicaps</div><div class="muted small">${plural(r.entries.length, "player")}</div></div></span><span class="chev">›</span></a>` : ""}
       ${mine && done ? `<button data-act="share"><span class="lead">${ICONS.share}<div><div class="name">Share this card</div><div class="muted small">${shares.length ? `with ${plural(shares.length, "friend")}` : "to friends, or by link"}${r.token ? " · link is on" : ""}</div></div></span><span class="chev">›</span></button>` : ""}
     </div>
@@ -177,7 +180,7 @@ export function review(rid, keep = false) {
       <button class="btn small" type="submit">Save details</button></form></details>` : ""}
     ${Y.enabled() ? `<details class="card" id="hist"><summary class="small">What was changed on this card</summary><div id="histbody"><p class="muted small" style="margin:8px 0 0">Reading the history…</p></div></details>` : ""}
     ${dropBtn(r)}`;
-  const bar = done ? "" : `<a class="btn" href="#score/${rid}/${n - 1}">‹ Scoring</a><button class="btn primary" data-act="save-round" ${M.field ? "" : "disabled"}>All correct, save ›</button>`;
+  const bar = done ? "" : `<a class="btn" href="#score/${rid}/${n - 1}">‹ Scoring</a><button class="btn primary" data-act="save-round" ${M.field && !noPar.length ? "" : "disabled"}>All correct, save ›</button>`;
   page(done ? "Card" : "Check the scores", body, { back: done ? "#play" : `#score/${rid}/${S.holeOf(r)}`, bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep,
     actions: done && mine ? iconBtn("share", "share", "Share") : "" });
   const hist = document.getElementById("hist");
@@ -211,7 +214,7 @@ export function review(rid, keep = false) {
       seedStats(r, e, i, c, kinds);
       return review(rid, true);
     }
-    if (act === "x-inc" || act === "x-dec") { statStep(r, e, ui.selHole, b.dataset.k, act === "x-inc" ? 1 : -1); return review(rid, true); }
+    if (act === "x-inc" || act === "x-dec") { statStep(r, e, ui.selHole, b.dataset.k, act === "x-inc" ? 1 : -1, c, kinds); return review(rid, true); }
     if (act === "st-fw") { statTap(r, e, ui.selHole, act, b); return review(rid, true); }
     if (act === "del-pen") { e.penalties.splice(Number(b.dataset.k), 1); S.saveEntry(r, e); return review(rid, true); }
     if (act === "add-pen") {

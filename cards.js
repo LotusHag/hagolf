@@ -192,6 +192,7 @@ const STATS_IN = 1.15, STATS_GAP = 0.12;
  */
 export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   const n = M.n, SI = M.si, N = M.field, L = M.labels, PAR = p.par;
+  const holeLine = h => M.course.unlisted ? `par ${PAR[h]}` : `par ${PAR[h]}  ·  SI ${SI[h]}`;
   const basic = tier === "basic";
   // The extras are a choice; the room for them is not. Whether this card kept any or not the by-section
   // block ends with the same reserved strip, so the two cards are the same card.
@@ -279,13 +280,13 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   axs.line(0, ROWS.strokes[0], xmax, ROWS.strokes[0], T.LINE, 0.8);
   axs.line(0, ROWS.points[0] + ROWS.points[1], xmax, ROWS.points[0] + ROWS.points[1], T.LINE, 0.8);
   const [big, mid, small0] = n <= 9 ? [17, 10, 7.5] : [14, 9, 7];
-  const small = axs.fitSize(columns.filter(c => c[0] === "hole").map(([, h]) => `par ${PAR[h]}  ·  SI ${SI[h]}`), 0.96, small0, 5, "text");
+  const small = axs.fitSize(columns.filter(c => c[0] === "hole").map(([, h]) => holeLine(h)), 0.96, small0, 5, "text");
   columns.forEach(([kind, ref], k) => {
     const x = LX + k + 0.5;
     if (kind === "hole") {
       const h = ref;
       axs.text(x, ROWS.hole[0] + 0.32, L[h], { size: 15, family: "display", color: T.INK, ha: "center", va: "center" });
-      axs.text(x, ROWS.hole[0] + 0.78, `par ${PAR[h]}  ·  SI ${SI[h]}`, { size: small, color: T.INK_3, ha: "center", va: "center" });
+      axs.text(x, ROWS.hole[0] + 0.78, holeLine(h), { size: small, color: T.INK_3, ha: "center", va: "center" });
       const k_ = p.strokes[h];
       axs.text(x, cell("strokes"), String(k_), { size: 9.5, color: k_ ? T.INK_2 : T.INK_3, ha: "center", va: "center" });
       if (p.scores[h] === null) {

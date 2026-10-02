@@ -64,8 +64,9 @@ export function players(rid, keep = false) {
     const pair = fs => fs.map(([l, ctl], k) => field(l, ctl, fs.length % 2 === 1 && k === fs.length - 1)).join("");
     // the tee is a colour on the ground, so it is picked as that colour and not read off a list of words
     const teePick = field(`Tee · ${esc(e.tee)}`, `<div class="tees">${tees.map(t => `<button class="tee ${t === e.tee ? "on" : ""}" style="--c:${teeColor(t)}" data-act="tee" data-i="${i}" data-t="${esc(t)}" aria-label="${esc(t)} tee" aria-pressed="${t === e.tee}"><i></i></button>`).join("")}</div>`, true);
-    const fields = pair(hcp) + teePick + pair(rest);
-    return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}${isMe ? ` <span class="pill done">you</span>` : ""}</div><div class="muted small">${e.gender === "f" ? "women's" : "men's"} rating · ${hc}${hasOv ? " (club table)" : ""}</div></div>
+    // an unlisted course has one neutral tee for everybody, so there is nothing to pick
+    const fields = pair(hcp) + (c.unlisted ? "" : teePick) + pair(rest);
+    return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}${isMe ? ` <span class="pill done">you</span>` : ""}</div><div class="muted small">${c.unlisted ? "" : `${e.gender === "f" ? "women's" : "men's"} rating · `}${hc}${hasOv ? " (club table)" : ""}</div></div>
         <button class="x" data-act="remove-entry" data-i="${i}" aria-label="Remove">×</button></div>
       <div class="efields">${fields}</div></div>`;
   }).join("");
@@ -85,8 +86,8 @@ export function players(rid, keep = false) {
       <label>Name<input id="pname" autocomplete="off" autocapitalize="words" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
       <div class="two">
         <label>Handicap index<input id="phi" inputmode="decimal" placeholder="18,4 or +2.1" required></label>
-        <label>Tee<select id="ptee">${tees.map(t => `<option ${t === r.defaultTee ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
-      <div class="two">
+        <label ${c.unlisted ? "hidden" : ""}>Tee<select id="ptee">${tees.map(t => `<option ${t === r.defaultTee ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
+      <div class="two" ${c.unlisted ? "hidden" : ""}>
         <label>Rating<select id="pgender"><option value="m">Men's</option><option value="f">Women's</option></select></label>
         <label>Course hcp <span class="muted">(optional)</span><input id="pch" inputmode="numeric" placeholder="from club table"></label></div>
       <button class="btn primary" type="submit">Add player</button>

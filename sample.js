@@ -21,10 +21,11 @@ export const SHOWCASE_COURSE = {
   nines: [], provenance: { ratings: "published", stroke_index: "published" }, source: "kit", notes: [],
 };
 
-// A fairway line reads hole by hole: a hit, a miss, or a dot on a par 3, which has none.
-const fairways = s => [...s].map(c => c === "." ? null : c === "x" ? "hit" : "miss");
+// A fairway line reads hole by hole: a hit, a miss left or right (or just a miss), or a dot on a par 3.
+const FW = { ".": null, x: "hit", "<": "left", ">": "right" };
+const fairways = s => [...s].map(c => c in FW ? FW[c] : "miss");
 const extras = (putts, fw, bunkers = [], penalties = {}) => putts.map((p, h) => ({
-  putts: p, fairway: fairways(fw)[h], gir: null, bunker: bunkers.includes(h + 1), penaltyShots: penalties[h + 1] || null,
+  putts: p, fairway: fairways(fw)[h], gir: null, bunker: bunkers.includes(h + 1) ? 1 : 0, penaltyShots: penalties[h + 1] || null,
 }));
 
 /**
@@ -38,7 +39,7 @@ export const SHOWCASE_PLAYERS = [
     stats: extras([2, 2, 1, 2, 1, 2, 1, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 1], "xx.xx.-xxx.xxx.-xx", [4, 8, 12, 16], { 12: 1 }) },
   { id: "showcase-2", name: "Daan Verhoeven", hi: 18.4, gender: "m", tee: "yellow",
     scores: [5, 6, 2, 7, 6, 4, 6, 5, 6, 6, 4, 6, 6, 3, 3, 3, 4, 5],
-    stats: extras([2, 2, 1, 2, 2, 2, 2, 2, 3, 3, 2, 2, 2, 1, 2, 1, 1, 2], "-x.--.xx--.x-x.xxx", [4, 9, 13], { 4: 1, 13: 1 }) },
+    stats: extras([2, 2, 1, 2, 2, 2, 2, 2, 3, 3, 2, 2, 2, 1, 2, 1, 1, 2], ">x.>>.xx<>.x>x.xxx", [4, 9, 13], { 4: 1, 13: 1 }) },
   { id: "showcase-3", name: "Marco Bianchi", hi: 11.7, gender: "m", tee: "yellow",
     scores: [4, 5, 4, 5, 4, 3, 5, 5, 5, 5, 3, 6, 6, 4, 2, 5, 5, 4],
     penalties: [{ hole: 7, strokes: 2, reason: "wrong ball" }] },

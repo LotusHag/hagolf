@@ -84,9 +84,17 @@ export const holedOut = (e, h) => e.scores[h] !== null && e.scores[h] !== 0;
  * carries the ordinary answer, so stepping is a correction of something, never the first word -- and a hole
  * nobody has scored still says nothing at all, because `seedStats` is what writes the ordinary answer down.
  */
-export function statStep(r, e, h, kind, d) {
+export function statStep(r, e, h, kind, d, c, kinds) {
   const cur = (e.stats[h] || {})[kind] ?? STAT_START[kind] ?? 0;
-  S.setStat(r, e, h, { [kind]: Math.max(0, Math.min(9, cur + d)) });
+  const next = Math.max(0, Math.min(9, cur + d));
+  S.setStat(r, e, h, { [kind]: next });
+  if (kind !== "penaltyShots" || next === cur) return;
+  // a penalty shot is a stroke, so it goes on the hole's score at once and the points drop with it;
+  // an empty hole starts at par plus the penalty, and a pick-up has no strokes to add it to
+  const v = e.scores[h];
+  if (v === 0) return;
+  S.setScore(r, e, h, v === null ? c.par[h] + next : Math.max(1, Math.min(30, v + next - cur)));
+  seedStats(r, e, h, c, kinds);
 }
 
 /**

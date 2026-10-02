@@ -7,7 +7,7 @@
 // is one tap away behind the hole number.
 import * as S from "../store.js";
 import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet } from "../ui.js";
-import { handicapFor, stableford } from "../model.js";
+import { handicapFor, stableford, NO_SCORE } from "../model.js";
 import { scoreStepper, extrasRows, navBar, ptsSoFar } from "../pad.js";
 import { statTap, statStep, seedStats } from "./extras.js";
 import { dropRound, extrasSheet } from "./players.js";
@@ -25,13 +25,21 @@ function block(r, c, e, i, h, kinds) {
   if ((e.fromHole || 1) - 1 > h)
     return `<div class="prow skip" data-i="${i}"><div class="phead"><span class="pname">${esc(e.name)}</span>
       <span class="muted small">joins at hole ${c.first_hole + e.fromHole - 1}</span></div></div>`;
-  const v = e.scores[h], st = info ? info.strokes[h] : 0;
+  // with no stroke index, where a stroke falls is the hole order, so neither the dots nor one hole's points mean anything
+  const v = e.scores[h], st = info && !c.unlisted ? info.strokes[h] : 0;
   const entered = e.scores.some(x => x !== null);
-  const pts = v !== null && v !== 0 && info ? stableford(v, par, st) : null;
+  // a pick-up scores nothing, and says so
+  const pts = v === null || !info || c.unlisted ? null : v === 0 ? 0 : stableford(v, par, info.strokes[h]);
+  // the running card, then what this hole added to it, its place kept until it is in so the totals line up;
+  // a pick-up counts the strokes the card will
+  const gross = e.scores.reduce((t, x) => t + (x === null ? 0 : x || NO_SCORE), 0);
+  const tally = !entered ? "" : `<span class="ptally">
+      <span class="ptot"><b class="num">${gross}</b><small>strokes</small>${info ? `<b class="num">${ptsSoFar(e, info)}</b><small>pts</small>` : ""}</span>
+      ${pts === null ? `<b class="phole gap" aria-hidden="true"></b>` : `<b class="phole num ${pts ? "" : "nil"}" aria-label="${plural(pts, "point")} on this hole">+${pts}</b>`}</span>`;
   return `<div class="prow" data-i="${i}">
     <div class="phead">
       <span class="pname">${esc(e.name)}${st ? `<i class="dots"><span>${"•".repeat(Math.min(st, 4))}</span><span class="sr">${plural(st, "stroke")}</span></i>` : ""}</span>
-      ${pts === null && !entered ? "" : `<span class="ppts"><b class="num">${pts === null ? ptsSoFar(e, info) : pts}</b><small>${pts === null ? "so far" : "pts"}</small></span>`}
+      ${tally}
     </div>
     ${scoreStepper(e, i, h, par)}
     ${extrasRows(c, e, i, h, kinds)}</div>`;
@@ -50,7 +58,8 @@ async function holeSheet(rid, h) {
   }).join("");
   const v = await sheet({
     title: `Hole ${c.first_hole + h}`,
-    lead: `Par ${c.par[h]}${metres ? ` · ${metres[h]} m` : ""} · stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${c.n}`,
+    lead: c.unlisted ? `${c.par[h] ? `Par ${c.par[h]}` : "No par yet"} · hole ${h + 1} of ${c.n}`
+      : `Par ${c.par[h]}${metres ? ` · ${metres[h]} m` : ""} · stroke index ${c.stroke_index[h]} · hole ${h + 1} of ${c.n}`,
     body: `${groups.length > 1 ? `<h2>Groups</h2><div class="filter">${["0", ...groups].map(g => `<button data-act="gf-${g}" data-sheet-act class="${gf === Number(g) ? "on" : ""}">${g === "0" ? "All" : `Group ${g}`}</button>`).join("")}</div>` : ""}
       <h2>Where everyone is</h2><div class="hboard">${board}</div>`,
     actions: [{ label: "Putts, fairways and the rest", value: "extras" },
@@ -90,14 +99,20 @@ export function score(rid, hArg) {
       ${k === h ? 'aria-current="true"' : ""} aria-label="Hole ${c.first_hole + k}${done ? ", all in" : some ? ", part in" : ""}">${c.first_hole + k}</a>`;
   }).join("");
 
+  // an unlisted course learns its par here, hole by hole, and nobody's score opens until it has one
+  const noPar = c.unlisted && !c.par[h];
+  const meta = c.unlisted
+    ? `<div class="efield hpar"><span class="flab">Par</span><div class="eseg">${[3, 4, 5].map(p => `<button data-act="set-par" data-p="${p}" class="${c.par[h] === p ? "on" : ""}" aria-pressed="${c.par[h] === p}">${p}</button>`).join("")}</div></div>`
+    : `<button class="hmeta" data-act="hole-sheet"><b>Par ${c.par[h]}</b>${metres ? ` · ${metres[h]} m` : ""} · SI ${c.stroke_index[h]}<span class="chev">▾</span></button>`;
   const body = `
     <div class="holebar">
       <button class="hnum num" data-act="hole-sheet">${c.first_hole + h}</button>
-      <button class="hmeta" data-act="hole-sheet"><b>Par ${c.par[h]}</b>${metres ? ` · ${metres[h]} m` : ""} · SI ${c.stroke_index[h]}<span class="chev">▾</span></button>
+      ${meta}
       ${gf ? `<button class="gfchip" data-act="hole-sheet">Group ${gf}</button>` : ""}
     </div>
     <div class="holestrip" style="grid-template-columns:repeat(${Math.ceil(n / rows)},1fr)">${strip}</div>
-    <div class="prows" id="rows">${shown.map(([e, i]) => block(r, c, e, i, h, kinds)).join("")}</div>
+    ${noPar ? `<p class="muted center">What par is hole ${c.first_hole + h}? Pick it above and the scores open.</p>`
+      : `<div class="prows" id="rows">${shown.map(([e, i]) => block(r, c, e, i, h, kinds)).join("")}</div>`}
     ${r.entries.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}`;
 
   page(r.name, body, { back: "#play", bar: navBar(r, c, h, rid), sub: courseTitle(c), bell: false });
@@ -126,6 +141,8 @@ export function score(rid, hArg) {
     const act = b.dataset.act;
     if (act === "hole-sheet") return holeSheet(rid, h);
     if (act === "drop-round") return dropRound(rid);
+    if (act === "set-par") { S.setPar(r, h, Number(b.dataset.p)); return score(rid, h); }
+    if (noPar) return;
     const i = Number(b.dataset.i);
     const e = r.entries[i];
     // a player who joins later has no hole here to write to
@@ -140,7 +157,7 @@ export function score(rid, hArg) {
       seedStats(r, e, h, c, kinds);
       return refresh(i);
     }
-    if (act === "x-inc" || act === "x-dec") { statStep(r, e, h, b.dataset.k, act === "x-inc" ? 1 : -1); return refresh(i); }
+    if (act === "x-inc" || act === "x-dec") { statStep(r, e, h, b.dataset.k, act === "x-inc" ? 1 : -1, c, kinds); return refresh(i); }
     if (act === "st-fw") { statTap(r, e, h, act, b); return refresh(i); }
   });
 }

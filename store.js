@@ -2,7 +2,7 @@
 // leagues, league-round attachments, courses added on phones, course handicaps from club tables, settings.
 // Every record carries updated_at and deleted; the queue remembers which records changed and when.
 import { DATA } from "./data.js";
-import { STAT_SWITCH_KEYS, emptyStat, blankStat } from "./model.js";
+import { STAT_SWITCH_KEYS, emptyStat, blankStat, UNLISTED_TEE } from "./model.js";
 import { mirror } from "./idb.js";
 
 const KEY = "hagolf-v2";
@@ -356,7 +356,7 @@ export function deletePlayer(id) {
 }
 
 // ---------------------------------------------------------------- courses: the kit's files plus courses added on phones
-export function courses() {
+function allCourses() {
   const out = new Map(DATA.courses.map(c => [c.slug, { ...c, source: c.source || "kit" }]));
   for (const c of state.courses) {
     if (c.deleted) out.delete(c.slug);
@@ -365,7 +365,10 @@ export function courses() {
   return [...out.values()];
 }
 
-export function courseBy(slug) { return courses().find(c => c.slug === slug) || null; }
+/** The courses anyone can pick: an unlisted one belongs to its one round and is never offered again. */
+export function courses() { return allCourses().filter(c => !c.unlisted); }
+
+export function courseBy(slug) { return allCourses().find(c => c.slug === slug) || null; }
 
 /** A course typed on a phone: validated by model.prepareCourse before it gets here. */
 export function addCourse(slug, data) {
@@ -386,7 +389,24 @@ export function removeCourse(slug) {
   save();
 }
 
+// ---------------------------------------------------------------- a course nobody has a card for
+/** A round on a course the app does not know: its pars are filled in hole by hole while it is played. */
+export function createUnlistedRound({ name, date, holes }) {
+  const slug = `unlisted-${uid()}`;
+  addCourse(slug, { name: "Unlisted course", unlisted: true, n: holes, first_hole: 1, par: new Array(holes).fill(null),
+    stroke_index: [...Array(holes).keys()].map(h => h + 1), course_par: 0, tees: { [UNLISTED_TEE]: {} } });
+  return createRound({ course: slug, name, date, defaultTee: UNLISTED_TEE, allowance: 100 });
+}
+
+export function setPar(r, h, par) {
+  const c = state.courses.find(x => x.slug === r.course);
+  if (!c || !c.data.unlisted || c.data.par[h] === par) return;
+  const pars = c.data.par.map((p, k) => k === h ? par : p);
+  addCourse(c.slug, { ...c.data, par: pars, course_par: pars.reduce((a, p) => a + (p || 0), 0) });
+}
+
 export function noteRecentCourse(slug) {
+  if (slug.startsWith("unlisted-")) return;
   const rc = [slug, ...(state.settings.recentCourses || []).filter(x => x !== slug)].slice(0, 5);
   state.settings.recentCourses = rc;
   save();
@@ -523,6 +543,7 @@ export const cardKeepsStats = r => r.entries.some(e => e.trackStats);
 export function deleteRound(id) {
   const r = state.rounds.find(x => x.id === id);
   if (r) { r.deleted = true; delete state.settings.holes[id]; if (state.settings.statsRound) delete state.settings.statsRound[id]; touch("rounds", r); save(); }
+  if (r && (courseBy(r.course) || {}).unlisted) removeCourse(r.course);
 }
 
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */

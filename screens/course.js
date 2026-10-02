@@ -261,6 +261,20 @@ function ncSave() {
 // ---------------------------------------------------------------- scan an old scorecard
 const scanState = { cards: [], busy: false, courseSlug: null };
 
+// The club's name as the card prints it, matched on its telling words: "het" or "golfclub" alone matches half the country.
+const FILLER = new Set(["het", "de", "den", "van", "the", "and", "en", "golf", "golfclub", "golfbaan", "golfpark", "club", "country", "gc", "gcc", "baan", "holes"]);
+const tellingWords = s => String(s || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1 && !FILLER.has(w));
+function courseByCardName(name, list) {
+  const want = tellingWords(name);
+  let best = null, top = 0;
+  for (const c of list) {
+    const have = new Set(tellingWords(`${c.name} ${c.loop || ""}`));
+    const k = want.filter(w => have.has(w)).length;
+    if (k > top) { top = k; best = c; }
+  }
+  return best;
+}
+
 export function scan() {
   const cfg = Y.config();
   const all = S.courses();
@@ -331,7 +345,7 @@ export function scan() {
       if (!st.courseSlug) {
         const total = st.cards.reduce((a, c) => a + c.holes, 0);
         const same = all.filter(c => c.n === total);
-        const guess = data.course ? same.find(c => (c.name + " " + c.loop).toLowerCase().includes(String(data.course).toLowerCase().split(" ")[0])) : null;
+        const guess = data.course ? courseByCardName(data.course, same) : null;
         st.courseSlug = (guess || same.find(c => c.slug === recent) || same[0] || guessCourse).slug;
       }
     } catch (err) { toast(`Scan failed: ${err.message}`, 6000); }

@@ -156,7 +156,7 @@ function scoring() {
 
 // ---------------------------------------------------------------- courses
 function courses() {
-  const phoneCourses = S.state.courses.filter(c => !c.deleted && (c.source || "phone") === "phone");
+  const phoneCourses = S.state.courses.filter(c => !c.deleted && !(c.data && c.data.unlisted) && (c.source || "phone") === "phone");
   sub("Courses", `<div class="card"><div class="muted small">${S.courses().length} courses on this phone, ${plural(phoneCourses.length, "course")} added on phones.</div>
       ${phoneCourses.map(c => `<div class="kv"><span>${esc(courseTitle(c.data))}</span><button class="btn small danger" data-act="del-course" data-slug="${esc(c.slug)}">Remove</button></div>`).join("")}
       <a class="btn small" href="#newcourse" style="margin-top:8px">Add a club</a></div>`);

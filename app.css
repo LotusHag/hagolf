@@ -7,15 +7,15 @@
 @font-face { font-family: "Oswald"; src: url("fonts/oswald/Oswald-Variable.ttf") format("truetype"); font-weight: 200 700; font-display: swap; }
 
 :root {
-  color-scheme: only light;
-  --bg: #F6F6F4; --card: #FFFFFF; --card2: #F0F0EE; --line: #E6E6E3; --line2: #C9C9C7;
-  --ink: #17181A; --ink2: #4B4E52; --ink3: #6E7378;
-  --green: #1E6B44; --green-dark: #185636; --green-soft: #D8E3DB; --green-ink: #FFFFFF;
-  --gold: #E5A80B; --gold-soft: #F4EBD3; --gold-ink: #674C05; --green-hi: #F5DC9D;
-  --under: #1F8A5B; --par: #5B6A61; --bogey: #D9931A; --double: #C8433A; --pick: #8A6D3B;
-  --danger: #C8433A; --danger-soft: #F0E1DE; --ok: #2E8B57;
-  --bronze: #D9A46A; --on-bronze: #17181A; --on-ink: #FFFFFF; --on-double: #FFFFFF; --on-gold: #17181A;
-  --sc-eagle: #073B26; --sc-birdie: #1F8A5B; --sc-par: #9AA1A5; --sc-bogey: #E0A020; --sc-double: #C4362C; --sc-triple: #78221C;
+  color-scheme: only dark;
+  --bg: #22322B; --card: #2C3C34; --card2: #394740; --line: #4C5851; --line2: #646D66;
+  --ink: #F4F1E8; --ink2: #CECFC6; --ink3: #9CA199;
+  --green: #F6D57A; --green-dark: #C5AA62; --green-soft: #404936; --green-ink: #22322B;
+  --gold: #EABF52; --gold-soft: #3D4327; --gold-ink: #EABF52; --green-hi: #545535;
+  --under: #63AB88; --par: #8C958C; --bogey: #E2B15C; --double: #D67B72; --pick: #AC9772;
+  --danger: #D67B72; --danger-soft: #36342D; --ok: #6DAC85;
+  --bronze: #D4A06A; --on-bronze: #22322B; --on-ink: #22322B; --on-double: #F4F1E8; --on-gold: #22322B;
+  --sc-eagle: #537564; --sc-birdie: #63AB88; --sc-par: #B7BBBA; --sc-bogey: #E6BA60; --sc-double: #D37268; --sc-triple: #A0645D;
   --r: 6px; --r-s: 4px; --r-xs: 3px;
   --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
   --tap: 44px;
@@ -396,18 +396,26 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .hmeta { flex: 1; text-align: left; border: 0; background: none; padding: 0; min-height: var(--tap); color: var(--ink3); font-size: 13px; }
 .hmeta b { color: var(--ink); font-size: 15px; font-weight: 700; }
 .hmeta .chev { color: var(--ink3); margin-left: 6px; }
+.hpar { flex: 1; max-width: 220px; }
 .gfchip { flex: none; min-height: 30px; padding: 0 10px; border-radius: 3px; border: 1px solid var(--green); background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 700; }
 
 /* one block a player: name and points, the score, then every extra this card keeps */
 .prows { border-top: 1px solid var(--line); }
 .prow { padding: 10px 0 12px; border-bottom: 1px solid var(--line); }
 .prow.skip { opacity: .55; }
-.phead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.phead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .pname { min-width: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
 .pname .dots { font-style: normal; color: var(--ink3); font-size: 11px; letter-spacing: 2px; margin-left: 6px; }
-.ppts { flex: none; display: flex; align-items: baseline; gap: 4px; }
-.ppts b { font-size: 20px; line-height: 1; color: var(--green); }
-.ppts small { font-size: 10px; color: var(--ink3); }
+/* the card so far in quiet ink, and what this hole gave as the one green thing, always at the right edge */
+.ptally { flex: none; display: flex; align-items: center; gap: 10px; }
+.ptot { display: flex; align-items: baseline; gap: 3px; }
+.ptot b { font-size: 16px; line-height: 1; color: var(--ink); }
+.ptot small { font-size: 10px; color: var(--ink3); }
+.ptot small + b { margin-left: 7px; }
+.phole { min-width: 38px; padding: 4px 8px; border-radius: 999px; text-align: center; font-size: 15px; line-height: 1.1;
+  background: var(--green); color: var(--green-ink); }
+.phole.nil { background: var(--card2); color: var(--ink3); }
+.phole.gap { visibility: hidden; }
 
 /* the score: − and + either side, starting at the par of the hole. One hairline panel with the house's
    4px corners and its divisions drawn in, like the segmented controls everywhere else, rather than three

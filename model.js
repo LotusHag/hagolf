@@ -77,6 +77,7 @@ export function fileSlug(name) {
 
 /** Validates a course as build.py emits it and returns it with derived fields. */
 export function prepareCourse(c) {
+  if (c.unlisted) c = unlistedCourse(c);
   const n = c.par.length;
   const first = c.first_hole || 1;
   const tees = {};
@@ -86,6 +87,22 @@ export function prepareCourse(c) {
   }
   return { ...c, n, tees, course_par: sum(c.par), labels: c.par.map((_, h) => String(first + h)) };
 }
+
+/**
+ * A course nobody has a card for carries only the pars typed in while it was played. A par still to come stands
+ * in as a 4; the rating is neutral (course rating = par, slope 113), so the course handicap is the index itself;
+ * and the stroke index is the hole order. Gross and net are exact; a Stableford total is too, unless a hole
+ * scored nothing, because only that clip depends on where the strokes fall.
+ */
+export function unlistedCourse(c) {
+  const par = c.par.map(p => p || 4);
+  const rating = { cr: sum(par), slope: 113 };
+  return { ...c, par, stroke_index: par.map((_, h) => h + 1), tees: { [UNLISTED_TEE]: { ratings: { m: rating, f: rating } } } };
+}
+export const UNLISTED_TEE = "any";
+
+/** The holes of an unlisted course still waiting for their par, 0-based; none on a course with a card. */
+export const holesWithoutPar = c => !c || !c.unlisted ? [] : c.par.map((p, h) => p ? null : h).filter(h => h !== null);
 
 /**
  * The checks golf/model.py makes when it reads a course file, which nothing used to apply to a course typed
@@ -309,7 +326,7 @@ export function compute(courseIn, round) {
   const entries = round.entries || [];
   const teesUsed = new Set(entries.map(p => p.tee || defaultTee));
   const teeLine = teesUsed.size <= 1 ? defaultTee : "mixed tees";
-  M.sub = [course.name, course.loop, `${n} holes`, teeLine, `par ${M.course_par}`].filter(Boolean).join("  ·  ");
+  M.sub = [course.name, course.loop, `${n} holes`, course.unlisted ? "" : teeLine, `par ${M.course_par}`].filter(Boolean).join("  ·  ");
 
   const players = [];
   const seen = new Set();
@@ -461,7 +478,7 @@ export const STAT_KINDS = [
   { key: "gir", col: "gir", label: "Greens in regulation", short: "GIR", word: "greens", perHole: null, derived: true,
     blurb: "Whether the green was reached with two strokes left for par. Never asked for: it falls out of your putts, so keeping those is what turns it on." },
   { key: "penaltyShots", col: "penalty_shots", label: "Penalty shots", short: "Penalties", word: "penalty shots", perHole: "count", derived: false,
-    blurb: "How many of the strokes you took were penalties — water, out of bounds, an unplayable lie. These are already inside your score and are never added to it again." },
+    blurb: "How many of the strokes you took were penalties — water, out of bounds, an unplayable lie. Tapping one in puts it on the hole's score at once, so your points drop with it." },
   { key: "bunker", col: "bunker_shots", label: "Bunker shots", short: "Sand", word: "bunker shots", perHole: "count", derived: false,
     blurb: "How many shots you played from a greenside bunker. One is the ordinary visit; two is the hole that got away. Whether you saved par from it comes from your score." },
 ];

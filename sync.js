@@ -42,7 +42,15 @@ const TABLES = {
   courses: {
     collect: keys => S.state.courses.filter(c => keys.has(c.slug)).map(c => ({ slug: c.slug, data: c.data, source: c.source || "phone",
       deleted: !!c.deleted, updated_at: c.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.courses, c => c.slug === r.slug, { slug: r.slug, data: r.data, source: r.source, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+    apply(r) {
+      const was = S.state.courses.find(c => c.slug === r.slug), pars = was && was.data && was.data.unlisted ? [...was.data.par] : null;
+      const took = lww(S.state.courses, c => c.slug === r.slug, { slug: r.slug, data: r.data, source: r.source, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r);
+      // two phones in one group fill in different holes before either has synced: keep every par, not the last row
+      const now = S.state.courses.find(c => c.slug === r.slug), mine = took ? pars : r.data && r.data.unlisted ? r.data.par : null;
+      if (now && !now.deleted && now.data.unlisted && mine && mine.some((p, h) => p && !now.data.par[h]))
+        mine.forEach((p, h) => { if (p && !now.data.par[h]) S.setPar({ course: r.slug }, h, p); });
+      return took;
+    },
   },
   rounds: {
     collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, owner_account: r.owner || null, name: r.name, date: r.date || null, course: r.course,

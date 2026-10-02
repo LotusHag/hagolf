@@ -252,7 +252,7 @@ export function holesPoster(M, T) {
     let ax = panel(0);
     for (const h of holes) {
       ax.text(h.hole, 0.7, h.label, { size: 22, family: "display", color: T.INK, ha: "center", va: "center" });
-      ax.text(h.hole, 0.3, `par ${h.par}  ·  SI ${h.si}`, { size: 9, color: T.INK_2, ha: "center", va: "center" });
+      ax.text(h.hole, 0.3, M.course.unlisted ? `par ${h.par}` : `par ${h.par}  ·  SI ${h.si}`, { size: 9, color: T.INK_2, ha: "center", va: "center" });
       if (h.metres) ax.text(h.hole, 0.12, `${h.metres} m`, { size: 8.5, color: T.INK_3, ha: "center", va: "center" });
     }
     ax.line(xlim[0], 0, xlim[1], 0, T.LINE, 0.8);

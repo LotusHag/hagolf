@@ -153,6 +153,7 @@ function playedBefore(limit = 6) {
 }
 
 export function newRound(slug = null) {
+  if (slug === "unlisted") return unlistedForm();
   if (slug) return roundForm(slug);
   const clubs = clubList();
   const near = here.lat !== null;
@@ -202,12 +203,12 @@ export function newRound(slug = null) {
     ${rec.length ? `<h2>Play again</h2><div class="recents">${rec.map(tile).join("")}</div><h2>Any club</h2>` : ""}
     <input id="q" class="search" placeholder="Search club, town or country" value="${esc(ui.courseQ || "")}" autocomplete="off">
     ${bar}
+    <div class="list" style="margin:0 0 6px;border-bottom:1px solid var(--line)"><a href="#scan"><span class="lead">${ICONS.camera}<div><div class="name">Scan an old scorecard</div><div class="muted small">Photograph a paper card; the scores are read for you to check</div></div></span><span class="chev">›</span></a></div>
     ${here.denied ? `<p class="muted small center" style="margin:8px 0 0">Location is off for this app. Search, or pick a country.</p>` : ""}
     <p id="qall" class="muted small center" style="margin:8px 0 0" hidden>Searching every club.</p>
     <div class="list" id="courses">${sorted.map(clubRow).join("")}</div>
-    <p id="cnone" class="muted center" hidden>Nothing matches. Add the club below, or scan its card.</p>
-    <div class="list" style="margin-top:20px"><a href="#newcourse"><span class="lead">${ICONS.plus}<div><div class="name">Club not here? Add it</div><div class="muted small">Look it up, or photograph its card</div></div></span><span class="chev">›</span></a>
-      <a href="#scan"><span class="lead">${ICONS.camera}<div><div class="name">Scan an old scorecard</div><div class="muted small">Photograph a paper card; the scores are read for you to check</div></div></span><span class="chev">›</span></a></div>`,
+    <p id="cnone" class="muted center" hidden>Nothing matches. Play it as an unlisted course.</p>
+    <div class="list" style="margin-top:20px"><a href="#new/unlisted"><span class="lead">${ICONS.plus}<div><div class="name">Course not listed? Play it anyway</div><div class="muted small">Fill in each hole's par as you play it</div></div></span><span class="chev">›</span></a></div>`,
     { back: "#play" });
 
   const q = document.getElementById("q");
@@ -241,6 +242,38 @@ export function newRound(slug = null) {
   });
 }
 
+/** I am on my own card from the start, provided the app knows what I play off; otherwise the players screen asks. */
+function addMe(r, c, tees) {
+  const me = S.me();
+  if (me && S.currentIndex(me) !== null && S.currentIndex(me) !== undefined) S.addEntry(r, c.n, { name: me.name, hi: S.currentIndex(me), tee: S.lastTee(me.id, r.course, tees) || r.defaultTee, gender: me.gender || "m", courseHandicap: null });
+}
+
+// No yardages, no stroke index, no rating: the pars are filled in on the course, and the round's name says where it was.
+function unlistedForm() {
+  const st = ui.unlisted || (ui.unlisted = { holes: 18 });
+  page("Unlisted course", `
+    <div class="filter"><button data-act="holes" data-v="9" class="${st.holes === 9 ? "on" : ""}">9 holes</button><button data-act="holes" data-v="18" class="${st.holes === 18 ? "on" : ""}">18 holes</button></div>
+    <div class="card">
+      <label style="margin-top:0">Name of the round <span class="muted">(optional)</span><input id="rname" value="${esc(st.name || "")}" placeholder="The course, or anything you like"></label>
+      <label>Date<input id="rdate" type="date" value="${S.today()}"></label>
+    </div>
+    ${tip(`<p>You fill in the par of each hole on the course, and everyone's score on it after that, the same as any round.</p>
+      <p>With no course rating, everyone's course handicap is simply their index (half of it over nine holes). Gross and net come out exact. With no stroke index, the strokes fall on the holes in order, so the points on a single hole mean little, but the total is right unless someone scores nothing on a hole.</p>`, "What you get without a card")}`,
+  { back: "#new", bar: `<button class="btn primary" data-act="create-unlisted">Next: who is playing ›</button>` });
+  bind(ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    st.name = document.getElementById("rname").value;
+    if (b.dataset.act === "holes") { st.holes = Number(b.dataset.v); return unlistedForm(); }
+    if (b.dataset.act !== "create-unlisted") return;
+    const r = S.createUnlistedRound({ name: st.name.trim() || "Unlisted course", date: document.getElementById("rdate").value || S.today(), holes: st.holes });
+    ui.unlisted = null;
+    addMe(r, courseBy(r.course), [r.defaultTee]);
+    S.save();
+    go(`#players/${r.id}`);
+  });
+}
+
 function roundForm(slug) {
   const c = courseBy(slug);
   if (!c) { go("#new"); return; }
@@ -268,9 +301,7 @@ function roundForm(slug) {
     const r = S.createRound({ course: slug, name: name || `${c.name} ${S.today()}`, date: document.getElementById("rdate").value || S.today(),
       defaultTee: document.getElementById("rtee").value, allowance: document.getElementById("rallow").value });
     document.querySelectorAll("input[name=lg]:checked").forEach(i => { S.setLeagueRound(i.value, r.id, true); S.state.settings.lastLeague = i.value; });
-    const me = S.me();
-    // I am on my own card from the start, provided the app knows what I play off; otherwise the players screen asks
-    if (me && S.currentIndex(me) !== null && S.currentIndex(me) !== undefined) S.addEntry(r, c.n, { name: me.name, hi: S.currentIndex(me), tee: S.lastTee(me.id, r.course, tees) || r.defaultTee, gender: me.gender || "m", courseHandicap: null });
+    addMe(r, c, tees);
     S.save();
     go(`#players/${r.id}`);
   });

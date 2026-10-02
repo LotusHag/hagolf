@@ -102,7 +102,7 @@ export const hiOk = hi => hi >= -10 && hi <= 54;
 // players are compared. Everything else that used to live here -- which tab, which player, which pair -- is
 // in the hash instead, so the back button works and a board can be linked to.
 export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: {}, reviewOrder: {}, roundsFilter: "all", extrasOpen: true,
-  loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", found: null, pending: null };
+  loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", unlisted: null, found: null, pending: null };
 
 // ---------------------------------------------------------------- icons
 const I = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}${extra}</svg>`;
@@ -368,7 +368,9 @@ export const avatar = (name, cls = "") => `<span class="avatar ${cls}" aria-hidd
 export const emptyState = (icon, title, text = "", action = "") => `<div class="empty">${ICONS[icon] || ""}<b>${esc(title)}</b>${text ? `<div>${esc(text)}</div>` : ""}${action}</div>`;
 
 // ---------------------------------------------------------------- the look
-export const themeNamed = n => DATA.themes.find(t => t.name === n) || null;
+// chalk became hagolf's own colours; leagues, clubs and phones that still say chalk get the same look
+const RETIRED = { chalk: "hagolf" };
+export const themeNamed = n => DATA.themes.find(t => t.name === (RETIRED[n] || n)) || null;
 const clubTheme = () => { const c = A.account() && A.account().club; return c && c.theme && !S.state.settings.themeChosen ? themeNamed(c.theme) : null; };
 export const appTheme = () => clubTheme() || themeNamed(S.state.settings.theme) || themeNamed("hagolf") || DATA.themes[0];
 export const leagueTheme = g => (g && themeNamed(g.theme)) || null;
@@ -582,9 +584,10 @@ export function resumeHash(r) {
   return `#review/${r.id}`;
 }
 // A round is read as club first, loop second: "18 holes" or "Oost" alone says nothing about where you were.
-export const roundClub = r => { const c = courseBy(r.course); return c ? c.name : r.name; };
+// An unlisted course has no name of its own: the round's name is where it was.
+export const roundClub = r => { const c = courseBy(r.course); return c && !c.unlisted ? c.name : r.name; };
 export const roundLoop = r => { const c = courseBy(r.course); return c && c.loop ? c.loop : ""; };
-export const roundWhere = r => { const c = courseBy(r.course); return c ? courseTitle(c) : r.name; };
+export const roundWhere = r => { const c = courseBy(r.course); return c && !c.unlisted ? courseTitle(c) : r.name; };
 export function noCourse(r, back = "#play") {
   page(r.name || "Round", `<div class="banner warn">This round's course (${esc(r.course)}) is not on this phone yet. It arrives with the next sync.</div>`, { back });
 }
