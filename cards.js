@@ -253,7 +253,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   const Mx = MARGIN * W_IN;
 
   // header
-  kicker(fig, Mx, 0.30, M.name);
+  kicker(fig, Mx, 0.30, M.name, (0.50 - MARGIN - 0.02) * W_IN);
   fig.fitText(Mx, 0.52, p.name, (0.50 - MARGIN - 0.02) * W_IN, 34, 10, { family: "display", color: T.INK, va: "top" });
   const bits = metaBits(M, p);
   const metaW = (0.50 - MARGIN - 0.02) * W_IN;

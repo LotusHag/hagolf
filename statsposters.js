@@ -286,7 +286,7 @@ function phonePlayerBars(T, players, label, tail) {
     players.forEach((p, i) => {
       const yy = -i - 0.5;
       rowBand(ax, 0, yy - 0.46, w, 0.92, i, 0.06);
-      ax.text(0.1, yy + 0.2, p.name, { size, family: "display", color: T.INK, va: "center" });
+      ax.text(0.1, yy + 0.2, fig.clip(p.name, w - tailW - 0.16, size, { family: "display" }), { size, family: "display", color: T.INK, va: "center" });
       if (notes) ax.text(w - 0.06, yy + 0.2, pc(p), { size: 10, color: T.INK_2, ha: "right", va: "center" });
       const c4 = four(p.counts);
       outcomeBar(ax, 0.1, yy - 0.36, w - 0.14, 0.34, c4, sumc(c4), 0.03, true, 10.5);

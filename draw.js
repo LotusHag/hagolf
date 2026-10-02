@@ -258,10 +258,20 @@ export class Fig {
     return width;
   }
 
-  /** Shrinks the size until the text fits maxW inches. */
+  /** Shrinks the size until the text fits maxW inches, and cuts it short with an ellipsis if the floor is not enough. */
   fitText(x, y, s, maxW, size, minSize, opts) {
-    this.text(x, y, s, { ...opts, size: this.fitOne(s, maxW, size, minSize, opts) });
+    const at = this.fitOne(s, maxW, size, minSize, opts);
+    this.text(x, y, this.clip(s, maxW, at, opts), { ...opts, size: at });
     return size;
+  }
+
+  /** `s` as it is if it fits `maxW` inches, otherwise as much of it as fits followed by an ellipsis. */
+  clip(s, maxW, size, { family = "text", weight } = {}) {
+    s = String(s);
+    if (!s || this.measure(s, size, family, weight) <= maxW) return s;
+    let n = s.length;
+    while (n > 0 && this.measure(s.slice(0, n).trimEnd() + "…", size, family, weight) > maxW) n--;
+    return n ? s.slice(0, n).trimEnd() + "…" : "";
   }
 
   /**
@@ -388,8 +398,8 @@ export class Ax {
   text(xd, yd, s, opts) { return this.fig.text(this.X(xd), this.Y(yd), s, opts); }
   /** The same, shrunk to fit `maxWd` data units, so a long caption never leaves the box it labels. */
   fitText(xd, yd, s, maxWd, opts = {}) {
-    const size = this.fig.fitOne(s, Math.abs(this.DX(maxWd)), opts.size ?? 10, opts.min ?? 6.5, opts);
-    return this.fig.text(this.X(xd), this.Y(yd), s, { ...opts, size });
+    const w = Math.abs(this.DX(maxWd)), size = this.fig.fitOne(s, w, opts.size ?? 10, opts.min ?? 6.5, opts);
+    return this.fig.text(this.X(xd), this.Y(yd), this.fig.clip(s, w, size, opts), { ...opts, size });
   }
   textWidth(s, size, family = "text") { return this.fig.measure(s, size, family) / this.wIn * (this.xlim[1] - this.xlim[0]); }
   /** Box from data coordinates (x, y bottom-left, w, h) as matplotlib draws it. */
@@ -403,16 +413,17 @@ export class Ax {
 
 // ---------------------------------------------------------------- figure chrome, as theme.py
 /** The small line above the title: accent caps, a quiet line in the text face, or a filled accent tag. */
-export function kicker(fig, x, y, s) {
+export function kicker(fig, x, y, s, maxW = fig.w - x - MARGIN * fig.w) {
   const T = fig.T, k = house(T).kicker;
-  if (k === "text") return void fig.text(x, y - 0.01, s, { size: 11, color: T.ACCENT, va: "top" });
+  if (k === "text") return void fig.text(x, y - 0.01, fig.clip(s, maxW, 11), { size: 11, color: T.ACCENT, va: "top" });
   if (k === "tag") {
-    const w = fig.measure(s.toUpperCase(), 9, "display") + 0.17;
+    s = fig.clip(s.toUpperCase(), maxW - 0.17, 9, { family: "display" });
+    const w = fig.measure(s, 9, "display") + 0.17;
     fig.rbox(x, y - 0.02, w, 0.20, T.ACCENT, 0.03);
-    fig.text(x + 0.085, y + 0.08, s.toUpperCase(), { size: 9, family: "display", color: on(T, T.ACCENT), va: "center" });
+    fig.text(x + 0.085, y + 0.08, s, { size: 9, family: "display", color: on(T, T.ACCENT), va: "center" });
     return;
   }
-  fig.text(x, y, s.toUpperCase(), { size: 12, family: "display", color: T.ACCENT, va: "top" });
+  fig.text(x, y, fig.clip(s.toUpperCase(), maxW, 12, { family: "display" }), { size: 12, family: "display", color: T.ACCENT, va: "top" });
 }
 
 /** The rule that closes the header: one per family, and the quickest way to see which collection a sheet is from. */
@@ -456,8 +467,11 @@ export function header(fig, title, kick, sub, right = null) {
     headerRule(fig, y);
     return y;
   }
-  kicker(fig, M, 0.30, kick);
-  fig.text(M, 0.52, caps(T, title), { size: 30, family: "display", color: T.INK, va: "top" });
+  // the kicker stops short of the right-hand text, and so does the title once that text runs to a second line
+  const rl = right ? String(right).split("\n") : [];
+  const rw = rl.length ? Math.max(...rl.map(l => fig.measure(l, 10.5))) + 0.3 : 0;
+  kicker(fig, M, 0.30, kick, fig.w - 2 * M - rw);
+  fig.fitText(M, 0.52, caps(T, title), fig.w - 2 * M - (rl.length > 1 ? rw : 0), 30, 15, { family: "display", color: T.INK, va: "top" });
   fig.text(M, 1.08, sub, { size: 10, color: T.INK_3, va: "top" });
   if (right) fig.text(fig.w - M, 0.34, right, { size: 10.5, color: T.INK_2, va: "top", ha: "right", lineSpacing: 1.6 });
   headerRule(fig, 1.42);
