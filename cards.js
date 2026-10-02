@@ -1,6 +1,6 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
-import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule, house } from "./draw.js";
-import { heading, headingIn, panel, bigIn } from "./sheet.js";
+import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule, house, isPhone, PHONE_W } from "./draw.js";
+import { heading, headingIn, panel, bigIn, inchAxes, blockAxes } from "./sheet.js";
 import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, statReadings, STRIP_KEYS, NO_SCORE } from "./model.js";
 
 const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -185,13 +185,42 @@ const SECT_HEAD = 0.1, SECT_ROW0 = 0.41, SECT_ROW = 0.265, SECT_BAR = 0.3, SECT_
 // into it.
 const STATS_IN = 1.15, STATS_GAP = 0.12;
 
+const cardFile = p => `players/${p.gplace !== null ? String(p.gplace).padStart(2, "0") : "NR"}_${fileSlug(p.name)}.png`;
+
+/** The line under the name: the handicap the round was played off and the tees. */
+function metaBits(M, p) {
+  const bits = [`Handicap index ${fmtIndex(p.hi)}`, `course handicap ${fmtHcp(p.ch)}`];
+  if (M.allowance !== 100) bits.push(`playing handicap ${fmtHcp(p.ph)} at ${M.allowance}%`);
+  if (Object.keys(M.course.tees).length > 1) bits.push(`${p.tee} tees` + (p.gender === "f" ? ", women's rating" : ""));
+  if (p.ph < 0) bits.push(`plus handicap: gives ${-p.ph} stroke${p.ph !== -1 ? "s" : ""} back`);
+  return bits;
+}
+
+/** The headline tiles, [caption, figure, line under it]. */
+function cardTiles(M, p, basic) {
+  const n = M.n, N = M.field, L = M.labels, PAR = p.par;
+  const vsTotal = sum(p.vsrest.filter(v => v !== null));
+  let grossTile, netTile;
+  if (p.nr) {
+    grossTile = ["Gross", "NR", `from hole ${L[p.from_hole - 1]}, ${p.holes_played} of ${n} holes`];
+    netTile = ["Net", "NR", "no return"];
+  } else {
+    grossTile = ["Gross", String(p.gross), `${fmtToPar(p.topar)}  ·  ${p.gplace} of ${N}`];
+    netTile = ["Net", String(p.net), `${fmtToPar(p.net - sum(PAR))} to par`];
+  }
+  const tiles = [grossTile, netTile, ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}`]];
+  if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
+  return tiles;
+}
+
 /**
  * `basic` is the free card: who, what they went round in, and the scorecard with its notation. `full` adds what
  * the round was like -- against the field per hole, where the strokes went, and the story. The basic card stops
  * after the scorecard, so the sheet itself is shorter rather than a full card with holes in it.
  */
 export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
-  const n = M.n, SI = M.si, N = M.field, L = M.labels, PAR = p.par;
+  if (isPhone(T)) return phoneCard(M, p, T, tier, { extras });
+  const n = M.n, SI = M.si, L = M.labels, PAR = p.par;
   const holeLine = h => M.course.unlisted ? `par ${PAR[h]}` : `par ${PAR[h]}  ·  SI ${SI[h]}`;
   const basic = tier === "basic";
   // The extras are a choice; the room for them is not. Whether this card kept any or not the by-section
@@ -226,10 +255,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   // header
   kicker(fig, Mx, 0.30, M.name);
   fig.fitText(Mx, 0.52, p.name, (0.50 - MARGIN - 0.02) * W_IN, 34, 10, { family: "display", color: T.INK, va: "top" });
-  const bits = [`Handicap index ${fmtIndex(p.hi)}`, `course handicap ${fmtHcp(p.ch)}`];
-  if (M.allowance !== 100) bits.push(`playing handicap ${fmtHcp(p.ph)} at ${M.allowance}%`);
-  if (Object.keys(M.course.tees).length > 1) bits.push(`${p.tee} tees` + (p.gender === "f" ? ", women's rating" : ""));
-  if (p.ph < 0) bits.push(`plus handicap: gives ${-p.ph} stroke${p.ph !== -1 ? "s" : ""} back`);
+  const bits = metaBits(M, p);
   const metaW = (0.50 - MARGIN - 0.02) * W_IN;
   const metaLines = fig.wrap(bits.join("  ·  "), metaW, 10);
   fig.text(Mx, 1.12, metaLines.slice(0, 2).join("\n"), { size: metaLines.length > 1 ? 8.5 : 10, color: T.INK_3, va: "top", lineSpacing: 1.35 });
@@ -237,18 +263,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
 
   // stat tiles
   const vsPlayed = p.vsrest.filter(v => v !== null);
-  const vsTotal = sum(vsPlayed);
-  let grossTile, netTile;
-  if (p.nr) {
-    grossTile = ["Gross", "NR", `from hole ${L[p.from_hole - 1]}, ${p.holes_played} of ${n} holes`];
-    netTile = ["Net", "NR", "no return"];
-  } else {
-    grossTile = ["Gross", String(p.gross), `${fmtToPar(p.topar)}  ·  ${p.gplace} of ${N}`];
-    netTile = ["Net", String(p.net), `${fmtToPar(p.net - sum(PAR))} to par`];
-  }
-  const tiles = [grossTile, netTile,
-    ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}`]];
-  if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
+  const tiles = cardTiles(M, p, basic);
   const axt = fig.axes(rect(0.28, 1.0, basic ? 0.62 : 0.50), [0, tiles.length], [0, 1]);
   tiles.forEach(([lab, big, small], k) => {
     axt.rbox(k + 0.05, 0.0, 0.9, 1.0, T.PANEL, 0.06);
@@ -331,8 +346,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
 
   if (basic) {
     drawMark(fig, 0.06);
-    const prefix0 = p.gplace !== null ? String(p.gplace).padStart(2, "0") : "NR";
-    return { file: `players/${prefix0}_${fileSlug(p.name)}.png`, fig };
+    return { file: cardFile(p), fig };
   }
 
   // against the field
@@ -399,10 +413,224 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
 
   drawMark(fig, 0.06);  // the card has no footer; the story block ends 0.2in above the edge, so the mark sits under it
 
-  const prefix = p.gplace !== null ? String(p.gplace).padStart(2, "0") : "NR";
-  return { file: `players/${prefix}_${fileSlug(p.name)}.png`, fig };
+  return { file: cardFile(p), fig };
 }
 
 export function renderCards(M, T, names = null, tier = "full", opts = {}) {
   return M.players.filter(p => !names || names.includes(p.name)).map(p => renderCard(M, p, T, tier, opts));
+}
+
+// ---------------------------------------------------------------- the phone version
+// One column PHONE_W wide at the poster DPI, so a point size here is the size the reader sees: the scorecard
+// goes front nine over back nine, the chart splits the same way, and every panel stands under the last.
+const PH_LINE = 10 / 72 * 1.5, TILE_IN = 1.0, TILE_GAP = 0.1;
+const STORY_PT = 11, STORY_LS = 1.4;
+
+function phoneCard(M, p, T, tier, { extras }) {
+  const n = M.n, SI = M.si, L = M.labels, PAR = p.par, H = house(T);
+  const basic = tier === "basic", listed = !M.course.unlisted;
+  const Mx = MARGIN * PHONE_W, W = PHONE_W - 2 * Mx;
+  const probe = new Fig(PHONE_W, 0.1, T);   // measured at the real DPI, so wrapping matches the drawing
+  const range = (a, b) => [...Array(b - a).keys()].map(i => a + i);
+  const parts = [];                          // [inches tall, draw(fig, top), gap after]
+  const add = (h, draw, gap = 0) => parts.push([h, draw, gap]);
+  // a title in a wide face set in capitals can outrun the page, so it falls back to a shorter way of saying it
+  const head = (titles, gap = 0.04) => {
+    const all = [].concat(titles), title = all.find(t => probe.measure(caps(T, t), 12, "display") <= W - 0.25) || all[all.length - 1];
+    add(headingIn, (fig, y) => heading(fig, Mx, y, W, title), gap);
+  };
+
+  // header, as draw.js header() sets it on a phone: the name fitted to the width, the handicap wrapped under it
+  const meta = probe.wrap(metaBits(M, p).join("  ·  "), W, 10);
+  const ruleY = 1.0 + meta.length * PH_LINE + 0.12;
+  add(ruleY, fig => {
+    kicker(fig, Mx, 0.30, M.name);
+    fig.fitText(Mx, 0.52, p.name, W, 26, 15, { family: "display", color: T.INK, va: "top" });
+    fig.text(Mx, 1.0, meta.join("\n"), { size: 10, color: T.INK_3, va: "top", lineSpacing: 1.5 });
+    headerRule(fig, ruleY);
+  }, 0.26);
+
+  // tiles, two across; an odd last one takes the row
+  const tiles = cardTiles(M, p, basic);
+  add(Math.ceil(tiles.length / 2) * (TILE_IN + TILE_GAP) - TILE_GAP, (fig, y) => tiles.forEach(([lab, big, small], k) => {
+    const tw = k === tiles.length - 1 && k % 2 === 0 ? W : (W - TILE_GAP) / 2;
+    const x = Mx + (k % 2) * (tw + TILE_GAP), ty = y + Math.floor(k / 2) * (TILE_IN + TILE_GAP), cx = x + tw / 2, inner = tw - 0.24;
+    fig.rbox(x, ty, tw, TILE_IN, T.PANEL, 0.08);
+    fig.fitText(cx, ty + 0.2, caps(T, lab), inner, 10, 9, { family: "display", color: T.ACCENT, ha: "center", va: "center" });
+    fig.fitText(cx, ty + 0.52, big, inner, 28, 14, { family: "display", color: big === "NR" ? T.INK_3 : T.INK, ha: "center", va: "center" });
+    fig.fitText(cx, ty + 0.83, small, inner, 10.5, 9, { color: T.INK_3, ha: "center", va: "center" });
+  }), 0.3);
+
+  // scorecard: one block a nine, every block on the same columns so hole 10 stands under hole 1
+  const half = n === 18 ? 9 : n > 10 ? Math.ceil(n / 2) : n;
+  const nines = half === n ? [[0, n, null]] : [[0, half, n === 18 ? "OUT" : null], [half, n, n === 18 ? "IN" : null]];
+  const blocks = nines.map(([a, b, sub], i) => [...range(a, b).map(h => ["hole", h]),
+    ...(sub ? [["sub", [a, b], sub]] : []), ...(i === nines.length - 1 ? [["total", [0, n], "TOTAL"]] : [])]);
+  const slots = Math.max(...blocks.map(c => c.length));
+  const labels = [["par", "Par"], ...(listed ? [["si", "SI"]] : []), ["strokes", "Strokes"], ["score", "Score"], ["net", "Net"], ["points", "Points"]];
+  const LX = Math.max(...labels.map(([, l]) => probe.measure(caps(T, l), 9.5, "display"))) + 0.1;
+  const cw = (W - LX) / slots;
+  const R = { hole: 0.17, par: 0.44, si: 0.66 };
+  const r0 = listed ? 0.82 : 0.6, bandTop = r0 + 0.33, bandH = 0.72;
+  Object.assign(R, { strokes: r0 + 0.17, score: bandTop + bandH / 2, net: bandTop + bandH + 0.19 });
+  R.points = R.net + 0.31;
+  const blockIn = R.points + 0.19;
+  const [big, sub0] = n <= 10 ? [17, 16] : [15, 14];
+  const total = probe.measure("TOTAL", 10, "display") <= cw + 0.06 ? "TOTAL" : "TOT";   // the last column may lean into the margin
+  const ctr = { ha: "center", va: "center" };
+  const drawNine = (fig, y, cols) => {
+    const ax = inchAxes(fig, Mx, y, W, blockIn);
+    for (const [k, l] of labels) ax.text(0, R[k], caps(T, l), { size: 9.5, family: "display", color: T.INK_3, va: "center" });
+    ax.rbox(LX - 0.03, bandTop, cols.length * cw + 0.03, bandH, T.PANEL, 0.06);
+    ax.line(0, r0, W, r0, T.LINE, 0.8);
+    ax.line(0, blockIn - 0.01, W, blockIn - 0.01, T.LINE, 0.8);
+    cols.forEach(([kind, ref, title], k) => {
+      const x = LX + (k + 0.5) * cw;
+      if (kind === "hole") {
+        const h = ref, st = p.strokes[h], pts = p.hpts[h];
+        ax.text(x, R.hole, L[h], { size: 14, family: "display", color: T.INK, ...ctr });
+        ax.text(x, R.par, String(PAR[h]), { size: 11, color: T.INK_2, ...ctr });
+        if (listed) ax.text(x, R.si, String(SI[h]), { size: 9.5, color: T.INK_3, ...ctr });
+        ax.text(x, R.strokes, String(st), { size: 10.5, color: st ? T.INK_2 : T.INK_3, ...ctr });
+        if (p.scores[h] === null) {
+          ax.text(x, R.score, "–", { size: big, family: "display", color: T.INK_3, ...ctr });
+          ax.text(x, R.net, "–", { size: 11, color: T.INK_3, ...ctr });
+        } else {
+          scoreGlyph(ax, x, R.score, cw * 0.82, p.deltas[h], String(p.scores[h]), big, 1.6);
+          if (p.penalty[h]) {
+            const s = `+${p.penalty[h]}`, bw = probe.measure(s, 9, "display") + 0.08;
+            ax.rbox(x - bw / 2, bandTop + 0.025, bw, 0.165, T.BRONZE, 0.03);
+            ax.text(x, bandTop + 0.025 + 0.0825, s, { size: 9, family: "display", color: on(T, T.BRONZE), ...ctr });
+          }
+          ax.text(x, R.net, String(p.nets[h]), { size: 11, color: T.INK_2, ...ctr });
+        }
+        ax.text(x, R.points, String(pts), { size: 12, family: "display", color: pts >= 3 ? T.ACCENT : pts === 2 ? T.INK : T.INK_3, ...ctr });
+        return;
+      }
+      const [a, b] = ref, scores = p.scores.slice(a, b), st = sum(p.strokes.slice(a, b));
+      ax.text(x, R.hole, kind === "total" ? total : title, { size: 10, family: "display", color: T.INK_3, ...ctr });
+      ax.text(x, R.par, String(sum(PAR.slice(a, b))), { size: 11, color: T.INK_2, ...ctr });
+      if (st) ax.text(x, R.strokes, String(st), { size: 10.5, color: T.INK_2, ...ctr });
+      if (scores.every(v => v !== null)) {
+        const gross = String(sum(scores));
+        ax.text(x, R.score - 0.09, gross, { size: probe.fitOne(gross, cw - 0.03, kind === "total" ? sub0 + 2 : sub0, 12, { family: "display" }), family: "display", color: T.INK, ...ctr });
+        ax.text(x, R.score + 0.2, fmtToPar(sum(scores) - sum(PAR.slice(a, b))), { size: 9.5, family: "display", color: T.INK_2, ...ctr });
+        ax.text(x, R.net, String(sum(p.nets.slice(a, b))), { size: 12, family: "display", color: T.INK, ...ctr });
+      } else {
+        ax.text(x, R.score, "NR", { size: 13, family: "display", color: T.INK_3, ...ctr });
+        ax.text(x, R.net, "NR", { size: 10, family: "display", color: T.INK_3, ...ctr });
+      }
+      ax.text(x, R.points, String(sum(p.hpts.slice(a, b))), { size: 13, family: "display", color: T.ACCENT, ...ctr });
+    });
+  };
+  head("Scorecard");
+  blocks.forEach((cols, i) => add(blockIn, (fig, y) => drawNine(fig, y, cols), i < blocks.length - 1 ? 0.16 : 0.14));
+
+  // the notation key, wrapped onto as many rows as it needs, then the notes under it one to a line
+  const KEY = [[-2, "eagle or better"], [-1, "birdie"], [0, "par"], [1, "bogey"], [2, "double or worse"]];
+  const KCELL = 0.28, KROW = 0.34;
+  const kw = KEY.map(([, name]) => KCELL + 0.07 + probe.measure(name, 10)), KGAP = 0.24;
+  const fits = ws => ws.reduce((a, w) => a + w, 0) + KGAP * (ws.length - 1) <= W;
+  // as few rows as it takes, and then as even as they will go, so "double or worse" is never left alone
+  let per = KEY.length;
+  while (per > 1 && !fits(kw.slice(0, per))) per--;
+  const nrows = Math.ceil(KEY.length / per), even = Math.ceil(KEY.length / nrows);
+  if (range(0, nrows).every(r => fits(kw.slice(r * even, (r + 1) * even)))) per = even;
+  const keyRows = range(0, Math.ceil(KEY.length / per)).map(r => {
+    let x = 0;
+    return range(r * per, Math.min(KEY.length, (r + 1) * per)).map(i => { const at = x; x += kw[i] + KGAP; return [...KEY[i], at]; });
+  });
+  add(keyRows.length * KROW, (fig, y) => {
+    const ax = inchAxes(fig, Mx, y, W, keyRows.length * KROW);
+    keyRows.forEach((row, r) => row.forEach(([d, name, x0]) => {
+      scoreGlyph(ax, x0 + KCELL / 2, (r + 0.5) * KROW, KCELL, d, String(4 + d), 10, 1.2, T.INK_2);
+      ax.text(x0 + KCELL + 0.07, (r + 0.5) * KROW, name, { size: 10, color: T.INK_3, va: "center" });
+    }));
+  }, 0.06);
+  const notes = [];
+  if (p.skipped.some(Boolean)) notes.push("– = not played (joined late)");
+  if (p.filled.some(Boolean)) notes.push(`a hole with no score counts ${NO_SCORE}`);
+  if (p.penalty_total) notes.push("amber +n = penalty strokes, counted in the score");
+  notes.push("strokes = handicap strokes received on that hole");
+  const noteLines = notes.flatMap(s => probe.wrap(s, W, 9.5));
+  add(noteLines.length * 9.5 / 72 * 1.45, (fig, y) =>
+    fig.text(Mx, y, noteLines.join("\n"), { size: 9.5, color: T.INK_3, va: "top", lineSpacing: 1.45 }), 0.34);
+
+  if (!basic) {
+    // against the field: split like the scorecard, on one scale, each half only as tall as its own bars
+    const vs = p.vsrest, played = vs.filter(v => v !== null);
+    const span = Math.max(1, Math.max(0, ...played) - Math.min(0, ...played));
+    const PLOT = 1.6, PAD = 0.24, u = span / (PLOT - 2 * PAD), per = half;
+    const pitch = W / per;
+    head(["Strokes against the rest of the field, per hole", "Strokes against the field, per hole", "Against the field, per hole"]);
+    nines.forEach(([a, b], i) => {
+      const own = vs.slice(a, b).filter(v => v !== null);
+      const lo = Math.min(0, ...own), hi = Math.max(0, ...own), plot = (hi - lo) / u + 2 * PAD;
+      add(plot + 0.22, (fig, y) => {
+        const ax = blockAxes(fig, Mx, y, W, plot, [0, per], [lo - PAD * u, hi + PAD * u]);
+        const off = 0.05 * u, bw = 0.58;
+        ax.line(0.05, 0, per - 0.05, 0, T.LINE, 0.8);
+        range(a, b).forEach((h, k) => {
+          const v = vs[h], x = k + 0.5;
+          const val = { size: 10, family: "display", color: T.INK_2, ha: "center" };
+          if (v === null) ax.text(x, off, "–", { ...val, size: 11, color: T.INK_3, va: "bottom" });
+          else if (Math.abs(v) < 0.005) {
+            ax.rbox(x - bw / 2, -0.01 * u, bw, 0.02 * u, T.INK_3, 0);
+            ax.text(x, off, "0.0", { ...val, va: "bottom" });
+          } else {
+            ax.rbox(x - bw / 2, Math.min(0, v), bw, Math.abs(v), v < 0 ? T.ACCENT : T.BAR, 0.03);
+            ax.text(x, v + (v >= 0 ? off : -off), fmtSigned(v, 1), { ...val, va: v >= 0 ? "bottom" : "top" });
+          }
+          fig.text(Mx + x * pitch, y + plot + 0.11, L[h], { size: 10, color: T.INK_3, ...ctr });
+        });
+      }, i < nines.length - 1 ? 0.16 : 0.08);
+    });
+    const cap = probe.wrap("Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.", W, 9.5);
+    add(cap.length * 9.5 / 72 * 1.45, (fig, y) =>
+      fig.text(Mx, y, cap.join("\n"), { size: 9.5, color: T.INK_3, va: "top", lineSpacing: 1.45 }), 0.34);
+
+    // where the strokes went
+    const rows = sectionRows(M, p), ROW = 0.33;
+    head("Shots to par, by section");
+    add(rows.length * ROW + 0.62, (fig, y) => {
+      const ax = inchAxes(fig, Mx, y, W, rows.length * ROW + 0.62);
+      rows.forEach(([label, v, cnt], i) => {
+        const yy = (i + 0.5) * ROW;
+        ax.text(0, yy, label, { size: 11, color: T.INK_2, va: "center" });
+        ax.text(W * 0.66, yy, fmtToPar(v), { size: 14, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
+        ax.text(W * 0.7, yy, `${fmtSigned(v / cnt, 1)} per hole`, { size: 10, color: T.INK_3, va: "center" });
+      });
+      const foot = rows.length * ROW;
+      ax.text(0, foot + 0.15, "Results against par" + (p.nr ? ` (${p.holes_played} holes played)` : ""), { size: 10, color: T.INK_3, va: "center" });
+      outcomeBar(ax, 0, foot + 0.33, W, 0.27, p.counts, n, 0.03, true, 10.5);
+    }, 0.34);
+
+    // the extras, three to a row at most and the rows balanced, so four readings stand two over two
+    const strip = extras ? stripReadings(p.statline) : [];
+    if (strip.length) {
+      const across = strip.length <= 3 ? strip.length : Math.ceil(strip.length / 2), step = W / across, BOX = 0.92;
+      const xrows = [strip.slice(0, across), strip.slice(across)].filter(r => r.length);
+      head("Putts, fairways and the rest");
+      add(xrows.length * (BOX + 0.08) - 0.08, (fig, y) => xrows.forEach((row, r) => row.forEach((rd, i) =>
+        panel(fig, Mx + (W - row.length * step) / 2 + i * step, y + r * (BOX + 0.08), step, BOX, rd.count, rd.short, null,
+          { bigSize: 22, capSize: 10 }))), 0.34);
+    }
+
+    // story
+    const told = story(M, p, { extras }).slice(0, STORY_LINES[H.prose] ?? 7);
+    const lh = STORY_PT / 72 * STORY_LS;
+    const wrapped = told.map(ln => probe.wrap(ln, W - 0.17, STORY_PT));
+    head("The story of the round", 0.1);
+    wrapped.forEach((lines, i) => add(lines.length * lh, (fig, y) => {
+      fig.rbox(Mx, y + 0.02, 0.045, 0.16, T.ACCENT, 0);
+      fig.text(Mx + 0.17, y, lines.join("\n"), { size: STORY_PT, color: T.INK_2, va: "top", lineSpacing: STORY_LS });
+    }, i < wrapped.length - 1 ? 0.13 : 0));
+  }
+
+  const BOTTOM = 0.4;   // room under the last block for the mark
+  const fig = new Fig(PHONE_W, parts.reduce((a, [h, , g]) => a + h + g, 0) + BOTTOM, T);
+  let y = 0;
+  for (const [h, draw, gap] of parts) { draw(fig, y); y += h + gap; }
+  drawMark(fig, 0.12);
+  return { file: cardFile(p), fig };
 }

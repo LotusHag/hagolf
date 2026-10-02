@@ -154,7 +154,19 @@ const PLAIN = { rule: "line", chip: "box", radius: 1, band: "tint", kicker: "cap
   page: "tall", flow: "asis", tiles: "row", surface: "panel", palette: "one", prose: "full", legends: true, density: 1 };
 
 /** The house style a theme draws in. A theme with no family, or one this build does not know, gets the plain one. */
-export const house = T => (T && HOUSE[T.family]) || PLAIN;
+export const house = T => {
+  const h = (T && HOUSE[T.family]) || PLAIN;
+  if (!isPhone(T)) return h;
+  // a phone has no room beside the title for headline figures, nor beside each figure in a strip for its label
+  if (!PHONE_HOUSE.has(h)) PHONE_HOUSE.set(h, { ...h, page: "phone", tiles: h.tiles === "header" || h.tiles === "strip" ? "row" : h.tiles });
+  return PHONE_HOUSE.get(h);
+};
+const PHONE_HOUSE = new Map();
+
+// The phone version: 1080 px at the poster DPI, about a CSS pixel per point, so type floors are 9, 11 and 14 pt.
+export const PHONE_W = 5.4;
+export const phone = T => ({ ...T, PHONE: true });
+export const isPhone = T => !!(T && T.PHONE);
 /** Upper case where the family sets its titles in caps, as typed where it does not. */
 export const caps = (T, s) => house(T).caps ? String(s).toUpperCase() : String(s);
 
@@ -421,8 +433,29 @@ export function headerRule(fig, y) {
   }
 }
 
+/** What the phone header sets under its title: the sub and then the right-hand text, each wrapped to the page. */
+function phoneLines(fig, sub, right) {
+  const W = fig.w * (1 - 2 * MARGIN);
+  const wrapped = s => String(s).split("\n").filter(Boolean).flatMap(l => fig.wrap(l, W, 10));
+  return [...(sub ? wrapped(sub) : []), ...(right ? wrapped(right) : [])];
+}
+const PHONE_LINE = 10 / 72 * 1.5;
+
+/** How tall the header band is, rule included, before the figure exists: `probe` only measures. */
+export const headerIn = (probe, sub, right) =>
+  isPhone(probe.T) ? 1.0 + phoneLines(probe, sub, right).length * PHONE_LINE + 0.32 : HEADER_IN;
+
 export function header(fig, title, kick, sub, right = null) {
   const T = fig.T, M = MARGIN * fig.w;
+  if (isPhone(T)) {
+    kicker(fig, M, 0.30, kick);
+    fig.fitText(M, 0.52, caps(T, title), fig.w - 2 * M, 26, 15, { family: "display", color: T.INK, va: "top" });
+    const lines = phoneLines(fig, sub, right);
+    if (lines.length) fig.text(M, 1.0, lines.join("\n"), { size: 10, color: T.INK_3, va: "top", lineSpacing: 1.5 });
+    const y = 1.0 + lines.length * PHONE_LINE + 0.12;
+    headerRule(fig, y);
+    return y;
+  }
   kicker(fig, M, 0.30, kick);
   fig.text(M, 0.52, caps(T, title), { size: 30, family: "display", color: T.INK, va: "top" });
   fig.text(M, 1.08, sub, { size: 10, color: T.INK_3, va: "top" });

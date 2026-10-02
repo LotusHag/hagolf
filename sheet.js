@@ -4,7 +4,7 @@
 // how wide the sheet is, whether the blocks run down it or flow in two columns, in what order, where the
 // headline numbers sit and how much writing survives. One poster, ten pages. Nothing here knows what a
 // Stableford point is: a block is a height and a draw call, and this only finds it somewhere to stand.
-import { Fig, MARGIN, HEADER_IN, header, footer, footerWidth, drawMark, section, house, caps, prose, surface } from "./draw.js";
+import { Fig, MARGIN, header, headerIn, footer, footerWidth, drawMark, section, house, caps, prose, surface, isPhone, PHONE_W } from "./draw.js";
 
 /** The sheets a family can ask for: how wide, in how many columns, and how far apart those columns sit. */
 export const PAGES = {
@@ -13,6 +13,7 @@ export const PAGES = {
   poster: { w: 13.0, cols: 1, gap: 0 },       // one column, but wide enough to set everything larger
   broad: { w: 14.0, cols: 2, gap: 0.55 },
   wide: { w: 16.5, cols: 2, gap: 0.62 },      // landscape: the clubhouse wall, or a screen
+  phone: { w: PHONE_W, cols: 1, gap: 0 },     // the phone version, whatever the family: one column, upright
 };
 
 // The page a family falls back to when a poster cannot use the one it would have chosen: a single table
@@ -25,6 +26,7 @@ const AS_TWO = { portrait: "wide", tall: "wide", poster: "wide", broad: "broad",
  * content can bear -- and the family chooses freely inside that.
  */
 export function pageOf(T, { minCols = 1, maxCols = 9 } = {}) {
+  if (isPhone(T)) return PAGES.phone;   // two boards meant to sit side by side stand one above the other
   let key = PAGES[house(T).page] ? house(T).page : "tall";
   if (PAGES[key].cols > maxCols) key = AS_ONE[key];
   if (PAGES[key].cols < minCols) key = AS_TWO[key];
@@ -245,9 +247,12 @@ export function tilesBlock(T, items) {
   // A row of panels, wrapped where there are more headline numbers than the sheet is wide enough to set.
   const hIn = TILE_H * d;
   return block("tiles", 3.2, w => bandRows(items, w, { minIn: 1.7 }).length * (hIn + 0.1) - 0.1, (fig, x, y, w) => {
-    bandRows(items, w, { minIn: 1.7 }).forEach((row, r) => {
+    const rows = bandRows(items, w, { minIn: 1.7 });
+    rows.forEach((row, r) => {
       const step = w / row.length, ry = y + r * (hIn + 0.1);
-      row.forEach(([big, label, colr], i) => panel(fig, x + i * step, ry, step, hIn, big, label, colr, { bigSize: bigIn(step) }));
+      // on a phone a tile left alone on the last row keeps its siblings' size instead of filling the width with it
+      const big = bigIn(isPhone(fig.T) ? w / rows[0].length : step);
+      row.forEach(([b, label, colr], i) => panel(fig, x + i * step, ry, step, hIn, b, label, colr, { bigSize: big }));
     });
   });
 }
@@ -262,7 +267,8 @@ export function sheet(T, head, blocks, opts = {}) {
   const h = house(T), pg = pageOf(T, opts);
   // A poster whose content has a width of its own -- eighteen holes across, say -- widens the sheet rather
   // than shrinking to fit it. The family still decides the columns; only the paper grows.
-  const w = Math.max(pg.w, (opts.minInner || 0) / (1 - 2 * MARGIN));
+  // The phone version never widens: a block too wide for it has to lay itself out again in the room there is.
+  const w = isPhone(T) ? pg.w : Math.max(pg.w, (opts.minInner || 0) / (1 - 2 * MARGIN));
   const cols = pg.cols, gap = pg.gap;
   const M = MARGIN * w, inner = w - 2 * M;
   const colW = (inner - gap * (cols - 1)) / cols;
@@ -281,12 +287,13 @@ export function sheet(T, head, blocks, opts = {}) {
   }
   const foot = prose(T, head.foot);
   const footIn = foot ? 0.45 + 0.17 * (probe.wrap(foot, footerWidth(probe), 9).length - 1) : 0.34;
-  const H = HEADER_IN + 0.18 + body + footIn;
+  const top = headerIn(probe, head.sub, inHeader ? null : head.right) + 0.18;
+  const H = top + body + footIn;
 
   const fig = new Fig(w, H, T);
   header(fig, head.title, head.kicker, head.sub, inHeader ? null : head.right);
   if (inHeader) headerTiles(fig, head.tiles);
-  let y = HEADER_IN + 0.18;
+  let y = top;
   for (const g of groups) {
     if (g.wide) {
       g.blocks[0].draw(fig, M, y, inner);

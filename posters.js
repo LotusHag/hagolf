@@ -5,7 +5,7 @@
 // The theme family decides the page from there: how wide, whether the headline numbers sit in a row or up
 // in the header band, how much of the footer survives, and -- for the two-board sheet -- whether the boards
 // stand side by side or one under the other. What a column contains and how a row is ranked never varies.
-import { house, caps, note, posChip, outcomeBar, legend, on, rowBand } from "./draw.js";
+import { house, caps, note, posChip, outcomeBar, legend, on, rowBand, isPhone } from "./draw.js";
 import { sheet, block, blockAxes, heading, headingIn, dense } from "./sheet.js";
 import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE } from "./model.js";
 
@@ -21,6 +21,7 @@ const cx = c => c.ha === "left" ? c.x0 : c.ha === "right" ? c.x1 : (c.x0 + c.x1)
 
 function dName(ax, c, y, r) {
   const T = ax.fig.T;
+  if (isPhone(T)) return dNamePhone(ax, c, y, r);
   const w = ax.text(c.x0, y, r.name, { size: c.size || 15, family: "display", color: T.INK, va: "center" });
   if (r.penalty_total) {
     const x = c.x0 + w / ax.wIn * (ax.xlim[1] - ax.xlim[0]) + 0.15;
@@ -30,34 +31,120 @@ function dName(ax, c, y, r) {
 }
 dName.isName = true;
 
-function drawTable(ax, cols, rows, W) {
-  const T = ax.fig.T;
+// ---------------------------------------------------------------- the phone's own table
+// A phone column is 4.9 inches, so a row there is often two lines: the name, its numbers, and under the name
+// whatever the full sheet gave a column of its own. Sizes in points are what the reader sees (draw.js PHONE_W).
+const PH = { name: 15, nameMin: 11, sub: 11.5, subMin: 11, key: 9, badge: 9 };
+const LINE_2 = 1.1;   // how far down the row the second line sits, in row units
+
+const badgeW = (ax, r) => r.penalty_total ? ax.textWidth(`pen +${r.penalty_total}`, PH.badge, "display") + ax.UX(0.2) : 0;
+
+/** One size for a phone's name column, never under the floor, leaving room for a pen badge on the rows that carry one. */
+const phoneNameSize = (ax, c, rows) =>
+  Math.min(...rows.map(r => ax.fitSize([r.name], c.x1 - c.x0 - badgeW(ax, r), PH.name, PH.nameMin)));
+
+// A name too long at the floor wraps where the row has room, and is cut short where figures sit under it.
+function dNamePhone(ax, c, y, r) {
+  const T = ax.fig.T, room = c.x1 - c.x0 - badgeW(ax, r);
+  let s = r.name;
+  if (ax.textWidth(s, c.size, "display") > room && !c.wrap) {
+    while (s.length > 1 && ax.textWidth(s + "…", c.size, "display") > room) s = s.slice(0, -1);
+    s = s.trimEnd() + "…";
+  } else if (ax.textWidth(s, c.size, "display") > room) {
+    const words = s.split(" ");
+    let best = null;
+    for (let k = 1; k < words.length; k++) {
+      const a = words.slice(0, k).join(" "), b = words.slice(k).join(" ");
+      const wid = Math.max(ax.textWidth(a, c.size, "display"), ax.textWidth(b, c.size, "display"));
+      if (!best || wid < best[0]) best = [wid, `${a}\n${b}`];
+    }
+    if (best) s = best[1];
+  }
+  const w = ax.text(c.x0, y, s, { size: c.size, family: "display", color: T.INK, va: "center", lineSpacing: 1.15 });
+  if (r.penalty_total) {
+    const t = `pen +${r.penalty_total}`, bw = ax.textWidth(t, PH.badge, "display") + ax.UX(0.12);
+    const x = c.x0 + ax.UX(w) + ax.UX(0.08), bh = ax.UY(0.2);
+    ax.rbox(x, y - bh / 2, bw, bh, T.BRONZE, 0.05);
+    ax.text(x + bw / 2, y, t, { size: PH.badge, family: "display", color: on(T, T.BRONZE), ha: "center", va: "center" });
+  }
+}
+
+// Pieces of one line in several colours share a baseline: centring each on its own ink would lift "gross" over "51".
+const baseline = (ax, y, size) => y + ax.down() * ax.UY(size / 72 * 0.36);
+function run(ax, x, y, parts, size) {
+  const b = baseline(ax, y, size);
+  for (const [s, color] of parts) { ax.text(x, b, s, { size, color }); x += ax.textWidth(s, size); }
+  return x;
+}
+
+/** A second line of small figures, label then value: "hcp 19  ·  gross 94". */
+const dPairs = fn => (ax, c, y, r) => {
+  const T = ax.fig.T, pairs = fn(r);
+  const flat = pairs.map(([l, v]) => `${l} ${v}`).join("  ·  ");
+  const size = ax.fig.fitOne(flat, Math.abs(ax.DX(c.x1 - c.x0)), PH.sub, PH.subMin);
+  run(ax, c.x0, y, pairs.flatMap(([l, v], i) => [[`${i ? "  ·  " : ""}${l} `, T.INK_3], [String(v), T.INK_2]]), size);
+};
+
+/** What a second-line chart means, set over the column heads: a colour key, or a line of text from the right. */
+const phoneKey = (x0, items) => ax => {
+  const wid = swatches(ax, 0, 0, items, false);
+  swatches(ax, wid > ax.xlim[1] - x0 ? 0.15 : x0, 1.3, items);
+};
+
+/** A colour key in a row, each name on one shared baseline; returns how wide it is, drawn or not. */
+function swatches(ax, x0, y, items, draw = true) {
+  const T = ax.fig.T, sw = ax.UX(0.13), sh = ax.UY(0.13), gap = ax.UX(0.07), pad = ax.UX(0.2);
+  let x = x0;
+  for (const [name, colr] of items) {
+    if (draw) ax.rbox(x, y - sh / 2, sw, sh, colr, 0.004);
+    x = (draw ? run(ax, x + sw + gap, y, [[name, T.INK_3]], PH.key) : x + sw + gap + ax.textWidth(name, PH.key)) + pad;
+  }
+  return x - pad - x0;
+}
+const phoneNote = text => ax => ax.text(ax.xlim[1] - 0.1, 1.3, text, { size: PH.key, color: ax.fig.T.INK_3, ha: "right", va: "center" });
+
+function drawTable(ax, cols, rows, W, { rowH = 1, key = null } = {}) {
+  const T = ax.fig.T, ph = isPhone(T);
   for (const c of cols) {
     if (c.draw.isName) {
       const reserve = rows.some(r => r.penalty_total) ? 0.8 : 0;
-      c.size = ax.fitSize(rows.map(r => r.name), c.x1 - c.x0 - reserve, 15);
+      if (ph) [c.size, c.wrap] = [phoneNameSize(ax, c, rows), rowH === 1];
+      else c.size = ax.fitSize(rows.map(r => r.name), c.x1 - c.x0 - reserve, 15);
     }
+    if (c.line === 1) continue;   // a second-line column is explained by the key, not by a head of its own
     ax.text(cx(c), 0.55, caps(T, c.title), { size: 9, family: "display", color: T.INK_3, ha: c.ha, va: "center" });
     if (c.legend && house(T).legends) legend(ax, c.x0, 0.95, c.legend, 7, 0.16, 0.14, 0.1);
   }
+  if (key) key(ax);
   ax.line(0, 0.1, W, 0.1, T.LINE, 0.8);
   rows.forEach((row, i) => {
-    const y = -i - 0.5;
-    rowBand(ax, 0, y - 0.46, W, 0.92, i);
-    for (const c of cols) c.draw(ax, c, y, row);
+    if (rowH === 1) {
+      const y = -i - 0.5;
+      rowBand(ax, 0, y - 0.46, W, 0.92, i);
+      for (const c of cols) c.draw(ax, c, y, row);
+      return;
+    }
+    const top = -i * rowH;
+    rowBand(ax, 0, top - rowH + 0.04, W, rowH - 0.08, i);
+    for (const c of cols) c.draw(ax, c, top - (c.line === 1 ? LINE_2 : c.line === "mid" ? rowH / 2 : 0.48), row);
   });
 }
 
 /** A leaderboard as a block: `W` is the column space the columns were laid out in, whatever inches it gets. */
-function tableBlock(T, cols, rows, W, { title = "", tail = "", minW = 7.0 } = {}) {
-  const rowIn = ROW_IN * dense(T), headIn = rowIn * 1.25;
-  const hIn = rowIn * rows.length + headIn;
+function tableBlock(T, cols, rows, W, { title = "", tail = "", minW = 7.0, rowH = 1, head = 1.25, key = null } = {}) {
+  const rowIn = ROW_IN * dense(T), headIn = rowIn * head;
+  const hIn = rowIn * rowH * rows.length + headIn;
   return block("table", minW, () => hIn + (title ? headingIn : 0), (fig, x, top, w) => {
     if (title) heading(fig, x, top, w, title, note(T, tail));
-    const ax = blockAxes(fig, x, top + (title ? headingIn : 0), w, hIn, [0, W], [-rows.length, 1.25]);
-    drawTable(ax, cols, rows, W);
+    const ax = blockAxes(fig, x, top + (title ? headingIn : 0), w, hIn, [0, W], [-rows.length * rowH, head]);
+    drawTable(ax, cols, rows, W, { rowH, key });
   });
 }
+
+// two-line rows on a phone, with a key line over the heads
+const PHONE_ROWS = { rowH: 1.55, head: 1.75 };
+const sub = c => ({ ...c, line: 1 });
+const mid = c => ({ ...c, line: "mid" });
 
 const courseNote = M => (M.course && (M.course.notes || []).length) ? ` Course file: ${M.course.notes.join("; ")}.` : "";
 
@@ -77,7 +164,7 @@ function dVal(fn, size = 12, color = null, family = "text") {
 
 const toparColor = (v, T) => v < 0 ? T.UNDER : v === 0 ? T.INK : T.INK_2;
 
-const dOutcomes = n => (ax, c, y, r) => outcomeBar(ax, c.x0, y - 0.2, c.x1 - c.x0, 0.4, r.counts, n);
+const dOutcomes = (n, h = 0.4, size = 8.5) => (ax, c, y, r) => outcomeBar(ax, c.x0, y - h / 2, c.x1 - c.x0, h, r.counts, n, 0.04, true, size);
 
 function pointsMeter(scaleMax, level, key = "pts") {
   return (ax, c, y, r) => {
@@ -130,13 +217,13 @@ export function grossLeaderboard(M, T, tier = "full") {
     }, [tableBlock(T, cols, rows, BASIC_W, { minW: 5.6 })], { maxCols: 1, minInner: 6.6 });
   }
   const W = 10;
-  const cols = [
+  const [cols, opts] = isPhone(T) ? grossPhone(T, rows, n) : [[
     col("Pos", 0.15, 0.95, dPos("g")),
     col("Player", 1.15, 4.6, dName, "left"),
     col("Gross", 4.7, 5.6, dVal(r => r.gross === null ? "NR" : String(r.gross), 20, (r, T) => T.INK, "display")),
     col("To par", 5.7, 6.5, dVal(r => r.topar === null ? "–" : fmtToPar(r.topar), 14, (r, T) => toparColor(r.topar, T), "display")),
     col(`The round: ${n} holes by result`, 6.85, 9.95, dOutcomes(n), "left", presentOutcomes(T, rows)),
-  ];
+  ], {}];
   const avg = finished.length ? finished.reduce((a, b) => a + b, 0) / finished.length : null;
   return sheet(T, {
     title: "Gross leaderboard", kicker: M.name, sub: M.sub,
@@ -144,7 +231,31 @@ export function grossLeaderboard(M, T, tier = "full") {
     foot: foot + " The round bar has one block per hole, grouped by result against par, best results first." + notes(rows) + courseNote(M),
     tiles: [[N, "in the field"], [finished.length ? Math.min(...finished) : "–", "best gross", T.ACCENT],
       [avg === null ? "–" : fix(avg), "average"], [n, "holes"]],
-  }, [tableBlock(T, cols, rows, W, { minW: 8.4 })], { maxCols: 1, minInner: 9.4 });
+  }, [tableBlock(T, cols, rows, W, { minW: 8.4, ...opts })], { maxCols: 1, minInner: 9.4 });
+}
+
+/** The gross board on a phone: name, gross and to par on one line, the round's bar the width of the row under them. */
+function grossPhone(T, rows, n) {
+  const key = house(T).legends ? phoneKey(1.25, presentOutcomes(T, rows)) : null;
+  return [[
+    col("Pos", 0.15, 0.95, dPos("g")),
+    col("Player", 1.25, 6.5, dName, "left"),
+    mid(col("Gross", 6.75, 8.35, dVal(r => r.gross === null ? "NR" : String(r.gross), 26, (r, T) => T.INK, "display"))),
+    mid(col("To par", 8.4, 9.9, dVal(r => r.topar === null ? "–" : fmtToPar(r.topar), 15, (r, T) => toparColor(r.topar, T), "display"))),
+    sub(col("", 1.25, 6.5, dOutcomes(n, 0.42, 10.5))),
+  ], { ...PHONE_ROWS, key, ...(key ? {} : { head: 1.25 }) }];
+}
+
+/** The Stableford board on a phone: net and points beside the name, the handicap, gross and meter under it. */
+function stblPhone(T, scaleMax, level) {
+  return [[
+    col("Pos", 0.15, 0.95, dPos("s")),
+    col("Player", 1.25, 6.05, dName, "left"),
+    col("Net", 6.5, 7.9, dVal(r => r.net === null ? "NR" : String(r.net), 15, (r, T) => T.INK, "display")),
+    col("Points", 8.0, 9.9, dVal(r => String(r.pts), 24, (r, T) => T.ACCENT, "display")),
+    sub(col("", 1.25, 5.7, dPairs(r => [["hcp", fmtHcp(r.ph)], ["gross", r.gross === null ? "NR" : r.gross]]))),
+    sub(col("", 6.1, 9.9, pointsMeter(scaleMax, level))),
+  ], { ...PHONE_ROWS, key: phoneNote(`bar: points, 0 to ${scaleMax}, line at ${level}`) }];
 }
 
 export function stablefordLeaderboard(M, T, tier = "full") {
@@ -166,7 +277,7 @@ export function stablefordLeaderboard(M, T, tier = "full") {
   }
   const hcpTitle = M.allowance === 100 ? "Hcp" : `Hcp (${M.allowance}%)`;
   const W = 10;
-  const cols = [
+  const [cols, opts] = isPhone(T) ? stblPhone(T, scaleMax, level) : [[
     col("Pos", 0.15, 0.95, dPos("s")),
     col("Player", 1.15, 4.3, dName, "left"),
     col(hcpTitle, 4.3, 5.0, dVal(r => fmtHcp(r.ph), 11, (r, T) => T.INK_3)),
@@ -174,7 +285,7 @@ export function stablefordLeaderboard(M, T, tier = "full") {
     col("Net", 5.9, 6.6, dVal(r => r.net === null ? "NR" : String(r.net), 14, (r, T) => T.INK, "display")),
     col("Points", 6.75, 7.65, dVal(r => String(r.pts), 22, (r, T) => T.ACCENT, "display")),
     col(`Points, 0 to ${scaleMax}, line at ${level}`, 7.95, 9.95, pointsMeter(scaleMax, level), "left"),
-  ];
+  ], {}];
   const avg = rows.reduce((a, p) => a + p.pts, 0) / rows.length;
   const tees = [...new Set(rows.map(p => p.tee))].sort();
   const allowance = M.allowance === 100 ? "" : `, ${M.allowance}% allowance`;
@@ -184,7 +295,7 @@ export function stablefordLeaderboard(M, T, tier = "full") {
     foot: `${foot} ${level} points is playing to handicap: 2 points per hole for a net par, 3 for a net birdie, ` +
       "1 for a net bogey, nothing for worse." + notes(rows) + courseNote(M),
     tiles: [[N, "in the field"], [best, "best", T.ACCENT], [fix(avg), "average"], [level, "is level"]],
-  }, [tableBlock(T, cols, rows, W, { minW: 8.4 })], { maxCols: 1, minInner: 9.4 });
+  }, [tableBlock(T, cols, rows, W, { minW: 8.4, ...opts })], { maxCols: 1, minInner: 9.4 });
 }
 
 /** One sheet with both boards, for the clubhouse wall. Two columns wherever the family will allow them. */
@@ -209,6 +320,8 @@ export function bothBoards(M, T) {
     col("Points", 6.15, 7.05, dVal(r => String(r.pts), 22, (r, T) => T.ACCENT, "display")),
     col(`Points, 0 to ${scaleMax}, line at ${level}`, 7.3, 9.95, pointsMeter(scaleMax, level), "left"),
   ];
+  const [gc, go] = isPhone(T) ? grossPhone(T, gRows, n) : [grossCols, {}];
+  const [sc, so] = isPhone(T) ? stblPhone(T, scaleMax, level) : [stblCols, {}];
   const finished = gRows.filter(p => p.gross !== null).map(p => p.gross);
   const tees = [...new Set(sRows.map(p => p.tee))].sort();
   const allowance = M.allowance === 100 ? "" : `, ${M.allowance}% allowance`;
@@ -221,8 +334,8 @@ export function bothBoards(M, T) {
     tiles: [[N, "in the field"], [finished.length ? Math.min(...finished) : "–", "best gross"], [bestPts, "best points", T.ACCENT]],
     tilesWide: true,
   }, [
-    tableBlock(T, grossCols, gRows, W, { title: "Gross", tail: "stroke play, no handicap", minW: 5.9 }),
-    tableBlock(T, stblCols, sRows, W, { title: "Stableford", tail: `net, course handicap${allowance}`, minW: 5.9 }),
+    tableBlock(T, gc, gRows, W, { title: "Gross", tail: "stroke play, no handicap", minW: 5.9, ...go }),
+    tableBlock(T, sc, sRows, W, { title: "Stableford", tail: `net, course handicap${allowance}`, minW: 5.9, ...so }),
   ], { minCols: 2 });
 }
 
@@ -307,7 +420,79 @@ export function holesPoster(M, T) {
     tiles: [[N, "in the field"], [avgGross === null ? "–" : fix(avgGross), "course average"],
       [fmtSigned(fieldAvg, 2), "a hole against par", T.ACCENT],
       [hardest.label, "hardest hole"], [easiest.label, "easiest hole"]],
-  }, [chart], { maxCols: 1, minInner: inner });
+  }, isPhone(T) ? holesPhone(M, T, fieldAvg, hardest, easiest) : [chart], { maxCols: 1, minInner: inner });
+}
+
+// Nine holes is all a phone sets legibly, so eighteen come as front over back, on one shared scale.
+function holesPhone(M, T, fieldAvg, hardest, easiest) {
+  const holes = M.holes, d = dense(T), two = M.n > 9;
+  const nines = two ? [holes.slice(0, 9), holes.slice(9)] : [holes];
+  const hi = Math.max(Math.max(...holes.map(h => h.vspar)), 0.5);
+  const low = Math.min(Math.min(...holes.map(h => h.vspar)), 0);
+  const LAB = M.course.unlisted ? 0.95 : 1.2, BARS = 1.9 * d, STACK = 2.2 * d, NOTE = 0.27;
+  const avgNote = note(T, `dashed line: course average ${fmtSigned(fieldAvg, 2)} a hole`);
+  const items = presentOutcomes(T, holes), keyed = house(T).legends;
+  const plan = first => {
+    let y = two ? headingIn + 0.04 : 0;
+    const at = {}, mark = (k, h) => { at[k] = y; y += h; };
+    mark("labels", LAB + 0.1);
+    mark("h1", headingIn);
+    if (first && avgNote) mark("note", NOTE);
+    mark("bars", BARS + 0.3);
+    mark("h2", headingIn);
+    if (first && keyed) mark("key", NOTE);
+    mark("stack", STACK);
+    return [at, y];
+  };
+  return nines.map((nine, k) => block("chart", 0, () => plan(k === 0)[1], (fig, x, top, w) => {
+    const [at] = plan(k === 0);
+    const lo = nine[0].hole - 0.5, xlim = [lo, lo + 9], bw = 0.6;
+    const panel = (key, h, ylim) => blockAxes(fig, x, top + at[key], w, h, xlim, ylim);
+    if (two) heading(fig, x, top, w, k ? "Back nine" : "Front nine", note(T, `holes ${nine[0].label} to ${nine[nine.length - 1].label}`));
+
+    let ax = panel("labels", LAB, [LAB, 0]);   // y in inches down the band
+    for (const h of nine) {
+      ax.text(h.hole, 0.24, h.label, { size: 22, family: "display", color: T.INK, ha: "center", va: "center" });
+      ax.text(h.hole, 0.58, `par ${h.par}`, { size: 10, color: T.INK_2, ha: "center", va: "center" });
+      if (!M.course.unlisted) ax.text(h.hole, 0.79, `SI ${h.si}`, { size: 9, color: T.INK_3, ha: "center", va: "center" });
+      if (h.metres) ax.text(h.hole, M.course.unlisted ? 0.79 : 0.99, `${h.metres} m`, { size: 9, color: T.INK_3, ha: "center", va: "center" });
+    }
+    ax.line(xlim[0], LAB, xlim[1], LAB, T.LINE, 0.8);
+
+    heading(fig, x, top + at.h1, w, "Average score against par", "");
+    if (at.note !== undefined) fig.text(x, top + at.note + NOTE / 2, avgNote, { size: 9, color: T.INK_3, va: "center" });
+    ax = panel("bars", BARS, [low * 1.4 - hi * 0.1, hi * 1.3]);
+    ax.line(xlim[0], fieldAvg, xlim[1], fieldAvg, T.INK_3, 0.8, [4, 3]);
+    for (const h of nine) {
+      const v = h.vspar;
+      ax.rbox(h.hole - bw / 2, Math.min(0, v), bw, Math.abs(v), T.BAR, 0.04);
+      const ty = v + (v >= 0 ? hi * 0.03 : -hi * 0.03), txt = fmtSigned(v, 2);
+      const tw = ax.textWidth(txt, 11, "display"), th = ax.UY(11 / 72);
+      ax.rbox(h.hole - tw / 2 - 0.06, (v >= 0 ? ty : ty - th) - hi * 0.015, tw + 0.12, th + hi * 0.03, T.BG, 0);
+      ax.text(h.hole, ty, txt, { size: 11, family: "display", color: T.INK, ha: "center", va: v >= 0 ? "bottom" : "top" });
+      const word = h === hardest ? "hardest" : h === easiest ? "easiest" : "";
+      if (word) ax.text(h.hole, ax.ylim[0] - ax.UY(0.04), word, { size: 9, color: T.INK_2, ha: "center", va: "top" });
+    }
+    ax.line(xlim[0], 0, xlim[1], 0, T.LINE, 0.8);
+
+    heading(fig, x, top + at.h2, w, "What the field scored", "");
+    if (at.key !== undefined) swatches(blockAxes(fig, x, top + at.key, w, NOTE, [0, w], [0, 1]), 0, 0.5, items);
+    ax = panel("stack", STACK, [-0.16, 1.04]);
+    for (const h of nine) {
+      if (!h.n) continue;
+      let y = 0;
+      for (let j = 3; j >= 0; j--) {
+        const c = h.counts[j], colr = T.OUTCOMES[j][1];
+        if (c === 0) continue;
+        const seg = c / h.n;
+        ax.rbox(h.hole - bw / 2, y + 0.008, bw, seg - 0.016, colr, 0.02);
+        if (ax.DY(seg) > 0.13) ax.text(h.hole, y + seg / 2, String(c), { size: 10, family: "display", color: on(T, colr), ha: "center", va: "center" });
+        y += seg;
+      }
+      ax.text(h.hole, -0.04, `avg ${fix(h.avg)}`, { size: 9, color: T.INK_3, ha: "center", va: "top" });
+    }
+    ax.line(xlim[0], 0, xlim[1], 0, T.LINE, 0.8);
+  }));
 }
 
 /** Season standings for a group: `S` from model.standings, `group` the group record. */
@@ -335,7 +520,7 @@ export function standingsPoster(S, group, T, kind = "stableford") {
   const pos = col("Pos", 0.15, 0.95, (ax, c, y, r) => posChip(ax, cx(c), y, r.place, 0.8, 12));
   const num = (title, x0, x1, fn) => col(title, x0, x1, dVal(fn, 12, (r, T) => T.INK_2));
   const players = `${rows.length} player${rows.length === 1 ? "" : "s"}`;
-  let cols, right, foot, tiles;
+  let cols, right, foot, tiles, total, pairs;
 
   if (kind === "stroke") {
     const lead = rows.length ? rows[0].counted : 0;
@@ -344,6 +529,9 @@ export function standingsPoster(S, group, T, kind = "stableford") {
       num("Best", 6.3, 7.1, r => r.best === null ? "–" : fmtToPar(r.best)),
       num("Avg", 7.2, 8.1, r => r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"),
       col(S.bestN > 0 ? `Best ${S.bestN}` : "Net to par", 8.2, 9.95, dVal(r => r.played ? fmtToPar(r.counted) : "–", 22, (r, T) => T.ACCENT, "display"))];
+    total = [S.bestN > 0 ? `Best ${S.bestN}` : "Net to par", r => r.played ? fmtToPar(r.counted) : "–"];
+    pairs = r => [["rounds", r.played], ["wins", r.wins], ["best", r.best === null ? "–" : fmtToPar(r.best)],
+      ["avg", r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"]];
     right = "Net strokes against par";
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [fmtToPar(lead), "the leader", T.ACCENT]];
     foot = `Net score against par in every round added up, lowest total wins, so a 9 and an 18 compare. ${bestRule} ` +
@@ -373,6 +561,8 @@ export function standingsPoster(S, group, T, kind = "stableford") {
       num("Best", 5.7, 6.3, r => String(r.best)), num("Avg", 6.4, 7.0, r => fix(r.avg)),
       col(S.bestN > 0 ? `Best ${S.bestN}` : "Points", 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display")),
       col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left")];
+    total = [S.bestN > 0 ? `Best ${S.bestN}` : "Points", r => String(r.counted)];
+    pairs = r => [["rounds", r.played], ["wins", r.wins], ["best", r.best], ["avg", fix(r.avg)]];
     right = `Points by finishing position\n${net ? "net against par" : "Stableford"}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [maxPts, "the leader", T.ACCENT]];
     foot = `Every card hands out points by finishing position: ${(S.table || []).join(", ")} down the board, nothing after that. `
@@ -387,14 +577,33 @@ export function standingsPoster(S, group, T, kind = "stableford") {
       num("Best", 5.7, 6.3, r => String(r.best)), num("Avg", 6.4, 7.0, r => fix(r.avg)),
       col(S.bestN > 0 ? `Best ${S.bestN}` : "Points", 7.1, 7.9, dVal(r => String(r.counted), 22, (r, T) => T.ACCENT, "display")),
       col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left")];
+    total = [S.bestN > 0 ? `Best ${S.bestN}` : "Points", r => String(r.counted)];
+    pairs = r => [["rounds", r.played], ["wins", r.wins], ["best", r.best], ["avg", fix(r.avg)]];
     right = "Stableford points across rounds";
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [maxPts, "the leader", T.ACCENT]];
     foot = `Most Stableford points wins. ${bestRule} Wins: most points among the league's players on the day, shared when equal.` + onlyMembers;
   }
+  const [tc, to] = isPhone(T) ? standingsPhone(kind, total, pairs) : [cols, {}];
   return sheet(T, {
     title: STANDINGS_TITLES[kind] || STANDINGS_TITLES.stableford, kicker: group.name, sub,
     right: `${right}\n${players}`, foot, tiles,
-  }, [tableBlock(T, cols, rows.map(r => ({ ...r, penalty_total: 0 })), W, { minW: 8.4 })], { maxCols: 1, minInner: 9.4 });
+  }, [tableBlock(T, tc, rows.map(r => ({ ...r, penalty_total: 0 })), W, { minW: 8.4, ...to })], { maxCols: 1, minInner: 9.4 });
+}
+
+// A match table keeps P W D L and drops the meter; every other kind puts its figures on a line under the name.
+function standingsPhone(kind, total, pairs) {
+  const pos = col("Pos", 0.15, 0.95, (ax, c, y, r) => posChip(ax, cx(c), y, r.place, 0.8, 12));
+  if (kind.startsWith("match") || kind.startsWith("soccer")) {
+    const num = (title, x0, x1, fn) => col(title, x0, x1, dVal(fn, 12.5, (r, T) => T.INK_2));
+    return [[pos, col("Player", 1.15, 4.8, dName, "left"),
+      num("P", 4.8, 5.55, r => String(r.played)), num("W", 5.55, 6.3, r => String(r.won)),
+      num("D", 6.3, 7.05, r => String(r.drawn)), num("L", 7.05, 7.8, r => String(r.lost)),
+      num("Up", 7.8, 8.8, r => (r.up > 0 ? "+" : "") + r.up),
+      col("Pts", 8.8, 9.9, dVal(r => String(r.points), 22, (r, T) => T.ACCENT, "display"))], {}];
+  }
+  return [[pos, col("Player", 1.25, 7.6, dName, "left"),
+    mid(col(total[0], 7.8, 9.9, dVal(total[1], 26, (r, T) => T.ACCENT, "display"))),
+    sub(col("", 1.25, 7.6, dPairs(pairs)))], { rowH: PHONE_ROWS.rowH }];
 }
 
 export function renderPosters(M, T, tier = "full") {

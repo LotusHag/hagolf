@@ -3,7 +3,7 @@
 // that says how many images the tap will make.
 import * as S from "../store.js";
 import * as E from "../entitlements.js";
-import { page, bind, esc, go, toast, plural, courseBy, noCourse, themePicker, bindLook, themeNamed, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, shopBtn, app, ICONS } from "../ui.js";
+import { page, bind, esc, go, toast, plural, courseBy, noCourse, themePicker, bindLook, themeNamed, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, sizedLooks, sizedName, shopBtn, app, ICONS } from "../ui.js";
 import { compute, leagueStats } from "../model.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster } from "../posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster, statsExtrasPoster } from "../statsposters.js";
@@ -49,6 +49,24 @@ const kindTile = (k, on, extra = "") => {
   if (k.full && basic) return lockedTile(k.name, exampleOf(k, basic), "boards");
   return tile("g", k.key, k.name, exampleOf(k, basic), on, extra);
 };
+
+// Full is the sheet as it has always been, Phone the same sheet one column wide and read down the screen
+const SIZES = [
+  { key: "full", name: "Full", shape: `<rect x="1" y="3" width="20" height="13" rx="1.5"/>` },
+  { key: "phone", name: "Phone", shape: `<rect x="6.5" y="1" width="9" height="16" rx="2"/>` },
+  { key: "both", name: "Both", shape: `<rect x="1" y="5" width="12" height="9" rx="1"/><rect x="15" y="2" width="6" height="14" rx="1.5"/>` },
+];
+const sizeField = () => `<h2>Size</h2><div class="eseg gsize" role="group" aria-label="Size">${SIZES.map(z =>
+  `<button type="button" data-act="size" data-size="${z.key}" class="${S.imageSize() === z.key ? "on" : ""}" aria-pressed="${S.imageSize() === z.key}"><svg viewBox="0 0 22 18" aria-hidden="true">${z.shape}</svg>${z.name}</button>`).join("")}</div>`;
+const pickSize = b => {
+  S.setImageChoice({ size: b.dataset.size });
+  b.parentElement.querySelectorAll("button").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); });
+};
+/** One sheet in the sizes asked for, the phone one named `_phone`, so a Both pair sits side by side. */
+const sized = (jobs, T, label, make) => {
+  for (const [Tz, tag] of sizedLooks(T)) jobs.push({ label: sizedName(label, tag), make: () => make(Tz) });
+};
+const sizeCount = () => S.imageSize() === "both" ? 2 : 1;
 
 const bindGrid = (grid, after = null) => grid && grid.addEventListener("change", ev => {
   const t = ev.target.closest(".gtile");
@@ -111,13 +129,14 @@ export function graphics(rid) {
         : ""}
     </div>
     ${missing.length ? shopBtn("More images in the shop", missing) : ""}
+    ${sizeField()}
     <h2>Look</h2>
     ${themePicker(themes, themeLeague ? `${esc(themeLeague.name)} is set to ${esc(themeLeague.theme)}.` : "")}
     <div id="out"></div>`;
   page("Images", body, { back: `#review/${rid}`, bar: `<button class="btn primary" data-act="generate">Generate images</button>`, sub: r.name });
   let everything = false;   // "every look" is a one-off, not a choice to offer again on the next round
   const count = () => {
-    const want = ticked("g"), looks = Math.max(ticked("theme").length, 1);
+    const want = ticked("g"), looks = Math.max(ticked("theme").length, 1) * sizeCount();
     return looks * (want.filter(k => k !== "cards").length + (want.includes("cards") ? ticked("card").length : 0));
   };
   const paint = wireLive(count, whose, () => ticked("g").includes("cards"));
@@ -133,6 +152,7 @@ export function graphics(rid) {
       paint();
       return;
     }
+    if (b.dataset.act === "size") { pickSize(b); paint(); return; }
     if (b.dataset.act !== "generate") return;
     const want = ticked("g");
     const chosen = ticked("theme").filter(n => E.canTheme(n) || themes.includes(n));
@@ -146,14 +166,15 @@ export function graphics(rid) {
     S.setImageChoice(everything || themeLeague ? { kinds: want } : { kinds: want, themes: chosen });
     const jobs = [];
     for (const tn of chosen) {
-      const T = makeTheme(themeNamed(tn));
       const prefix = chosen.length > 1 ? `${tn}/` : "";
       const tier = E.boardTier(), cardTier = E.cardTier();
-      if (want.includes("gross")) jobs.push({ label: `${prefix}1_leaderboard_gross.png`, make: () => grossLeaderboard(M, T, tier) });
-      if (want.includes("stbl")) jobs.push({ label: `${prefix}2_leaderboard_stableford.png`, make: () => stablefordLeaderboard(M, T, tier) });
-      if (want.includes("holes") && tier === "full") jobs.push({ label: `${prefix}3_holes.png`, make: () => holesPoster(M, T) });
-      if (want.includes("both") && tier === "full") jobs.push({ label: `${prefix}4_leaderboard_both.png`, make: () => bothBoards(M, T) });
-      if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) jobs.push({ label: `${prefix}${renderCards(M, T, [p.name], cardTier, cardOpts)[0].file}`, make: () => renderCards(M, T, [p.name], cardTier, cardOpts)[0].fig });
+      const T = makeTheme(themeNamed(tn));
+      const add = (label, make) => sized(jobs, T, `${prefix}${label}`, make);
+      if (want.includes("gross")) add("1_leaderboard_gross.png", Tz => grossLeaderboard(M, Tz, tier));
+      if (want.includes("stbl")) add("2_leaderboard_stableford.png", Tz => stablefordLeaderboard(M, Tz, tier));
+      if (want.includes("holes") && tier === "full") add("3_holes.png", Tz => holesPoster(M, Tz));
+      if (want.includes("both") && tier === "full") add("4_leaderboard_both.png", Tz => bothBoards(M, Tz));
+      if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) add(renderCards(M, T, [p.name], cardTier, cardOpts)[0].file, Tz => renderCards(M, Tz, [p.name], cardTier, cardOpts)[0].fig);
     }
     await runJobs(jobs, slugFile(r.name));
   });
@@ -197,12 +218,13 @@ export function leagueImages(gid) {
       ${anyX ? `<label><input type="checkbox" name="sx" ${S.statsOnImages() ? "checked" : ""}> Put the extras on the sheets too <span class="muted">&nbsp;(a band at the foot, never in the headline figures)</span></label>` : ""}
     </div>` : `<p class="muted small gsays">The season pack makes the sheets above: how the league scores, the nines walked, and one image a player.</p>
       ${shopBtn("See what the season pack makes", "season")}`}
+    ${sizeField()}
     <h2>Look</h2>
     ${themePicker(themes, leagueTheme(g) ? `${esc(g.name)} is set to ${esc(g.theme)}.` : "")}
     <div id="out"></div>`,
     { back: `#league/${gid}`, sub: g.name, bar: `<button class="btn primary" data-act="generate">Generate images</button>` });
   const count = () => {
-    const want = ticked("gi"), looks = Math.max(ticked("theme").length, 1);
+    const want = ticked("gi"), looks = Math.max(ticked("theme").length, 1) * sizeCount();
     return looks * (want.filter(v => v !== "stats:players").length + (want.includes("stats:players") ? ticked("sp").length : 0));
   };
   const paint = wireLive(count, whose, () => ticked("gi").includes("stats:players"));
@@ -212,6 +234,7 @@ export function leagueImages(gid) {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "tick-all") { tickAll(["gi", "sp", "theme"]); S.setImageChoice({ league: ticked("gi") }); paint(); return; }
+    if (b.dataset.act === "size") { pickSize(b); paint(); return; }
     if (b.dataset.act !== "generate") return;
     const want = ticked("gi");
     const pids = want.includes("stats:players") ? ticked("sp") : [];
@@ -224,14 +247,15 @@ export function leagueImages(gid) {
     if (!chosen.length) return toast("Pick at least one look");
     const jobs = [];
     for (const tn of chosen) {
-      const T = makeTheme(themeNamed(tn));
       const prefix = chosen.length > 1 ? `${tn}/` : "";
+      const T0 = makeTheme(themeNamed(tn));
+      const add = (label, make) => sized(jobs, T0, `${prefix}${label}`, make);
       formats.filter(f => want.includes(`standings:${f}`)).forEach((f, k) =>
-        jobs.push({ label: `${prefix}${4 + k}_standings_${f}.png`, make: () => standingsPoster(standingsFor(g, Ms, members, f), g, T, f) }));
-      if (want.includes("stats:field")) jobs.push({ label: `${prefix}6_stats_field.png`, make: () => statsFieldPoster(St, g, T, opts) });
-      if (want.includes("stats:nines")) jobs.push({ label: `${prefix}7_stats_nines.png`, make: () => statsNinesPoster(N, g, T) });
-      if (want.includes("stats:extras")) jobs.push({ label: `${prefix}9_stats_extras.png`, make: () => statsExtrasPoster(St, g, T) });
-      for (const pid of pids) { const p = St.players.find(x => x.id === pid); if (p) jobs.push({ label: `${prefix}8_stats_${slugFile(p.name)}.png`, make: () => statsPlayerPoster(St, p, g, T, opts) }); }
+        add(`${4 + k}_standings_${f}.png`, T => standingsPoster(standingsFor(g, Ms, members, f), g, T, f)));
+      if (want.includes("stats:field")) add("6_stats_field.png", T => statsFieldPoster(St, g, T, opts));
+      if (want.includes("stats:nines")) add("7_stats_nines.png", T => statsNinesPoster(N, g, T));
+      if (want.includes("stats:extras")) add("9_stats_extras.png", T => statsExtrasPoster(St, g, T));
+      for (const pid of pids) { const p = St.players.find(x => x.id === pid); if (p) add(`8_stats_${slugFile(p.name)}.png`, T => statsPlayerPoster(St, p, g, T, opts)); }
     }
     await runJobs(jobs, slugFile(g.name));
   });

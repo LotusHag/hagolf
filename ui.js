@@ -7,7 +7,7 @@ import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import * as N from "./notify.js";
 import * as E from "./entitlements.js";
-import { loadFonts, makeTheme, setMarked, setMarkText } from "./draw.js";
+import { loadFonts, makeTheme, phone, setMarked, setMarkText } from "./draw.js";
 
 export const app = document.getElementById("app");
 export const scrollPos = () => app.scrollTop;
@@ -272,11 +272,12 @@ export function promptSheet(title, lead, { placeholder = "", value = "", label =
 /** A sheet that just says something. */
 export const alertSheet = (title, lead, body = "") => sheet({ title, lead, body, actions: [{ label: "OK", value: "ok", kind: "primary" }] });
 
+const TALL = 1.5;   // height over width beyond which an image is a phone sheet
 /** A rendered image looked at full screen, inside the app. A raw PNG thrown into a new browser tab is a jolt on
  *  a phone -- the app is gone, the way back is the browser's -- so the image opens over the screen instead:
  *  swipe or tap the arrows through the set, tap the image to read it up close, tap anywhere else to leave.
- *  Items are { url, label, blob? }; the full-size blob is turned into a URL only when looked at, and let go on
- *  the way out, so nothing the caller owns is revoked. */
+ *  Items are { url, label, blob?, w?, h? }; the full-size blob is turned into a URL only when looked at, and
+ *  let go on the way out, so nothing the caller owns is revoked. */
 export function viewer(items, start = 0) {
   const list = (items || []).filter(x => x && (x.url || x.blob));
   if (!list.length) return;
@@ -291,8 +292,12 @@ export function viewer(items, start = 0) {
       <figcaption><span class="vlabel"></span><span class="vhint">Tap to look closer</span></figcaption>
       <button class="vnav" data-v="1" aria-label="Next">&#8250;</button></div>`;
   const img = wrap.querySelector("img"), stage = wrap.querySelector(".vstage");
+  // a phone sheet is read down the screen at its own width, not shrunk until the whole height fits
+  const tallNow = (w, h) => stage.classList.toggle("tall", !!w && h > w * TALL);
+  img.addEventListener("load", () => tallNow(img.naturalWidth, img.naturalHeight));
   const zoom = on => { big = on; stage.classList.toggle("big", on); stage.scrollTop = 0; stage.scrollLeft = on ? (stage.scrollWidth - stage.clientWidth) / 2 : 0; };
   const show = () => {
+    tallNow(list[i].w, list[i].h);
     img.src = srcOf(i);
     img.alt = list[i].label || "";
     wrap.querySelector(".vlabel").textContent = list[i].label || "";
@@ -521,6 +526,11 @@ async function thumbnail(fig) {
   cv.getContext("2d").drawImage(fig.canvas, 0, 0, w, h);
   return cv.convertToBlob ? cv.convertToBlob({ type: "image/jpeg", quality: 0.85 }) : new Promise(res => cv.toBlob(res, "image/jpeg", 0.85));
 }
+// a phone sheet's thumbnail shows its top at full width and fades out, so a list of them is not a mile of scrolling
+const thumbImg = (x, i) => {
+  const img = `<img src="${x.thumbUrl}" alt="${esc(x.label)}" data-act="open" data-i="${i}">`;
+  return x.h > x.w * TALL ? `<span class="tthumb">${img}</span>` : img;
+};
 const toFile = (x, prefix) => new File([x.blob], `${prefix}_${x.label.replace(/\//g, "_")}`, { type: "image/png" });
 
 /** Renders jobs one by one with a progress line into #out, then shows thumbnails with save buttons. */
@@ -551,7 +561,7 @@ export async function runJobs(jobs, prefix) {
     <div class="saveall"><button class="btn primary" data-act="save-all">${canShareFiles() ? "Save all to phone" : "Download all"}</button>
       <div class="muted small">${canShareFiles() ? "Choose “Save Image” or “Save to Files” in the sheet. " : ""}Or save one at a time below.</div></div>
     <div class="thumbs">${results.map((x, i) => x.blob ? `
-      <figure><img src="${x.thumbUrl}" alt="${esc(x.label)}" data-act="open" data-i="${i}"><figcaption>${esc(x.label)} <span class="muted">${x.w}×${x.h}</span>
+      <figure>${thumbImg(x, i)}<figcaption><span class="tname">${esc(x.label).replace(/([/_])/g, "$1<wbr>")} <span class="muted">${x.w}×${x.h}</span></span>
         <button class="btn small" data-act="save-one" data-i="${i}">Save</button></figcaption></figure>`
       : `<figure class="err"><figcaption>${esc(x.label)}: ${esc(x.error)}</figcaption></figure>`).join("")}</div>`;
   out.onclick = async ev => {
@@ -559,11 +569,14 @@ export async function runJobs(jobs, prefix) {
     if (!b) return;
     if (b.dataset.act === "save-all") await saveFiles(ok.map(x => toFile(x, prefix)), prefix);
     if (b.dataset.act === "save-one") await saveFiles([toFile(results[Number(b.dataset.i)], prefix)], prefix);
-    if (b.dataset.act === "open") viewer(ok.map(x => ({ url: x.thumbUrl, blob: x.blob, label: x.label })), ok.indexOf(results[Number(b.dataset.i)]));
+    if (b.dataset.act === "open") viewer(ok.map(x => ({ url: x.thumbUrl, blob: x.blob, label: x.label, w: x.w, h: x.h })), ok.indexOf(results[Number(b.dataset.i)]));
   };
   out.scrollIntoView({ behavior: "smooth" });
 }
-export { makeTheme, loadFonts };
+export { makeTheme, loadFonts, phone };
+/** A look in the sizes this phone last chose, each with what goes before `.png` in its file name. */
+export const sizedLooks = T => ({ full: [[T, ""]], phone: [[phone(T), "_phone"]], both: [[T, ""], [phone(T), "_phone"]] })[S.imageSize()];
+export const sizedName = (file, tag) => file.replace(/\.png$/, `${tag}.png`);
 
 // ---------------------------------------------------------------- rounds: small shared readers
 export function safeCompute(compute, r, collapse = false) {

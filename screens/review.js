@@ -4,7 +4,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, saveFiles, slugFile, ICONS, makeTheme, loadFonts, themeForRound } from "../ui.js";
+import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, saveFiles, slugFile, ICONS, makeTheme, loadFonts, sizedLooks, sizedName, themeForRound } from "../ui.js";
 import { DATA } from "../data.js";
 import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar } from "../model.js";
 import { renderCards } from "../cards.js";
@@ -63,7 +63,7 @@ export function nineLine(M, p) {
   return `<div class="nines">${H.map(h => `<span><b>${esc(nineName(h.slug))}</b> ${h.gross === null ? "–" : `${h.gross} ${fmtToPar(h.topar)}`} · ${h.pts} pts</span>`).join("")}</div>`;
 }
 
-/** Your own card as one image, in the round's look, straight to the camera roll. */
+/** Your own card in the round's look, straight to the camera roll, in the size the Images screen last made. */
 export async function myCard(rid, pid = null) {
   const me = pid ? S.state.players.find(x => x.id === pid) : S.me(), r = S.getRound(rid);
   const c = r ? courseBy(r.course) : null;
@@ -72,10 +72,12 @@ export async function myCard(rid, pid = null) {
   if (!me || !M || !M.players.some(p => p.id === me.id)) return toast("No card to make");
   toast("Making your card…", 3000);
   await loadFonts(DATA.fonts);
-  const T = makeTheme(themeForRound(rid));
-  const fig = renderCards(M, T, [me.name], "full", { extras: S.statsOnImages() })[0];
-  const blob = await fig.fig.toBlob();
-  await saveFiles([new File([blob], `${slugFile(r.name)}_${fig.file.split("/").pop()}`, { type: "image/png" })], r.name);
+  const files = [];
+  for (const [T, tag] of sizedLooks(makeTheme(themeForRound(rid)))) {
+    const fig = renderCards(M, T, [me.name], "full", { extras: S.statsOnImages() })[0];
+    files.push(new File([await fig.fig.toBlob()], `${slugFile(r.name)}_${sizedName(fig.file.split("/").pop(), tag)}`, { type: "image/png" }));
+  }
+  await saveFiles(files, r.name);
 }
 
 // ---------------------------------------------------------------- sharing a card

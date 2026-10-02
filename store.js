@@ -518,9 +518,12 @@ export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
  */
 export const statsOnImages = () => state.settings.statsImages !== false;
 export function setStatsOnImages(on) { state.settings.statsImages = !!on; save(); }
-/** What the Images screen last made on this phone, `{ kinds, themes }`, offered again on the next round. */
+/** What the Images screen last made on this phone, `{ kinds, themes, league, size }`, offered again on the next round. */
 export const imageChoice = () => state.settings.images || {};
 export function setImageChoice(choice) { state.settings.images = { ...imageChoice(), ...choice }; save(); }
+export const IMAGE_SIZES = ["full", "phone", "both"];
+// most people look at these on a phone, so that is the size until this phone has said otherwise
+export const imageSize = () => IMAGE_SIZES.includes(imageChoice().size) ? imageChoice().size : "phone";
 
 /** The Extras button: opens the ticked kinds for this card and every player on it, or shuts them again.
  * The only place a player's `trackStats` is turned on by default; anywhere else reads `cardKeepsStats`. */

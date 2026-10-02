@@ -309,6 +309,11 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .viewer .vstage img { max-width: 100%; max-height: 100%; border-radius: 3px; cursor: zoom-in; animation: rise .18s; }
 .viewer .vstage.big { place-items: start center; padding: 0; }
 .viewer .vstage.big img { width: 200%; max-width: none; max-height: none; border-radius: 0; cursor: zoom-out; }
+/* a phone sheet fills the width and is scrolled down, as it will be read; held to its own size on a big screen */
+.viewer .vstage.tall { place-items: start center; padding-bottom: 12px; }
+.viewer .vstage.tall img { width: min(100%, 540px); max-width: none; max-height: none; }
+.viewer .vstage.tall.big { padding-bottom: 0; }
+.viewer .vstage.tall.big img { width: min(200%, 1080px); }
 .viewer .vfoot { display: flex; align-items: center; gap: 10px; padding: 8px 10px calc(10px + var(--sab)); color: #fff; }
 .viewer .vfoot figcaption { flex: 1; min-width: 0; text-align: center; font-size: 13px; line-height: 1.35; opacity: .8; }
 .viewer .vhint { display: block; margin-top: 2px; font-size: 10px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; opacity: .55; }
@@ -557,8 +562,13 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .thumbs figure { margin: 0 0 16px; }
 .thumbs img { width: 100%; border-radius: 4px; display: block; border: 1px solid var(--line); cursor: zoom-in; }
 .thumbs figcaption .btn { flex: none; white-space: nowrap; }
-.thumbs figcaption { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); margin-top: 6px; word-break: break-all; }
-.thumbs .err figcaption { color: var(--danger); }
+.thumbs figcaption { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); margin-top: 6px; }
+.thumbs .tname { min-width: 0; overflow-wrap: anywhere; }
+.thumbs .tname .muted { white-space: nowrap; }
+.thumbs .err figcaption { color: var(--danger); overflow-wrap: anywhere; }
+.thumbs .tthumb { position: relative; display: block; max-height: 60vh; overflow: hidden; border-radius: 4px; border: 1px solid var(--line); }
+.thumbs .tthumb img { border: 0; border-radius: 0; }
+.thumbs .tthumb::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: linear-gradient(transparent, var(--bg)); pointer-events: none; }
 
 /* ---- leagues */
 .stand { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--card); border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); }
@@ -895,6 +905,12 @@ a.kv:active { background: var(--card2); }
 .gbulk .btn { border: 0; background: none; color: var(--ink2); font-weight: 600; font-size: 13px; padding: 8px 4px; min-height: 40px; }
 .gbulk .btn:active { color: var(--green); }
 .gsays { display: block; margin: -2px 4px 8px; }
+/* the size is the same segmented control as an entry's fields, as tall as the look row under it, each choice
+   drawn as the shape of the sheet it makes */
+.gsize { height: 48px; border-color: var(--line); border-radius: 6px; }
+.gsize button { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit; cursor: pointer; }
+.gsize button + button { border-left: 1px solid var(--line); }
+.gsize svg { flex: none; width: 22px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
 
 /* the looks, folded to one row: the same card and chevron as a family fold, with the families inside it
    stripped back to plain rows so the picker never reads as cards inside a card */
