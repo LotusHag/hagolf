@@ -131,7 +131,14 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .banner.act { display: flex; align-items: center; gap: 10px; }
 .banner.act > span { flex: 1 1 auto; }
 .banner.act > .btn, .banner.act > .x { flex: 0 0 auto; }
-.ios-share { display: inline-block; border: 1px solid var(--ink3); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+.sheet .steps { padding-left: 20px; display: grid; gap: 10px; color: var(--ink2); font-size: 15px; line-height: 1.6; }
+.nw { white-space: nowrap; }
+.key { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--card2); border: 1px solid var(--line); color: var(--ink); vertical-align: -8px; margin: 0 2px; }
+.key svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.key svg .dot { fill: currentColor; stroke: none; }
+.key.toggle { width: 38px; height: 22px; border: 0; border-radius: 99px; background: #34C759; position: relative; vertical-align: -5px; }
+.key.toggle::after { content: ""; position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+.key.add { width: auto; height: auto; border: 0; border-radius: 99px; padding: 2px 12px; background: #0A84FF; color: #fff; font-weight: 700; font-size: 14px; vertical-align: 0; }
 
 .empty { text-align: center; padding: 28px 12px; color: var(--ink3); }
 .empty svg { width: 40px; height: 40px; stroke: var(--line2); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 8px; }

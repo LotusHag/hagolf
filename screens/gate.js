@@ -79,15 +79,28 @@ function door() {
   bind(ev => { if (ev.target.closest("[data-act=get]")) howTo(kind); });
 }
 
+// The iPhone's own buttons, drawn small, so each step can be matched to the screen in any language.
+const ico = d => `<span class="key" aria-hidden="true"><svg viewBox="0 0 20 20">${d}</svg></span>`;
+const KEY = {
+  share: ico(`<path d="M10 2.8v9.4M6.6 6.2 10 2.8l3.4 3.4M7.4 8.6H5.6v8.6h8.8V8.6h-1.8"/>`),
+  dots: ico(`<circle class="dot" cx="4.6" cy="10" r="1.5"/><circle class="dot" cx="10" cy="10" r="1.5"/><circle class="dot" cx="15.4" cy="10" r="1.5"/>`),
+  more: ico(`<path d="M5.8 8 10 12.2 14.2 8"/>`),
+  plus: ico(`<rect x="3.6" y="3.6" width="12.8" height="12.8" rx="3.2"/><path d="M10 6.8v6.4M6.8 10h6.4"/>`),
+  on: `<span class="key toggle" aria-hidden="true"></span>`,
+  add: `<span class="key add">Add</span>`,
+};
+
 /** What the button does on a device that cannot simply be handed the app: its own browser's steps. */
 function howTo(kind) {
   if (kind === "prompt" && window.__installPrompt) { const p = window.__installPrompt; window.__installPrompt = null; return p.prompt(); }
   const steps = {
-    ios: { title: "Add Hagolf to your home screen", lead: "Three taps, and it is the same app: its own icon, full screen, and scoring with no signal.",
-      body: `<ol class="steps"><li>Tap <b>Share</b> <span class="ios-share">&#8679;</span> in Safari's bar.</li><li>Scroll down and choose <b>Add to Home Screen</b>.</li><li>Open Hagolf from the new icon.</li></ol>
+    ios: { title: "Add Hagolf to your home screen", lead: "A few taps, and it is the same app: its own icon, full screen, and scoring with no signal.",
+      body: `<ol class="steps"><li>Tap <span class="nw"><b>Share</b> ${KEY.share}.</span> On newer iPhones it sits <span class="nw">behind ${KEY.dots}</span> beside the address.</li>
+             <li>The row of round buttons ends in <span class="nw"><b>View More</b> ${KEY.more}.</span> Tap it, then <span class="nw"><b>Add to Home Screen</b> ${KEY.plus}.</span></li>
+             <li>Leave <b>Open as Web App</b> switched <span class="nw">on ${KEY.on},</span> <span class="nw">tap ${KEY.add}</span> at the top, and open Hagolf from its new icon.</li></ol>
              <p class="muted small">Apple allows no app to be installed from a file, so this is how every iPhone app that is not in the App Store arrives.</p>` },
     "ios-elsewhere": { title: "Open this in Safari first", lead: "You are reading this inside another app, and only Safari can put Hagolf on an iPhone's home screen.",
-      body: `<ol class="steps"><li>Tap <b>Share</b> or <b>&#8230;</b> in this app's bar.</li><li>Choose <b>Open in Safari</b>.</li><li>There, Share &#8679; &rarr; <b>Add to Home Screen</b>.</li></ol>` },
+      body: `<ol class="steps"><li>Tap <b>Share</b> or <b>&#8230;</b> in this app's bar.</li><li>Choose <b>Open in Safari</b>.</li><li>There, tap <b>Download Hagolf</b> again for the rest.</li></ol>` },
     android: { title: "Add Hagolf to your home screen", lead: "It opens full screen from its own icon, and goes on scoring with no signal.",
       body: `<ol class="steps"><li>Open the browser's menu (&#8942;).</li><li>Choose <b>Install app</b>, or <b>Add to Home screen</b>.</li><li>Open Hagolf from your home screen.</li></ol>` },
     "android-elsewhere": { title: "Open this in Chrome first", lead: "You are reading this inside another app, which cannot install anything.",
