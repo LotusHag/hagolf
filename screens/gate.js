@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, ICONS } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, rememberIntent, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, isAndroid, ICONS } from "../ui.js";
 import { fmtIndex } from "../model.js";
 
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
@@ -29,9 +29,10 @@ export function welcome() {
   onboarding(acct);
 }
 
-// The signed Android package, once there is one: the door hands over this file rather than asking Chrome to
-// install the web app. Empty means there is none yet, and Android is shown its browser's own install instead.
-const ANDROID_APK = "";
+// The signed Android package, stamped by app/build.py from app/android/hagolf.apk: the door hands over this
+// file rather than asking Chrome to install the web app. Empty means none was built, and Android is shown its
+// browser's own install instead, so a missing package degrades rather than offering a dead link.
+const ANDROID_APK = "./hagolf.apk";
 
 /**
  * The door. app.hagolf.app hands out Hagolf; it is not where Hagolf is used. Every browser that is not already
@@ -49,7 +50,9 @@ const ANDROID_APK = "";
  * invite still opens for somebody who has no app yet; this is only the front door.
  */
 function door() {
-  const kind = ANDROID_APK && (installRoute() === "android" || installRoute() === "android-elsewhere" || installRoute() === "prompt") ? "apk" : installRoute();
+  // Only an Android is handed the Android package, and it is handed it whatever its browser is: desktop Chrome
+  // fires the same install prompt, and a browser inside another app can still take a download.
+  const kind = ANDROID_APK && isAndroid() ? "apk" : installRoute();
   const under = {
     apk: "Android package &middot; installs from your downloads",
     prompt: "Installs straight from this browser",
