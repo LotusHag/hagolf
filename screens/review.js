@@ -1,5 +1,7 @@
 // The card: every player in Stableford order, a tap to correct any hole, who it counts for, who changed what,
 // and -- once it is saved -- the ways to hand it to somebody.
+import * as B from "../brand.js";
+import { partnerRow } from "./partner.js";
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
@@ -73,10 +75,12 @@ export async function myCard(rid, pid = null) {
   toast("Making your card…", 3000);
   await loadFonts(DATA.fonts);
   const files = [];
-  for (const [T, tag] of sizedLooks(makeTheme(themeForRound(rid)))) {
-    const fig = renderCards(M, T, [me.name], "full", { extras: S.statsOnImages() })[0];
-    files.push(new File([await fig.fig.toBlob()], `${slugFile(r.name)}_${sizedName(fig.file.split("/").pop(), tag)}`, { type: "image/png" }));
-  }
+  await B.withBrand(B.brandOfRound(rid), r.date, async () => {
+    for (const [T, tag] of sizedLooks(makeTheme(themeForRound(rid)))) {
+      const fig = renderCards(M, T, [me.name], "full", { extras: S.statsOnImages() })[0];
+      files.push(new File([await fig.fig.toBlob()], `${slugFile(r.name)}_${sizedName(fig.file.split("/").pop(), tag)}`, { type: "image/png" }));
+    }
+  });
   await saveFiles(files, r.name);
 }
 
@@ -173,8 +177,9 @@ export function review(rid, keep = false) {
     ${done && me && M.players.some(p => p.id === me.id) ? `<div class="btnrow"><button class="btn" data-act="my-card">${ICONS.card} Save my card as an image</button><a class="btn" href="#graphics/${rid}">${ICONS.chart} Posters and cards</a></div>` : ""}
     <h2>Round</h2>
     <div class="list">
-      ${c.unlisted ? "" : `<a href="${mine ? `#attach/${rid}` : "#leagues"}"><span class="lead">${ICONS.trophy}<div><div class="name">Counts for</div><div class="muted small">${lg.length ? esc(lg.map(g => g.name).join(", ")) : "no league yet"}</div></div></span>${mine ? `<span class="chev">›</span>` : ""}</a>`}
+      ${c.unlisted ? "" : `<a href="${mine ? `#attach/${rid}` : "#leagues"}"><span class="lead">${ICONS.trophy}<div><div class="name">Counts for</div><div class="muted small">${lg.length ? esc(lg.map(g => g.name).join(", ")) : "no society yet"}</div></div></span>${mine ? `<span class="chev">›</span>` : ""}</a>`}
       ${mine ? `<a href="#players/${rid}"><span class="lead">${ICONS.people}<div><div class="name">Players, tees and handicaps</div><div class="muted small">${plural(r.entries.length, "player")}</div></div></span><span class="chev">›</span></a>` : ""}
+      ${partnerRow(rid)}
       ${mine && done ? `<button data-act="share"><span class="lead">${ICONS.share}<div><div class="name">Share this card</div><div class="muted small">${shares.length ? `with ${plural(shares.length, "friend")}` : "to friends, or by link"}${r.token ? " · link is on" : ""}</div></div></span><span class="chev">›</span></button>` : ""}
     </div>
     ${mine ? `<details class="card"><summary class="small">Name and date: ${esc(r.name)} · ${esc(r.date || "no date")}</summary>
@@ -242,9 +247,9 @@ export function attach(rid) {
   const list = S.leagues().map(g => `<label><input type="checkbox" data-act="toggle-league" data-gid="${g.id}" ${mine.has(g.id) ? "checked" : ""}> ${esc(g.name)}<span class="muted"> · ${plural(S.leagueRoundIds(g.id).length, "round")}</span></label>`).join("");
   const backTo = `#review/${rid}`;
   page("Counts for", `
-    <p class="muted small">${esc(r.name)}: tick the leagues this round counts for. Every member sees the table update.</p>
-    <div class="card checks">${list || `<p class="muted">No leagues yet. Make one below.</p>`}</div>
-    <form id="newg" class="card form open"><h2>New league</h2><label>Name<input name="name" placeholder="e.g. Thursday league" required></label>
+    <p class="muted small">${esc(r.name)}: tick the societies this round counts for. Every member sees the table update.</p>
+    <div class="card checks">${list || `<p class="muted">No societies yet. Make one below.</p>`}</div>
+    <form id="newg" class="card form open"><h2>New society</h2><label>Name<input name="name" placeholder="e.g. Thursday society" required></label>
       <button class="btn" type="submit">Create and add this round</button></form>`,
   { back: backTo, bar: `<a class="btn primary" href="${backTo}">Done ›</a>` });
   bind(ev => {
@@ -253,7 +258,7 @@ export function attach(rid) {
   });
   document.getElementById("newg").addEventListener("submit", ev => {
     ev.preventDefault();
-    const g = S.createLeague(ev.target.name.value.trim() || "League", 0, S.me() ? S.me().name : null);
+    const g = S.createLeague(ev.target.name.value.trim() || "Society", 0, S.me() ? S.me().name : null);
     S.setLeagueRound(g.id, rid, true);
     S.setSetting("lastLeague", g.id);
     attach(rid);

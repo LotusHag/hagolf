@@ -1,5 +1,7 @@
 // Rounds: every round this phone can see, and the way into a new one -- the club by place, then the loop, then
 // the round's few options.
+import { brandField } from "./partner.js";
+import { brandForCourse } from "../brand.js";
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import { page, scrollPos, scrollAt, bind, esc, go, ui, plural, fmtDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, tip, ICONS, emptyState, firstName, ordinal, sheet, panel } from "../ui.js";
@@ -292,6 +294,7 @@ function roundForm(slug) {
       <div class="two"><label>Date<input id="rdate" type="date" value="${date}"></label>
       <label>Tee <span class="muted">(anyone new to the course)</span><select id="rtee">${tees.map(t => `<option ${t === dflt ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
       <label>Handicap allowance<select id="rallow"><option value="100">100% (society default)</option><option value="95">95% (WHS individual Stableford)</option><option value="90">90%</option></select></label>
+      ${brandField("rbrand", (brandForCourse(slug) || {}).id || null)}
     </div>
     ${tip(`<p>Everyone's course handicap is worked out from their index and this course's rating first. The allowance is the slice of that handicap they actually play off, and it applies to everybody equally.</p>
       <p>100% is the ordinary society round. The World Handicap System asks for 95% in an individual Stableford competition, and a big or strong field is sometimes cut to 90%.</p>`, "What is a handicap allowance?")}
@@ -302,7 +305,8 @@ function roundForm(slug) {
     if (!b) return;
     const name = document.getElementById("rname").value.trim();
     const r = S.createRound({ course: slug, name: name || `${c.name} ${S.today()}`, date: document.getElementById("rdate").value || S.today(),
-      defaultTee: document.getElementById("rtee").value, allowance: document.getElementById("rallow").value });
+      defaultTee: document.getElementById("rtee").value, allowance: document.getElementById("rallow").value,
+      brand: (document.getElementById("rbrand") || {}).value || null });
     document.querySelectorAll("input[name=lg]:checked").forEach(i => { S.setLeagueRound(i.value, r.id, true); S.state.settings.lastLeague = i.value; });
     addMe(r, c, tees);
     S.save();

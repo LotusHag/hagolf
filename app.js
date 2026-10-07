@@ -4,6 +4,7 @@ import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import * as N from "./notify.js";
 import * as F from "./social.js";
+import * as B from "./brand.js";
 import { applyBrand, toast, atDoor, TABS } from "./ui.js";
 import { route } from "./router.js";
 import { home } from "./screens/home.js";
@@ -44,7 +45,7 @@ A.onChange(applyBrand);
 
 // What is waiting is asked for after every sync; the home screen and the bell redraw when it changes.
 N.onChange(() => { if (onHome() || location.hash === "#updates") route(); else { const b = document.querySelector(".top .iconbtn[href='#updates']"); if (b) route(); } });
-Y.onChange(({ changed }) => { if (changed) { N.refresh(); F.refresh(); } });
+Y.onChange(({ changed }) => { if (changed) { N.refresh(); F.refresh(); B.refreshBrands().then(() => { if (undisturbed()) route(); }); } });
 A.onChange(() => { N.refresh(); F.refresh(); });
 if (A.signedIn()) { N.refresh(); F.refresh(); }
 Y.start();

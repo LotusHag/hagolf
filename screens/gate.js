@@ -67,7 +67,7 @@ function door() {
     : `<button class="btn primary wide big" data-act="get">Download Hagolf</button>`;
   page("Hagolf", `<div class="gate">
       <div class="gatemark">Hagolf</div>
-      <p class="tag">Score rounds, keep leagues with friends, make the posters.</p>
+      <p class="tag">Score rounds, keep societies with friends, make the posters.</p>
       <div class="card install">
         <h3>Hagolf on your phone</h3>
         <p class="muted">It opens full screen from its own icon, and goes on scoring when there is no signal.</p>
@@ -115,7 +115,7 @@ function howTo(kind) {
 function gate() {
   page("Hagolf", `<div class="gate">
       <div class="gatemark">Hagolf</div>
-      <p class="tag">Score rounds, keep leagues with friends, make the posters.</p>
+      <p class="tag">Score rounds, keep societies with friends, make the posters.</p>
       <div class="card"><div id="gbtn"></div>
         ${ui.authMethods.includes("email") ? `<form id="signinf"><label>Email<input name="email" type="email" inputmode="email" autocapitalize="off" autocomplete="email" placeholder="you@example.com" required></label>
           <button class="btn primary wide" type="submit" style="margin-top:12px">Email me a code</button></form>` : ""}
@@ -222,7 +222,7 @@ export async function signin(token) {
  * A page a link opens for somebody who is not signed in: what it is about, and Google's button right here. The
  * sign-in happens in this browser, never via #welcome, which in a browser is the door and would drop the link.
  */
-function previewPage(title, body, intent) {
+export function previewPage(title, body, intent) {
   const draw = () => {
     page(title, `<div class="gate"><div class="gatemark">Hagolf</div><div class="card preview">${body}</div>
       <div class="card"><div id="gbtn"></div><p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></div>
@@ -248,7 +248,7 @@ export async function join(arg) {
     try { p = await F.previewInvite(token); } catch (e) { return previewPage("Invitation", `<h3>This invite has expired</h3><p class="muted">Ask for a new link.</p>`, "#leagues"); }
     return previewPage("Invitation", `<h3>${esc(p.league.name)}</h3><p class="muted">${p.by ? `${esc(p.by)} invited you.` : "You are invited."} ${plural(p.league.members, "member")} so far.</p>`, `#join/${token}`);
   }
-  page("Joining…", `<p class="muted center">Joining the league…</p>`, { back: "#leagues" });
+  page("Joining…", `<p class="muted center">Joining the society…</p>`, { back: "#leagues" });
   let r;
   try { r = await F.joinLeague(token); } catch (e) { toast(e.message, 6000); return go("#leagues"); }
   await Y.pull();
@@ -261,7 +261,7 @@ export async function join(arg) {
 export async function claimSheet(leagueId, candidates) {
   const free = candidates.filter(c => !c.claimedBy);
   if (!free.length) return;
-  const v = await sheet({ title: "Which one is you?", lead: "These names are on this league's cards. Pick yours and those rounds become yours.",
+  const v = await sheet({ title: "Which one is you?", lead: "These names are on this society's cards. Pick yours and those rounds become yours.",
     body: `<div class="list">${free.map(c => `<button data-act="${esc(c.key)}" data-sheet-act><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${plural(c.rounds, "round")}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`,
     actions: [{ label: "None of these, I'm new here", value: "none" }] });
   if (!v || v === "none") return;

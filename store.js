@@ -431,8 +431,8 @@ export function rounds() {
   return live(state.rounds).filter(r => !r.stub).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.created || "").localeCompare(a.created || ""));
 }
 
-export function createRound({ course, name, date, defaultTee, allowance }) {
-  const r = { id: uid(), owner: myAccount(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup",
+export function createRound({ course, name, date, defaultTee, allowance, brand = null }) {
+  const r = { id: uid(), owner: myAccount(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup", brand,
     hole: 0, entries: [], removed: [], created: now(), deleted: false };
   state.rounds.unshift(r);
   touch("rounds", r);
@@ -677,7 +677,7 @@ export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "
 export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
-  const g = { id: uid(), owner: myAccount(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null, icon: null };
+  const g = { id: uid(), owner: myAccount(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null, icon: null, brand: null };
   state.leagues.push(g);
   touch("leagues", g);
   save();

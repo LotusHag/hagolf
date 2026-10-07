@@ -548,14 +548,14 @@ export function statsFieldPoster(St, group, T, { extras = false } = {}) {
     ...Object.keys(F.byPar).sort().map(k => [`Par ${k}`, F.byPar[k].vspar, `${fix(F.byPar[k].pts, 2)} pts  ·  ${F.byPar[k].holes} holes`]),
     ...F.bands.map((b, i) => b.holes ? [BANDS[i], b.vspar, `${fix(b.pts, 2)} pts  ·  ${b.holes} holes`] : null).filter(Boolean),
   ];
-  const foot = `Every hole the league's own players have walked: ${F.holes} holes over ${F.rounds} rounds on ${F.cards} cards. ` +
+  const foot = `Every hole the society's own players have walked: ${F.holes} holes over ${F.rounds} rounds on ${F.cards} cards. ` +
     `Points are Stableford, so 2 a hole is playing to handicap. The thirds split the holes by stroke index, so the hardest third of a ` +
     `nine is its three lowest-index holes; those are also where the strokes are given, which is why they usually pay the most points. ` +
-    (P.cards.length > 1 ? `The season runs left to right, one column a card and one line a player, with the whole field dashed behind them${P.perHole ? `; this league mixes nine- and eighteen-hole rounds, so that chart counts points a hole` : ""}. ` : "") +
-    `Only the league's own players count, so a guest never moves a figure.` +
+    (P.cards.length > 1 ? `The season runs left to right, one column a card and one line a player, with the whole field dashed behind them${P.perHole ? `; this society mixes nine- and eighteen-hole rounds, so that chart counts points a hole` : ""}. ` : "") +
+    `Only the society's own players count, so a guest never moves a figure.` +
     (F.statline.any ? ` The readings along the bottom are only from the players who keep them, over the ${F.statline.holes} holes they kept them for, so they say nothing about the rest of the field.` : "");
   return sheet(T, {
-    title: "How this league scores", kicker: group.name,
+    title: "How this society scores", kicker: group.name,
     sub: `${F.cards} cards  ·  ${F.rounds} rounds  ·  ${dateSpan(St.rounds)}`,
     right: `${F.players} players  ·  ${F.holes} holes walked\nA round is worth ${fix(F.avgPts)} points`,
     foot,
@@ -735,13 +735,13 @@ export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
   const foot = (vs.length ? `${p.name} on the left of each track, everyone else in ${group.name} on the right, over exactly the ` +
     `${p.played} round${p.played === 1 ? "" : "s"} they were there for, so neither side is measured on a day the other missed. The track is filled ` +
     `in the proportion of the two figures, and the accent colour marks ${first}'s side when it is the better one, whichever direction the number runs. `
-    : `${first} has not yet shared a round in this league with anyone else, so there is nothing to measure against. `) +
-    (perHole ? "This league mixes nine- and eighteen-hole rounds, so the round chart counts points a hole. " : "") +
-    "Only the league's own players count, so a guest never moves a figure." +
+    : `${first} has not yet shared a round in this society with anyone else, so there is nothing to measure against. `) +
+    (perHole ? "This society mixes nine- and eighteen-hole rounds, so the round chart counts points a hole. " : "") +
+    "Only the society's own players count, so a guest never moves a figure." +
     (band.length ? ` The last block is only the holes where ${first} and somebody else both wrote the same thing down, which is why it counts fewer holes than everything above it.`
-      : mineX.length ? ` The last block is ${first}'s own putts and fairways over the ${p.statline.holes} holes that answered them. Nobody else in this league has kept the same readings, so there is nothing to set them against.` : "");
+      : mineX.length ? ` The last block is ${first}'s own putts and fairways over the ${p.statline.holes} holes that answered them. Nobody else in this society has kept the same readings, so there is nothing to set them against.` : "");
   const right = [`${fix(p.avgPts)} points a round`,
-    [p.wins ? `${p.wins} win${p.wins === 1 ? "" : "s"}` : "", p.avgPlace ? `${ordinal(Math.round(p.avgPlace))} on average in this league` : ""].filter(Boolean).join("  ·  ")];
+    [p.wins ? `${p.wins} win${p.wins === 1 ? "" : "s"}` : "", p.avgPlace ? `${ordinal(Math.round(p.avgPlace))} on average in this society` : ""].filter(Boolean).join("  ·  ")];
 
   return sheet(T, {
     title: p.name, kicker: group.name,
@@ -755,13 +755,13 @@ export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
       [`${share(parOrBetter(p.counts), p.holes)}%`, "par or better"],
     ],
   }, [
-    distributionBlock(T, p.counts, "Every hole in this league"),
-    vs.length ? pairRowsBlock(T, vs, { title: "Against the field", noteHead: `${first}  ·  the rest of the league`, labelW: 2.6 }) : null,
+    distributionBlock(T, p.counts, "Every hole in this society"),
+    vs.length ? pairRowsBlock(T, vs, { title: "Against the field", noteHead: `${first}  ·  the rest of the society`, labelW: 2.6 }) : null,
     p.played > 1 ? roundChartBlock(T, p.rounds, perHole ? "Points a hole, round by round" : "Points round by round", perHole) : null,
     // The extras the same way as everything else on this sheet: against the rest of the league where there is
     // a rest of the league to set them against, and simply as their own figures where there is not.
     band.length
-      ? { ...pairRowsBlock(T, band, { title: "Putts, fairways and the rest", noteHead: `${first}  ·  the rest of the league`, labelW: 2.6 }), minW: 99 }
+      ? { ...pairRowsBlock(T, band, { title: "Putts, fairways and the rest", noteHead: `${first}  ·  the rest of the society`, labelW: 2.6 }), minW: 99 }
       : mineX.length ? bandBlock(T, "Putts, fairways and the rest", mineX,
         `${first} over ${p.statline.holes} hole${p.statline.holes === 1 ? "" : "s"}`) : null,
   ]);
@@ -799,7 +799,7 @@ export function statsExtrasPoster(St, group, T) {
     right: "Only the holes that answered\nEverything else left blank", foot,
     tiles: statReadings(F, opts).filter(r => !r.deep).slice(0, 5).map(r => [r.big, r.name, r.key === "putts" ? T.ACCENT : null]),
   }, [
-    statTableBlock(T, rows, cols, { title: "Player by player", tail: `${St.field.holes} holes walked in this league` }),
+    statTableBlock(T, rows, cols, { title: "Player by player", tail: `${St.field.holes} holes walked in this society` }),
     // These share no units -- a birdie conversion and what the fairway is worth are not on one scale -- so
     // they are tiles and never bars against each other.
     deep.length ? bandBlock(T, "More of the same, for fun", deep) : null,

@@ -20,12 +20,15 @@ import { newCourse, scan } from "./screens/course.js";
 import { board, card } from "./screens/public.js";
 import { privacy, terms } from "./screens/legal.js";
 import { shop } from "./screens/shop.js";
+import { partners, partner, admin, redeem } from "./screens/partner.js";
 
 const screens = { home, welcome, signin, join, add, board, card, shop, play, new: newRound, loops, players, score, review, attach, graphics,
-  people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan,
+  people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan, partners, partner, admin, redeem,
   legal: which => (which === "terms" ? terms() : privacy()) };
 
 const OPEN_SCREENS = ["welcome", "signin", "board", "card", "join", "add", "legal"];
+// what a course, a company or the operator runs from a laptop: past the door in any browser, signing in on the page itself
+const WEB_SCREENS = ["partner", "admin", "redeem"];
 export const gated = () => Y.enabled() && !A.signedIn();
 
 export function route() {
@@ -35,6 +38,7 @@ export function route() {
   // a shared board, a card or an invite is meant to be opened by somebody who has no app yet, and the door
   // keeps its own way through for anyone it cannot actually help. The hash is left alone, so whoever walks
   // through arrives at the screen they asked for.
+  if (WEB_SCREENS.includes(name)) { paint(themeHere()); return screens[name](...args.map(decodeURIComponent)); }
   if (atDoor() && !OPEN_SCREENS.includes(name)) return welcome();
   if (gated() && !OPEN_SCREENS.includes(name)) {
     if (name && name !== "home") rememberIntent(location.hash);   // finish the journey once signed in

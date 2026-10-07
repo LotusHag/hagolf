@@ -95,7 +95,7 @@ function myLeagues(me) {
       <span>${row ? `${standingValue(kind, row)} from ${plural(row.played, "round")}` : `${plural(S.leagueRoundIds(g.id).length, "round")} · ${FORMAT_NAMES[kind]}`}</span></span>
       ${row ? `<span class="v place">${row.place}<small>${suffix}</small></span>` : `<span class="chev">›</span>`}</a>`);
   }
-  return rows.length ? panel("leagues", "Your standing", `<div class="rows">${rows.slice(0, 4).join("")}</div>`, rows.length > 4 ? `<a href="#leagues">All leagues</a>` : "") : "";
+  return rows.length ? panel("leagues", "Your standing", `<div class="rows">${rows.slice(0, 4).join("")}</div>`, rows.length > 4 ? `<a href="#leagues">All societies</a>` : "") : "";
 }
 
 /** Every finished round I have a line in, newest first. */
@@ -123,7 +123,7 @@ export const dayBlock = d => {
 
 /** A phone with nothing on it yet: the two things worth doing first. */
 const starters = () => panel("flag", "To begin", `<div class="rows">
-  <a class="hrow" href="#leagues"><span class="t"><b>Join a league</b><span>With a link from the organiser, or start your own</span></span><span class="chev">›</span></a>
+  <a class="hrow" href="#leagues"><span class="t"><b>Join a society</b><span>With a link from the organiser, or start your own</span></span><span class="chev">›</span></a>
   <a class="hrow" href="#people"><span class="t"><b>Find your friends</b><span>Search by name, or share your link</span></span><span class="chev">›</span></a></div>`);
 
 export function home() {

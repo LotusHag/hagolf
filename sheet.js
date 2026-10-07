@@ -4,7 +4,7 @@
 // how wide the sheet is, whether the blocks run down it or flow in two columns, in what order, where the
 // headline numbers sit and how much writing survives. One poster, ten pages. Nothing here knows what a
 // Stableford point is: a block is a height and a draw call, and this only finds it somewhere to stand.
-import { Fig, MARGIN, header, headerIn, footer, footerWidth, drawMark, section, house, caps, prose, surface, isPhone, PHONE_W } from "./draw.js";
+import { Fig, MARGIN, header, headerIn, footer, footerIn, drawMark, section, house, caps, prose, surface, isPhone, PHONE_W, headerLogoIn, brandNow } from "./draw.js";
 
 /** The sheets a family can ask for: how wide, in how many columns, and how far apart those columns sit. */
 export const PAGES = {
@@ -124,9 +124,10 @@ function place(run, cols, colW, gap, x0, y0, probe) {
  */
 function headerTiles(fig, items) {
   const T = fig.T;
-  const budget = (fig.w * (1 - 2 * MARGIN)) * 0.62;
+  const lr = headerLogoIn(fig);   // a partner's logo keeps the corner, so the figures start left of it
+  const budget = (fig.w * (1 - 2 * MARGIN)) * 0.62 - lr;
   const per = budget / items.length;
-  let x = fig.w - MARGIN * fig.w;
+  let x = fig.w - MARGIN * fig.w - lr;
   for (let i = items.length - 1; i >= 0; i--) {
     const [big, label, colr] = items[i];
     const bs = fig.fitOne(String(big), per - 0.34, 20, 11, { family: "display" });
@@ -286,7 +287,7 @@ export function sheet(T, head, blocks, opts = {}) {
     body += g.wide ? g.blocks[0].h(inner, probe) + GAP_Y : place(g.blocks, cols, colW, gap, 0, 0, probe).height;
   }
   const foot = prose(T, head.foot);
-  const footIn = foot ? 0.45 + 0.17 * (probe.wrap(foot, footerWidth(probe), 9).length - 1) : 0.34;
+  const footIn = footerIn(probe, foot);
   const top = headerIn(probe, head.sub, inHeader ? null : head.right) + 0.18;
   const H = top + body + footIn;
 
@@ -304,6 +305,6 @@ export function sheet(T, head, blocks, opts = {}) {
       y += r.height;
     }
   }
-  if (foot) footer(fig, foot); else drawMark(fig, 0.14);
+  if (foot || brandNow()) footer(fig, foot); else drawMark(fig, 0.14);
   return fig;
 }

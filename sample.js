@@ -86,7 +86,7 @@ export function showcaseLeague() {
     return Object.assign(compute(SHOWCASE_COURSE, { name: `Sunday ${i + 1}`, date, defaultTee: "yellow", allowance: 100, final: true, entries }), { id: `showcase-round-${i + 1}` });
   });
   Ms.push(showcaseRound());
-  const g = { id: "showcase-league", name: "Heron's Reach Sunday league", formats: ["stableford"], bestN: 0, theme: null };
+  const g = { id: "showcase-league", name: "Heron's Reach Sunday Society", formats: ["stableford"], bestN: 0, theme: null };
   return { g, Ms, members: SHOWCASE_PLAYERS.map(p => p.id), rounds: [] };
 }
 
@@ -113,3 +113,58 @@ export function showcaseNines(Ms) {
       players: all.map(e => ({ name: e.name, cards: e.pts.length, avgPts: mean(e.pts), avgGross: mean(e.gs) })) };
   });
 }
+
+// ---------------------------------------------------------------- two invented partners
+// The brands a partner contract puts on the boards and cards, for the previews, the tests and the site. Both are
+// made up, logos included, and their links go nowhere real.
+const svgUrl = svg => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg.replace(/\s*\n\s*/g, " "));
+
+// A heron standing in the reach, on a clubhouse shield: cream and bottle green, so it reads on a dark green page.
+const HERON_CREST = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <path d="M100 6 L186 28 V104 C186 162 150 206 100 234 C50 206 14 162 14 104 V28 Z" fill="#F1E6C4"/>
+  <path d="M100 18 L175 37 V104 C175 155 144 194 100 220 C56 194 25 155 25 104 V37 Z" fill="none" stroke="#1E4A33" stroke-width="3"/>
+  <g fill="#1E4A33" stroke="#1E4A33" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M118 104 C134 100 152 108 158 122 C162 132 164 146 172 160 C156 154 142 151 130 147 C114 142 104 131 104 119 C104 110 110 106 118 104 Z" stroke="none"/>
+    <path d="M110 112 C94 102 90 89 98 78 C106 68 106 60 98 56" fill="none" stroke-width="9"/>
+    <ellipse cx="94" cy="54" rx="9" ry="7" stroke="none"/>
+    <path d="M88 51 L50 60 L88 59 Z" stroke="none"/>
+    <path d="M99 50 L120 45" fill="none" stroke-width="2.5"/>
+    <path d="M127 144 L125 190" fill="none" stroke-width="4"/>
+    <path d="M136 144 L148 166 L132 174" fill="none" stroke-width="3.5"/>
+    <path d="M70 198 Q79 192 88 198 T106 198 T124 198 T142 198" fill="none" stroke-width="4"/>
+    <path d="M88 210 Q97 204 106 210 T124 210" fill="none" stroke-width="4"/>
+  </g>
+  <circle cx="92" cy="53" r="1.6" fill="#F1E6C4"/>
+</svg>`);
+
+// A finch on a halyard in a navy roundel, then the name: navy and rust, for a light page.
+const HALYARD_WORDMARK = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="660" height="120" viewBox="0 0 660 120">
+  <circle cx="60" cy="60" r="52" fill="#1F3A5F"/>
+  <path d="M18 88 H102" stroke="#F3EBDD" stroke-width="3" stroke-linecap="round"/>
+  <g fill="#F3EBDD">
+    <ellipse cx="64" cy="64" rx="25" ry="17" transform="rotate(-18 64 64)"/>
+    <circle cx="45" cy="49" r="12.5"/>
+    <path d="M82 70 L104 82 L86 62 Z"/>
+  </g>
+  <path d="M58 60 C68 54 82 60 88 70 C76 72 64 68 58 60 Z" fill="#C9C2B3"/>
+  <path d="M34 46 L23 51 L35 54 Z" fill="#C8553D"/>
+  <circle cx="43" cy="47" r="2.2" fill="#1F3A5F"/>
+  <path d="M60 80 L58 88 M68 80 L68 88" stroke="#F3EBDD" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="132" y="68" font-family="Georgia, 'Times New Roman', serif" font-size="46" letter-spacing="5" fill="#1F3A5F">HALYARD <tspan fill="#C8553D" font-style="italic">&amp;</tspan> FINCH</text>
+  <text x="134" y="98" font-family="Georgia, 'Times New Roman', serif" font-size="14" letter-spacing="6.5" fill="#C8553D">OUTFITTERS · EST. 1887</text>
+</svg>`);
+
+export const SAMPLE_BRANDS = {
+  course: {
+    id: "sample-course", kind: "course", name: "Heron's Reach Golf Club", logo: HERON_CREST,
+    palette: { base: "fairway", ACCENT: "#E9D18A" },
+    template: { kicker: "Heron's Reach", mark: "heronsreach.golf", foot: "Book your next round at the pro shop or online",
+      link: "https://example.com/heronsreach", date: true },
+  },
+  company: {
+    id: "sample-company", kind: "company", name: "Halyard & Finch", logo: HALYARD_WORDMARK,
+    palette: { base: "slate", ACCENT: "#C8553D" },
+    template: { kicker: "Halyard & Finch Golf Day", mark: "halyardfinch.com", foot: "Thank you for playing with us — see you next year",
+      date: true },
+  },
+};

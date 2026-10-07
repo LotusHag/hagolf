@@ -7,6 +7,7 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
+import { brandField } from "./partner.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn, ICONS, leagueBadge } from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow } from "./formats.js";
@@ -73,7 +74,7 @@ const personHash = id => (S.state.players.find(x => x.id === id && !x.deleted) ?
 const dayWhere = c => (c.course && (c.course.loop || c.course.name)) || c.name || "";
 
 /** Invite, share and the menu, as icons in the header, where they cost no page at all. */
-const headActions = () => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share the board") + iconBtn("lgmenu", "menu", "The league");
+const headActions = () => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share the board") + iconBtn("lgmenu", "menu", "The society");
 
 function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = false } = {}) {
   page(title, body, { back, actions: headActions(), bell: false, keepScroll });
@@ -105,7 +106,7 @@ function stateOfPlay(C, Sx) {
   if (!a) return "";
   const mine = myRow(Sx.rows, C.me);
   let lead;
-  if (!a.played) return `<p class="story">No card has been returned in this league yet.</p>`;
+  if (!a.played) return `<p class="story">No card has been returned in this society yet.</p>`;
   if (!b || !b.played) lead = `${esc(firstName(a.name))} is the only player with a card`;
   else {
     const d = Math.abs(decidingValue(C.kind, a) - decidingValue(C.kind, b));
@@ -179,7 +180,7 @@ function attachPrompt(C) {
   if (!recent) return "";   // an old round is found under Running the league, not offered for ever on the board
   const sameDay = d ? byDate.filter(r => r.date === d) : [byDate[0]];
   return `<button class="banner accent" data-act="attach-day" data-date="${esc(d || "")}" data-rid="${esc(byDate[0].id)}">
-    You played ${esc(d ? fmtDate(d) : roundWhere(byDate[0]))} — add ${sameDay.length > 1 ? `${plural(sameDay.length, "sheet")}` : "it"} to this league?</button>`;
+    You played ${esc(d ? fmtDate(d) : roundWhere(byDate[0]))} — add ${sameDay.length > 1 ? `${plural(sameDay.length, "sheet")}` : "it"} to this society?</button>`;
 }
 
 function boardView(C, keepScroll) {
@@ -250,7 +251,7 @@ function tableView(C, fmt, keep = false) {
 async function pickMember(C, title, exclude) {
   const nameOf = id => { for (const M of C.Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
   const list = C.members.filter(m => m !== exclude).sort((x, y) => nameOf(x).localeCompare(nameOf(y)));
-  const v = await sheet({ title, lead: "Anybody who has played a round in this league.",
+  const v = await sheet({ title, lead: "Anybody who has played a round in this society.",
     body: `<div class="fmtpicks">${list.map(m => `<button class="fmtpick" data-sheet="${esc(m)}"><span><b>${esc(nameOf(m))}</b></span></button>`).join("")}</div>`,
     actions: [{ label: "Cancel", value: "no" }] });
   return v && v !== "no" ? v : null;
@@ -281,11 +282,11 @@ function emptyBoard(C) {
     <section class="inplay"><div class="rule"></div>
       <div class="k quiet">Nothing scored yet</div><h1>${esc(g.name)}</h1>
       <p class="where">${esc(C.formats.map(f => FORMAT_NAMES[f]).join(" · "))}${g.bestN ? ` · best ${g.bestN} count` : ""}</p></section>
-    <button class="btn primary plate" data-act="new-in-league">Start a round in this league</button>
+    <button class="btn primary plate" data-act="new-in-league">Start a round in this society</button>
     ${sect("Or")}
     <div class="rows">
       <a class="hrow" href="#league/${gid}/admin"><span class="t"><b>Add a round you already played</b>
-        <span>${loose ? `${plural(loose, "finished round")} of yours ${loose === 1 ? "is" : "are"} not in this league` : "Nothing of yours is waiting"}</span></span><span class="chev">›</span></a>
+        <span>${loose ? `${plural(loose, "finished round")} of yours ${loose === 1 ? "is" : "are"} not in this society` : "Nothing of yours is waiting"}</span></span><span class="chev">›</span></a>
     </div>`, { runs: C.runs });
   wireBoard(C, { rows: [] });
 }
@@ -322,8 +323,8 @@ async function formatSheet(C) {
       <span><b>${esc(FORMAT_NAMES[f])}</b><small>${esc(FORMAT_BLURB[f])}</small></span>
       ${mine ? `<i>you ${ordinal(mine.place)}</i>` : T.rows[0] ? `<i>${esc(firstName(T.rows[0].name))} leads</i>` : ""}</button>`;
   };
-  const v = await sheet({ title: "How this league is scored",
-    lead: "Every way this league keeps, and where you are in each. They are the same rounds read differently, so the places can disagree — that is the point.",
+  const v = await sheet({ title: "How this society is scored",
+    lead: "Every way this society keeps, and where you are in each. They are the same rounds read differently, so the places can disagree — that is the point.",
     body: `<div class="fmtpicks">${C.formats.map(rowOf).join("")}</div>`,
     actions: [{ label: "Cancel", value: "no" }] });
   return v && v !== "no" && C.formats.includes(v) ? v : null;
@@ -348,9 +349,9 @@ function daysView(C) {
       ${mine ? `<span class="v num">${esc(D.value(mine))}<small class="u">${esc(D.unit)}</small></span>` : `<span class="chev">›</span>`}</a>`;
   };
   shell(C.g, "Cards", `
-    ${tip("<p>A league counts by the day, not by the sheet a group handed in. Every round in this league with the same date on the same loop is one card, so two fourballs round the same nine on a Sunday are one field of eight rather than two fields of four.</p><p>That is what every table here is built on.</p>", "One card is one day")}
-    ${cards.length ? `<div class="rows">${cards.map(row).join("")}</div>` : `<p class="muted center" style="margin:30px 0">No cards in this league yet.</p>`}
-    <button class="btn primary big" data-act="new-in-league">Start a round in this league</button>
+    ${tip("<p>A society counts by the day, not by the sheet a group handed in. Every round in this society with the same date on the same loop is one card, so two fourballs round the same nine on a Sunday are one field of eight rather than two fields of four.</p><p>That is what every table here is built on.</p>", "One card is one day")}
+    ${cards.length ? `<div class="rows">${cards.map(row).join("")}</div>` : `<p class="muted center" style="margin:30px 0">No cards in this society yet.</p>`}
+    <button class="btn primary big" data-act="new-in-league">Start a round in this society</button>
     ${C.runs || A.signedIn() ? `<div class="rows" style="margin-top:18px"><a class="hrow" href="#league/${C.gid}/admin"><span class="t"><b>Add a round you played</b><span>Every finished round waiting to go in</span></span><span class="chev">›</span></a></div>` : ""}`,
     { back: `#league/${C.gid}`, runs: C.runs });
   bind(async ev => {
@@ -417,10 +418,10 @@ function playerView(C, pid, keep = false) {
     ${sect(`${firstName(p.name)} against`)}
     <div class="rows">${others.slice(0, 5).map(o => `<a class="hrow" href="#league/${C.gid}/vs/${esc(pid)}/${esc(o.id)}">
       <span class="t"><b>${esc(o.name)}</b><span>${ordinal(o.place)} in this table</span></span><span class="chev">›</span></a>`).join("")}
-      ${others.length > 5 ? `<button class="hrow" data-act="pick-rival"><span class="t"><b>Somebody else</b><span>${plural(others.length - 5, "more player")} in this league</span></span><span class="chev">›</span></button>` : ""}</div>
+      ${others.length > 5 ? `<button class="hrow" data-act="pick-rival"><span class="t"><b>Somebody else</b><span>${plural(others.length - 5, "more player")} in this society</span></span><span class="chev">›</span></button>` : ""}</div>
     ${sect("Elsewhere")}
     <div class="rows">
-      <a class="hrow" href="${personHash(pid)}"><span class="t"><b>Everything they have played</b><span>Every round, in every league</span></span><span class="chev">›</span></a>
+      <a class="hrow" href="${personHash(pid)}"><span class="t"><b>Everything they have played</b><span>Every round, in every society</span></span><span class="chev">›</span></a>
       <a class="hrow" href="#leagueimages/${C.gid}"><span class="t"><b>Make images</b><span>${esc(firstName(p.name))}'s season as sheets, and the standings</span></span><span class="chev">›</span></a>
     </div>`,
     { back: `#league/${C.gid}`, runs: C.runs, keepScroll: keep });
@@ -450,7 +451,7 @@ function vsView(C, a, b) {
   if (!C.members.includes(a) || !C.members.includes(b) || a === b) {
     const x = C.members.includes(a) ? a : C.members[0];
     const y = C.members.find(m => m !== x);
-    if (!x || !y) { shell(C.g, "Head to head", `<p class="muted center" style="margin:30px 0">Head-to-heads appear once two players share a round in this league.</p>`, { back: `#league/${C.gid}`, runs: C.runs }); return bind(ev => common(C, ev)); }
+    if (!x || !y) { shell(C.g, "Head to head", `<p class="muted center" style="margin:30px 0">Head-to-heads appear once two players share a round in this society.</p>`, { back: `#league/${C.gid}`, runs: C.runs }); return bind(ev => common(C, ev)); }
     return go(`#league/${C.gid}/vs/${x}/${y}`);
   }
   const h2hKind = C.formats.find(f => f in MATCH_BASIS);
@@ -461,13 +462,13 @@ function vsView(C, a, b) {
   const head = `${sectRaw(`<button class="caps lfmt" data-act="vsbasis">${esc(basisName)} <i aria-hidden="true">⌄</i></button>`,
     infoBtn("Match play or stroke play?", `<p>This page keeps two scores, and they are two different games. Both are settled on ${esc(basisName.toLowerCase())}.</p>
       <p><b>Stroke play</b> settles the big score at the top: each round they played together goes to ${esc(roundWord)} that day. <b>Match play</b> settles the hole-by-hole part: every hole is its own contest, won by ${esc(holeWord)}, added up as one long match.</p>
-      <p>${h2hKind ? `This league keeps a ${esc(FORMAT_NAMES[h2hKind])} table, so that is what it opens on.` : "A round only one of them finished a card for goes to the one who did, the way a hole does."}</p>`))}`;
+      <p>${h2hKind ? `This society keeps a ${esc(FORMAT_NAMES[h2hKind])} table, so that is what it opens on.` : "A round only one of them finished a card for goes to the one who did, the way a hole does."}</p>`))}`;
   const sides = `<div class="vspick">
     <button class="vsname-btn" data-act="pick-a">${esc(A_)} <i aria-hidden="true">⌄</i></button>
     <button class="swapb" data-act="vsswap" title="Swap">&#8646;</button>
     <button class="vsname-btn" data-act="pick-b">${esc(B_)} <i aria-hidden="true">⌄</i></button></div>`;
   let body;
-  if (!H.rounds.length) body = `${sides}${head}<p class="muted center" style="margin:30px 0">${esc(fA)} and ${esc(fB)} have not played a round together in this league yet.</p>`;
+  if (!H.rounds.length) body = `${sides}${head}<p class="muted center" style="margin:30px 0">${esc(fA)} and ${esc(fB)} have not played a round together in this society yet.</p>`;
   else {
     const tot = H.winsA + H.ties + H.winsB;
     const pc = n => `${(n / tot) * 100}%`;
@@ -554,14 +555,14 @@ function adminView(C) {
       <a class="t" href="#review/${r.id}"><b>${esc(shortDate(r.date))} · ${esc(roundClub(r))}</b><span>${esc([roundLoop(r), plural(r.entries.length, "player")].filter(Boolean).join(" · "))}</span></a>
       ${canToggle ? `<button class="btn small ${on ? "" : "primary"}" data-act="toggle-round" data-rid="${r.id}" data-on="${on ? 0 : 1}">${on ? "Out" : "Add"}</button>` : `<span class="chev">›</span>`}</div>`;
   };
-  shell(g, runs ? "Running the league" : "This league", `
+  shell(g, runs ? "Running the society" : "This society", `
     ${open.length ? `${sect("On the go")}<div class="rows">${open.map(r => `<a class="hrow" href="${resumeHash(r)}"><span class="t"><b>${esc(r.name)}</b><span>${esc(roundWhere(r))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>` : ""}
-    ${sect("Cards in this league")}
+    ${sect("Cards in this society")}
     ${inL.length ? `<div class="rows">${inL.map(r => roundRow(r, true)).join("")}</div>` : `<p class="muted small" style="margin:4px 4px 10px">Nothing yet. Add a finished round below, or start a new one.</p>`}
-    <button class="btn primary big" data-act="new-in-league">Start a round in this league</button>
+    <button class="btn primary big" data-act="new-in-league">Start a round in this society</button>
     ${sect("Add a round")}
     ${rest.length ? `${rest.length > 6 ? `<input id="rq" class="search" placeholder="Search by date, course or player" autocomplete="off">` : ""}<div class="rows" id="rlist">${rest.map(r => roundRow(r, false)).join("")}</div>`
-      : `<p class="muted small" style="margin:4px 4px 10px">Every finished round you played is already in this league.</p>`}
+      : `<p class="muted small" style="margin:4px 4px 10px">Every finished round you played is already in this society.</p>`}
     ${settingsBody(C, formats)}`, { back: `#league/${gid}`, runs });
   wireSettings(C);
 }
@@ -573,15 +574,16 @@ function settingsBody(C, formats) {
   const missing = [...new Set(S.FORMATS.filter(f => !mine.includes(f)).map(f => E.FORMAT_SKU[f]))];
   return `${runs ? `${sect("How it is scored")}
     <form id="gform" class="card form open">
-      <div class="iconpick"><span id="liconprev">${leagueBadge(g, "big")}</span><div><b>Icon</b><small>Beside the league's name on every member's phone</small>
+      <div class="iconpick"><span id="liconprev">${leagueBadge(g, "big")}</span><div><b>Icon</b><small>Beside the society's name on every member's phone</small>
         <div class="btnrow"><label class="btn small">${ICONS.image} ${g.icon ? "Change" : "Upload an image"}<input type="file" accept="image/*" id="liconfile" hidden></label>
         ${g.icon ? `<button type="button" class="btn small" data-act="icon-clear">Remove</button>` : ""}</div></div></div>
-      <label>League name<input name="name" value="${esc(g.name)}"></label>
-      <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
+      <label>Society name<input name="name" value="${esc(g.name)}"></label>
+      <label>Scored by <span class="muted">(pick as many as you like; the first is what the society opens on)</span></label>
       <div class="fmtlist">${mine.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       ${missing.length ? shopBtn("More ways of ranking in the shop", missing) : ""}
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
-      <label>Theme <span class="muted">(what this league wears on screen and in its images)</span></label>
+      ${brandField("lbrand", g.brand)}
+      <label>Theme <span class="muted">(what this society wears on screen and in its images${g.brand ? ", unless a course or company look is on" : ""})</span></label>
       <div class="themes" style="margin-top:8px">${themeRadios("ltheme", leagueTheme(g) ? g.theme : "", { theme: appTheme(), label: "App theme" })}</div>
       <button class="btn primary" type="submit">Save</button></form>` : ""}
     ${A.signedIn() ? `${sect("Members")}<div class="card" id="members"><p class="muted small">Loading…</p></div>` : ""}
@@ -598,7 +600,7 @@ function settingsBody(C, formats) {
         ${g.token && g.visibility && g.visibility !== "private" ? `<div class="btnrow"><button class="btn small" data-act="share-board">Share the board link</button><button class="btn small" data-act="reset-board">Reset it</button></div>` : ""}</div>
       ${sect("Invite links")}<div class="card" id="invites"><p class="muted small">Loading…</p></div>` : ""}
     ${g.createdBy ? `<p class="muted small center" style="margin-top:18px">Created by ${esc(g.createdBy)}${g.created ? ` on ${esc(fmtDate(g.created))}` : ""}</p>` : ""}
-    <div class="btnrow">${member && g.owner !== S.myAccount() ? `<button class="btn danger" data-act="leave">Leave this league</button>` : ""}${runs ? `<button class="btn danger" data-act="del-league">Delete this league</button>` : ""}</div>`;
+    <div class="btnrow">${member && g.owner !== S.myAccount() ? `<button class="btn danger" data-act="leave">Leave this society</button>` : ""}${runs ? `<button class="btn danger" data-act="del-league">Delete this society</button>` : ""}</div>`;
 }
 
 // Square, small and re-encoded on the phone: every member pulls the league row, so the icon has to stay a few kB.
@@ -632,6 +634,7 @@ async function wireSettings(C) {
     g.name = ev.target.name.value.trim() || g.name; g.bestN = Number(ev.target.bestN.value) || 0;
     g.formats = S.cleanFormats([...ev.target.querySelectorAll("input[name=fmt]:checked")].map(i => i.value));
     g.theme = ev.target.ltheme.value || null;
+    if (ev.target.lbrand) g.brand = ev.target.lbrand.value || null;
     S.saveLeague(g); paint(themeHere()); toast("Saved"); go(`#league/${gid}`);
   });
   const lf = document.getElementById("liconfile");
@@ -676,11 +679,11 @@ async function wireSettings(C) {
     if (act === "confirm-claim") { try { await F.confirmClaim(gid, b.dataset.id); toast("Confirmed"); await Y.pull(); league(gid, "admin"); } catch (e) { toast(e.message, 5000); } }
     if (act === "claim-me") { try { const r = await F.candidatesOf(gid); await claimSheet(gid, r.candidates); league(gid, "admin"); } catch (e) { toast(e.message, 5000); } }
     if (act === "leave") {
-      if (!await confirmSheet("Leave this league?", "Your rounds stay on its cards; you stop seeing the table.", { label: "Leave", danger: true })) return;
-      try { await F.leaveLeague(gid); await Y.pull(); toast("You left the league"); go("#leagues"); } catch (e) { toast(e.message, 5000); }
+      if (!await confirmSheet("Leave this society?", "Your rounds stay on its cards; you stop seeing the table.", { label: "Leave", danger: true })) return;
+      try { await F.leaveLeague(gid); await Y.pull(); toast("You left the society"); go("#leagues"); } catch (e) { toast(e.message, 5000); }
     }
     if (act === "del-league") {
-      if (!await confirmSheet("Delete this league?", "It goes for every member. Rounds and players stay.", { label: "Delete", danger: true })) return;
+      if (!await confirmSheet("Delete this society?", "It goes for every member. Rounds and players stay.", { label: "Delete", danger: true })) return;
       S.deleteLeague(gid); go("#leagues");
     }
   });
@@ -719,7 +722,7 @@ function menuItems(C) {
     ...(C.Ms.length ? [[`#league/${gid}/stats`, "chart", "The numbers", "How the field scores"]] : []),
     ...(vs ? [[vs.href, "vs", "Head to head", vs.sub]] : []),
     [`#leagueimages/${gid}`, "image", "Images", "The standings and the season's sheets, in any look"],
-    [`#league/${gid}/admin`, "settings", C.runs ? "Running the league" : "Members and this league", C.runs ? "Cards, members, the icon, how it is scored" : "Who is in it, and how it is scored"],
+    [`#league/${gid}/admin`, "settings", C.runs ? "Running the society" : "Members and this society", C.runs ? "Cards, members, the icon, how it is scored" : "Who is in it, and how it is scored"],
   ];
 }
 

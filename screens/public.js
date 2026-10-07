@@ -7,19 +7,19 @@ import { page, bind, esc, go, ui, plural, courseBy, subtabs, tip, paint, themeNa
 import { compute, fmtToPar, fmtHcp, outcome, NO_SCORE } from "../model.js";
 import { FORMAT_NAMES, FORMAT_NOTES, standingsFor, standingsTable } from "./formats.js";
 
-const courseOf = (slug, list) => courseBy(slug) || (() => { const k = (list || []).find(x => x.slug === slug); return k && k.data ? { ...k.data, slug } : null; })();
+export const courseOf = (slug, list) => courseBy(slug) || (() => { const k = (list || []).find(x => x.slug === slug); return k && k.data ? { ...k.data, slug } : null; })();
 
-function buildRound(P, r, entriesIn, scoresIn, course) {
+export function buildRound(P, r, entriesIn, scoresIn, course, final = true) {
   const n = course.n || (course.par || []).length;
   const entries = entriesIn.map(e => {
     const scores = new Array(n).fill(null);
     for (const s of scoresIn) if (s.id === e.id && s.hole < n) scores[s.hole] = s.strokes;
     return { id: e.id, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", group: e.group || 1, courseHandicap: e.courseHandicap, scores, penalties: e.penalties || [], fromHole: e.fromHole || 1 };
   });
-  return Object.assign(compute(course, { name: r.name, date: r.date, defaultTee: r.defaultTee, allowance: r.allowance || 100, final: true, entries }), { id: r.id });
+  return Object.assign(compute(course, { name: r.name, date: r.date, defaultTee: r.defaultTee, allowance: r.allowance || 100, final, entries }), { id: r.id });
 }
 
-const signInLine = () => A.signedIn() ? "" : ` <a href="#welcome">Sign in</a> to keep rounds and leagues of your own.`;
+const signInLine = () => A.signedIn() ? "" : ` <a href="#welcome">Sign in</a> to keep rounds and societies of your own.`;
 
 export async function board(token) {
   if (!token) return go("#home");

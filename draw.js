@@ -415,6 +415,7 @@ export class Ax {
 /** The small line above the title: accent caps, a quiet line in the text face, or a filled accent tag. */
 export function kicker(fig, x, y, s, maxW = fig.w - x - MARGIN * fig.w) {
   const T = fig.T, k = house(T).kicker;
+  s = brandKick(s);
   if (k === "text") return void fig.text(x, y - 0.01, fig.clip(s, maxW, 11), { size: 11, color: T.ACCENT, va: "top" });
   if (k === "tag") {
     s = fig.clip(s.toUpperCase(), maxW - 0.17, 9, { family: "display" });
@@ -448,6 +449,9 @@ export function headerRule(fig, y) {
 function phoneLines(fig, sub, right) {
   const W = fig.w * (1 - 2 * MARGIN);
   const wrapped = s => String(s).split("\n").filter(Boolean).flatMap(l => fig.wrap(l, W, 10));
+  // a partner's date gets a line of its own rather than breaking across two
+  const d = BRAND && BRAND.date && `${DATE_SEP}${BRAND.date}`;
+  if (d && sub && String(sub).endsWith(d)) sub = `${String(sub).slice(0, -d.length)}\n${BRAND.date}`;
   return [...(sub ? wrapped(sub) : []), ...(right ? wrapped(right) : [])];
 }
 const PHONE_LINE = 10 / 72 * 1.5;
@@ -458,9 +462,11 @@ export const headerIn = (probe, sub, right) =>
 
 export function header(fig, title, kick, sub, right = null) {
   const T = fig.T, M = MARGIN * fig.w;
+  // a partner's logo takes the top-right corner, and everything that would have run into it stops short of it
+  const lg = headerLogo(fig), lr = lg ? lg.w + lg.gap : 0;
   if (isPhone(T)) {
-    kicker(fig, M, 0.30, kick);
-    fig.fitText(M, 0.52, caps(T, title), fig.w - 2 * M, 26, 15, { family: "display", color: T.INK, va: "top" });
+    kicker(fig, M, 0.30, kick, lr ? fig.w - 2 * M - lr : undefined);
+    fig.fitText(M, 0.52, caps(T, title), fig.w - 2 * M - lr, 26, 15, { family: "display", color: T.INK, va: "top" });
     const lines = phoneLines(fig, sub, right);
     if (lines.length) fig.text(M, 1.0, lines.join("\n"), { size: 10, color: T.INK_3, va: "top", lineSpacing: 1.5 });
     const y = 1.0 + lines.length * PHONE_LINE + 0.12;
@@ -470,12 +476,145 @@ export function header(fig, title, kick, sub, right = null) {
   // the kicker stops short of the right-hand text, and so does the title once that text runs to a second line
   const rl = right ? String(right).split("\n") : [];
   const rw = rl.length ? Math.max(...rl.map(l => fig.measure(l, 10.5))) + 0.3 : 0;
-  kicker(fig, M, 0.30, kick, fig.w - 2 * M - rw);
-  fig.fitText(M, 0.52, caps(T, title), fig.w - 2 * M - (rl.length > 1 ? rw : 0), 30, 15, { family: "display", color: T.INK, va: "top" });
-  fig.text(M, 1.08, sub, { size: 10, color: T.INK_3, va: "top" });
-  if (right) fig.text(fig.w - M, 0.34, right, { size: 10.5, color: T.INK_2, va: "top", ha: "right", lineSpacing: 1.6 });
+  if (lg && lg.wide) return wideHeader(fig, lg, title, kick, sub, right, rl, rw);
+  kicker(fig, M, 0.30, kick, fig.w - 2 * M - rw - lr);
+  fig.fitText(M, 0.52, caps(T, title), fig.w - 2 * M - (rl.length > 1 ? rw : 0) - lr, 30, 15, { family: "display", color: T.INK, va: "top" });
+  fig.text(M, 1.08, lr && sub ? fig.clip(sub, fig.w - 2 * M - lr, 10) : sub, { size: 10, color: T.INK_3, va: "top" });
+  if (right) fig.text(fig.w - M - lr, 0.34, right, { size: 10.5, color: T.INK_2, va: "top", ha: "right", lineSpacing: 1.6 });
   headerRule(fig, 1.42);
   return 1.42;
+}
+
+// A wordmark hangs from the top line at the right with the summary set under it, both on the margin, so the
+// kicker only has to clear the logo and the title whichever of the two is wider.
+function wideHeader(fig, lg, title, kick, sub, right, rl, rw) {
+  const T = fig.T, M = MARGIN * fig.w, inner = fig.w - 2 * M, lr = lg.w + lg.gap;
+  const rTop = lg.y + lg.h + 0.14, rBottom = rTop + 10.5 / 72 * (1 + 1.6 * (rl.length - 1)), side = Math.max(lr, rw);
+  kicker(fig, M, 0.30, kick, inner - lr);
+  fig.fitText(M, 0.52, caps(T, title), inner - side, 30, 15, { family: "display", color: T.INK, va: "top" });
+  if (sub) fig.text(M, 1.08, fig.clip(sub, inner - (rl.length && rBottom > 1.04 ? side : 0), 10), { size: 10, color: T.INK_3, va: "top" });
+  if (right) fig.text(fig.w - M, rTop, right, { size: 10.5, color: T.INK_2, va: "top", ha: "right", lineSpacing: 1.6 });
+  headerRule(fig, 1.42);
+  return 1.42;
+}
+
+// ---------------------------------------------------------------- a partner's brand
+// A course or a company that took a contract puts its name on what its rounds make: its logo in the header,
+// its words in the kicker and the footer, a code to its site, and its own mark where ours would have been.
+// One brand at a time, set by the caller before drawing, like the mark; null draws exactly what it always did.
+let BRAND = null;
+export function setBrand(b) { BRAND = b || null; }
+export const brandNow = () => BRAND;
+
+/** The partner's kicker before the poster's own, once: a kicker that already says it is not said twice. */
+export function brandKick(s) {
+  const k = BRAND && BRAND.kicker;
+  if (!k) return s;
+  return !s || String(s).trim().toLowerCase() === String(k).trim().toLowerCase() ? k : `${k} · ${s}`;
+}
+export const brandTitle = (key, s) => (BRAND && BRAND.titles && BRAND.titles[key]) || s;
+const DATE_SEP = "  ·  ";
+export const brandDate = s => BRAND && BRAND.date ? (s ? `${s}${DATE_SEP}${BRAND.date}` : BRAND.date) : s;
+const markText = () => BRAND ? String(BRAND.mark || BRAND.name || "").slice(0, 40) : MARK_TEXT;
+
+/** The logo's size fitted inside a box, aspect kept; null without one. */
+export function logoFit(maxW, maxH) {
+  const L = BRAND && BRAND.logo;
+  const iw = L && (L.naturalWidth || L.width), ih = L && (L.naturalHeight || L.height);
+  if (!iw || !ih) return null;
+  const s = Math.min(maxW / iw, maxH / ih);
+  return [iw * s, ih * s];
+}
+
+/** Draws the logo into the box at (x, y), against its `ha` edge and centred down it; returns its width or 0. */
+export function drawLogo(fig, x, y, maxW, maxH, ha = "left") {
+  const f = logoFit(maxW, maxH);
+  if (!f) return 0;
+  const [w, h] = f, ctx = fig.ctx;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(BRAND.logo, fig.px(ha === "right" ? x + maxW - w : x), fig.px(y + (maxH - h) / 2), fig.px(w), fig.px(h));
+  return w;
+}
+
+// The header's logo box: a crest stands the height of the band, a wordmark runs the width of it.
+const LOGO_BOX = { w: 1.9, h: 0.98, top: 0.30, gap: 0.35 }, LOGO_BOX_PHONE = { w: 1.3, h: 0.52, top: 0.30, gap: 0.22 };
+const logoBox = fig => isPhone(fig.T) ? LOGO_BOX_PHONE : LOGO_BOX;
+/** How much of the header's width, from the right margin in, the logo and the gap before it take. */
+export function headerLogoIn(fig) {
+  const B = logoBox(fig), f = logoFit(B.w, B.h);
+  return f ? f[0] + B.gap : 0;
+}
+const WIDE = 2.2;   // a logo this much wider than it is tall is a wordmark rather than a crest
+function headerLogo(fig) {
+  const B = logoBox(fig), f = logoFit(B.w, B.h);
+  if (!f) return null;
+  const wide = !isPhone(fig.T) && f[0] / f[1] >= WIDE, y = wide ? 0.32 : B.top + (B.h - f[1]) / 2;
+  drawLogo(fig, fig.w - MARGIN * fig.w - f[0], y, f[0], f[1]);
+  return { w: f[0], h: f[1], y, wide, gap: B.gap };
+}
+
+// The QR to the partner's link, cached by link since every sheet of a round asks for the same one.
+const QRS = new Map();
+function qrModules(link) {
+  if (!QRS.has(link)) {
+    let m = null;
+    try {
+      if (typeof window !== "undefined" && typeof window.qrcode === "function") {
+        const q = window.qrcode(0, "M"); q.addData(link); q.make();
+        const n = q.getModuleCount();
+        m = Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => q.isDark(r, c)));
+      }
+    } catch (e) { m = null; }
+    QRS.set(link, m);
+  }
+  return QRS.get(link);
+}
+const QR_IN = 0.66, QR_IN_PHONE = 0.5, QR_QUIET = 2;
+/** How big the partner's QR is drawn on this sheet, or 0 where there is none to draw. */
+export const qrIn = fig => BRAND && BRAND.link && qrModules(BRAND.link) ? (isPhone(fig.T) ? QR_IN_PHONE : QR_IN) : 0;
+
+/** The QR on a white square, its modules snapped to whole pixels so a phone camera gets clean edges. */
+export function drawQR(fig, x, y, size) {
+  const m = BRAND && BRAND.link && qrModules(BRAND.link);
+  if (!m) return;
+  const ctx = fig.ctx, n = m.length + 2 * QR_QUIET;
+  const mod = Math.max(1, Math.floor(fig.px(size) / n)), side = mod * n;
+  const X = Math.round(fig.px(x) + (fig.px(size) - side) / 2), Y = Math.round(fig.px(y) + (fig.px(size) - side) / 2);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(X, Y, side, side);
+  ctx.fillStyle = "#000000";
+  m.forEach((row, r) => row.forEach((dark, c) => { if (dark) ctx.fillRect(X + (c + QR_QUIET) * mod, Y + (r + QR_QUIET) * mod, mod, mod); }));
+}
+
+const MARK_GAP = 0.07;
+/** The bottom-right corner a brand wears: its QR, if it has a link, over its mark. [width, height] in inches. */
+export function cornerIn(fig) {
+  const q = qrIn(fig), mh = MARK_SIZE / 72 * 0.75;
+  return [Math.max(q, fig.measure(markText(), MARK_SIZE, "display")), q ? q + MARK_GAP + mh : mh];
+}
+/** Draws that corner with the mark's foot `bottom` inches down the sheet, right edges on the margin. */
+export function drawCorner(fig, bottom) {
+  const R = fig.w - MARGIN * fig.w, q = qrIn(fig), [, h] = cornerIn(fig);
+  if (q) drawQR(fig, R - q, bottom - h, q);
+  fig.text(R, bottom, markText(), { size: MARK_SIZE, family: "display", color: fig.T.INK_3, ha: "right", va: "bottom", alpha: 0.8 });
+}
+
+// A poster's footer under a brand: the partner's line first, then the explanation, the corner to the right of both.
+const FOOT_PT = 9, BFOOT_PT = 10, BFOOT_GAP = 0.06, FOOT_BOTTOM = 0.28;
+function brandFoot(fig, text) {
+  const W = footerWidth(fig);
+  const blines = BRAND.foot ? fig.wrap(String(BRAND.foot), W, BFOOT_PT, "display") : [];
+  const lines = text ? fig.wrap(text, W, FOOT_PT) : [];
+  const lh = pt => pt / 72 * 1.5, n = lines.length;
+  const above = n ? lh(FOOT_PT) * n + BFOOT_GAP : 0;   // the partner's line ends a line and a gap over the explanation
+  const textIn = blines.length ? above + lh(BFOOT_PT) * (blines.length - 1) + 0.11 : n ? lh(FOOT_PT) * (n - 1) + 0.1 : 0;
+  return { blines, lines, above, h: Math.max(textIn, cornerIn(fig)[1]) };
+}
+/** How tall a poster's footer is, from the top of its first line to the edge of the sheet. */
+export function footerIn(probe, text) {
+  if (!BRAND) return text ? 0.45 + 0.17 * (probe.wrap(text, footerWidth(probe), 9).length - 1) : 0.34;
+  return brandFoot(probe, text).h + FOOT_BOTTOM + 0.2;
 }
 
 // The mark a free render carries, bottom right. One definition, so a poster and a card wear it identically.
@@ -492,6 +631,7 @@ export const marked = () => MARK_ON;
 
 /** Draws the mark with its baseline block ending `inchesFromBottom` up from the bottom edge. */
 export function drawMark(fig, inchesFromBottom = 0.28) {
+  if (BRAND) return drawCorner(fig, fig.h - inchesFromBottom);
   if (!MARK_ON) return;
   fig.text(fig.w - MARGIN * fig.w, fig.h - inchesFromBottom, MARK_TEXT,
     { size: MARK_SIZE, family: "display", color: fig.T.INK_3, ha: "right", va: "bottom", alpha: 0.8 });
@@ -499,11 +639,19 @@ export function drawMark(fig, inchesFromBottom = 0.28) {
 
 /** Width the footer text may use: the mark sits at the right end of the same line, so it is wrapped clear of it. */
 export function footerWidth(fig, mark = MARK_ON) {
+  if (BRAND) return fig.w * (1 - 2 * MARGIN) - cornerIn(fig)[0] - 0.3;
   return fig.w * (1 - 2 * MARGIN) - (mark ? fig.measure(MARK_TEXT, MARK_SIZE, "display") + 0.18 : 0);
 }
 
 export function footer(fig, text, inchesFromBottom = 0.28, mark = MARK_ON) {
   const M = MARGIN * fig.w;
+  if (BRAND) {
+    const { blines, lines, above } = brandFoot(fig, text), bottom = fig.h - inchesFromBottom;
+    if (lines.length) fig.text(M, bottom, lines.join("\n"), { size: FOOT_PT, color: fig.T.INK_3, va: "bottom", lineSpacing: 1.5 });
+    if (blines.length) fig.text(M, bottom - above, blines.join("\n"), { size: BFOOT_PT, family: "display", color: fig.T.INK_2, va: "bottom", lineSpacing: 1.5 });
+    drawCorner(fig, bottom);
+    return lines.length + blines.length;
+  }
   const lines = fig.wrap(text, footerWidth(fig, mark), 9);
   fig.text(M, fig.h - inchesFromBottom, lines.join("\n"), { size: 9, color: fig.T.INK_3, va: "bottom", lineSpacing: 1.5 });
   if (mark) drawMark(fig, inchesFromBottom);

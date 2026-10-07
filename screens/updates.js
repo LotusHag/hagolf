@@ -52,14 +52,14 @@ export function noteLine(n, compact = false) {
 }
 
 export function updates() {
-  if (!A.signedIn()) return page("Updates", `<div class="banner"><a href="#welcome">Sign in</a> to be told when a round is added, a card shared or a league invites you.</div>`, { back: "#home", bell: false });
+  if (!A.signedIn()) return page("Updates", `<div class="banner"><a href="#welcome">Sign in</a> to be told when a round is added, a card shared or a society invites you.</div>`, { back: "#home", bell: false });
   const all = N.held();
   const dayOf = iso => { const d = new Date(iso); const today = new Date(); const diff = Math.floor((today.setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 86400000); return diff === 0 ? "Today" : diff === 1 ? "Yesterday" : diff < 7 ? "This week" : "Earlier"; };
   const groups = [];
   for (const n of all) { const d = dayOf(n.created); if (!groups.length || groups[groups.length - 1].label !== d) groups.push({ label: d, items: [] }); groups[groups.length - 1].items.push(n); }
   page("Updates", `${all.length ? groups.map(g => `<h2 class="daylabel">${g.label}</h2><div class="list">${g.items.map(n => noteLine(n)).join("")}</div>`).join("")
       + (all.some(n => !n.seen) ? `<p class="center"><button class="btn ghost small" data-act="seen-all">Mark all as read</button></p>` : "")
-    : emptyState("bell", "Nothing yet", "When somebody adds a round you played, shares a card, or invites you to a league, it lands here.")}
+    : emptyState("bell", "Nothing yet", "When somebody adds a round you played, shares a card, or invites you to a society, it lands here.")}
     <p class="center"><a class="muted small" href="#me/updates">Which updates reach this phone ›</a></p>`, { back: "#home", bell: false });
   bind(async ev => {
     const b = ev.target.closest("[data-act]");

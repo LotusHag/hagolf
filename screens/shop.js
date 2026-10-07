@@ -146,7 +146,7 @@ function everything(cat) {
   return page("Shop", `
     <div class="now pass"><div class="k">The shop</div><div class="name">You have all of it.</div>
       <div class="live">Every theme, the full boards and cards, every way of ranking a season, and the mark gone. There is nothing here left to sell you.</div></div>
-    <p class="muted small shopintro">The looks are in <a href="#me/look">Appearance</a>; the images screen of any round or league offers the full set.</p>
+    <p class="muted small shopintro">The looks are in <a href="#me/look">Appearance</a>; the images screen of any round or society offers the full set.</p>
     ${cat.open ? "" : `<p class="muted small shopline">Nothing is gated on this backend yet in any case.</p>`}`,
     { back: "", tabs: "shop", sub: "Bought once, yours on every phone" });
 }
@@ -163,7 +163,7 @@ function whySheet() {
   return sheet({
     title: "Why it costs what it costs",
     lead: "Nothing in the shop is needed. Buy none of it and the app is whole.",
-    body: `<p class="muted small">Scoring a round, keeping a league, sharing cards and inviting people are free, and always will be. What is sold is how the output looks and how much it says. Nothing here plays golf better; nothing is taken away from you for not buying it.</p>
+    body: `<p class="muted small">Scoring a round, keeping a society, sharing cards and inviting people are free, and always will be. What is sold is how the output looks and how much it says. Nothing here plays golf better; nothing is taken away from you for not buying it.</p>
       <p class="muted small">A price is not what reaches us. The card company takes a fixed amount on every checkout, however small, and a share on top; the rest pays for running the app. That fixed amount is the whole reason a bundle costs less than its items one at a time: one checkout instead of several.</p>
       <p class="muted small">Bought once, never a subscription, on the web rather than inside an app store. What you buy follows your account to every phone you sign in on.</p>`,
   });
@@ -184,7 +184,7 @@ function previewData() {
 
 function onWhat(sku) {
   return ON_LEAGUE.includes(sku)
-    ? { short: "the showcase league", line: "Drawn on the showcase league: the same four players over four Sundays at Heron's Reach, a course invented for the shop." }
+    ? { short: "the showcase society", line: "Drawn on the showcase society: the same four players over four Sundays at Heron's Reach, a course invented for the shop." }
     : { short: "the showcase round", line: "Drawn on the showcase round: four players over eighteen holes at Heron's Reach, a course invented for the shop." };
 }
 
@@ -215,7 +215,7 @@ function jobsFor(sku, T, D) {
   if (sku === "season") {
     const L = D.league, St = leagueStats(L.Ms, L.members), p = statsPlayer(St, M);
     return [
-      { label: "How this league scores", make: () => statsFieldPoster(St, L.g, T, { extras: true }) },
+      { label: "How this society scores", make: () => statsFieldPoster(St, L.g, T, { extras: true }) },
       ...(p ? [{ label: `One image a player: ${p.name}`, make: () => statsPlayerPoster(St, p, L.g, T, { extras: true }) }] : [])];
   }
   if (sku.startsWith("theme:")) return [

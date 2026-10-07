@@ -54,13 +54,13 @@ const TABLES = {
   },
   rounds: {
     collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, owner_account: r.owner || null, name: r.name, date: r.date || null, course: r.course,
-      default_tee: r.defaultTee, allowance: r.allowance || 100, status: r.status, hole: r.hole || 0, created: r.created || null,
+      default_tee: r.defaultTee, allowance: r.allowance || 100, status: r.status, hole: r.hole || 0, created: r.created || null, brand: r.brand || null,
       deleted: !!r.deleted, updated_at: r.updated_at, device_id: dev() })),
     apply(r) {
       const mine = roundFor(r.id);
       if (mine.updated_at && !newer(r, mine)) return false;
       Object.assign(mine, { owner: r.owner_account || null, name: r.name, date: r.date, course: r.course, defaultTee: r.default_tee, allowance: r.allowance || 100,
-        status: r.status, hole: r.hole || 0, created: iso(r.created), deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
+        status: r.status, hole: r.hole || 0, created: iso(r.created), brand: r.brand || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
       const n = holesOf(S.courseBy(mine.course));
       for (const e of [...mine.entries, ...mine.removed]) {  // entries that arrived before the header were sized at 18
         if (e.scores.length !== n) { e.scores = Array.from({ length: n }, (_, h) => e.scores[h] ?? null); e.scoreTs = Array.from({ length: n }, (_, h) => e.scoreTs[h] ?? null); }
@@ -147,8 +147,8 @@ const TABLES = {
     // kind, visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
     // them only through /league/<id>/visibility, so a phone editing the name offline cannot undo them.
     collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
-      created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null,
+      created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, brand: g.brand || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
+    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null, brand: r.brand || null,
       kind: r.kind || "friendly", visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0,
       deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },

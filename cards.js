@@ -1,5 +1,6 @@
 // Port of golf/cards.py: one card per player, laid out for 9 or 18 holes.
-import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule, house, isPhone, PHONE_W } from "./draw.js";
+import { Fig, MARGIN, drawMark, section, scoreGlyph, glyphLegend, outcomeBar, on, caps, kicker, headerRule, house, isPhone, PHONE_W,
+  brandNow, logoFit, drawLogo, cornerIn, drawCorner } from "./draw.js";
 import { heading, headingIn, panel, bigIn, inchAxes, blockAxes } from "./sheet.js";
 import { fmtToPar, fmtSigned, fmtHcp, fmtIndex, fileSlug, fix, statReadings, STRIP_KEYS, NO_SCORE } from "./model.js";
 
@@ -193,6 +194,8 @@ function metaBits(M, p) {
   if (M.allowance !== 100) bits.push(`playing handicap ${fmtHcp(p.ph)} at ${M.allowance}%`);
   if (Object.keys(M.course.tees).length > 1) bits.push(`${p.tee} tees` + (p.gender === "f" ? ", women's rating" : ""));
   if (p.ph < 0) bits.push(`plus handicap: gives ${-p.ph} stroke${p.ph !== -1 ? "s" : ""} back`);
+  const B = brandNow();
+  if (B && B.date) bits.push(B.date);
   return bits;
 }
 
@@ -247,7 +250,9 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   const wrapped = told.map(ln => probe.wrap(ln, storyW, 9.5));
   const storyIn = STORY_TOP + wrapped.reduce((a, ls) => a + STORY_LINE + (ls.length - 1) * STORY_WRAP, 0);
   const storyTop = MID_TOP + midIn + 0.45;
-  const H_IN = basic ? 5.25 : storyTop + storyIn + 0.2;
+  const bodyIn = basic ? 5.25 : storyTop + storyIn + 0.2;
+  const band = bandLayout(probe);
+  const H_IN = bodyIn + (band ? band.h : 0);
   const fig = new Fig(W_IN, H_IN, T, 150);
   const rect = (topIn, hIn, x0 = MARGIN, x1 = 1 - MARGIN) => [x0, 1 - (topIn + hIn) / H_IN, x1 - x0, hIn / H_IN];
   const Mx = MARGIN * W_IN;
@@ -345,7 +350,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   axs.text(xmax, 5.0, note, { size: 7.5, color: T.INK_3, ha: "right", va: "center" });
 
   if (basic) {
-    drawMark(fig, 0.06);
+    if (band) brandBand(fig, bodyIn, band); else drawMark(fig, 0.06);
     return { file: cardFile(p), fig };
   }
 
@@ -411,7 +416,8 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
     at += STORY_LINE + (lines.length - 1) * STORY_WRAP;
   }
 
-  drawMark(fig, 0.06);  // the card has no footer; the story block ends 0.2in above the edge, so the mark sits under it
+  // the card has no footer; the story block ends 0.2in above the edge, so the mark sits under it
+  if (band) brandBand(fig, bodyIn, band); else drawMark(fig, 0.06);
 
   return { file: cardFile(p), fig };
 }
@@ -627,10 +633,40 @@ function phoneCard(M, p, T, tier, { extras }) {
     }, i < wrapped.length - 1 ? 0.13 : 0));
   }
 
-  const BOTTOM = 0.4;   // room under the last block for the mark
+  const band = bandLayout(probe);
+  const BOTTOM = band ? 0.3 + band.h : 0.4;   // room under the last block for the mark, or for the partner's strip
   const fig = new Fig(PHONE_W, parts.reduce((a, [h, , g]) => a + h + g, 0) + BOTTOM, T);
   let y = 0;
   for (const [h, draw, gap] of parts) { draw(fig, y); y += h + gap; }
-  drawMark(fig, 0.12);
+  if (band) brandBand(fig, fig.h - band.h, band); else drawMark(fig, 0.12);
   return { file: cardFile(p), fig };
+}
+
+// ---------------------------------------------------------------- a partner's strip
+// A card's header is the player's, and its top right is their figures, so a partner signs the foot instead: its
+// logo and its line on the left, its code over its mark on the right, under a hairline, on the full card and the
+// phone card alike.
+const BAND = { full: { logoW: 1.8, logoH: 0.6, pt: 11, pad: 0.2 }, phone: { logoW: 1.3, logoH: 0.46, pt: 10.5, pad: 0.2 } };
+const BAND_LS = 1.4;
+
+/** The strip measured on `probe`, before the card exists, or null when no brand is set. */
+function bandLayout(probe) {
+  const B = brandNow();
+  if (!B) return null;
+  const S = isPhone(probe.T) ? BAND.phone : BAND.full, inner = probe.w * (1 - 2 * MARGIN);
+  const logo = logoFit(S.logoW, S.logoH), [cw, ch] = cornerIn(probe);
+  const tx = logo ? logo[0] + 0.28 : 0, tw = inner - tx - cw - 0.35;
+  const lines = B.foot ? probe.wrap(String(B.foot), tw, S.pt, "display").slice(0, 3) : [];
+  const textIn = lines.length ? S.pt / 72 * (1 + BAND_LS * (lines.length - 1)) : 0;
+  const body = Math.max(logo ? logo[1] : 0, ch, textIn);
+  return { S, logo, tx, tw, lines, ch, body, h: 2 * S.pad + body };
+}
+
+function brandBand(fig, y, L) {
+  const Mx = MARGIN * fig.w, cy = y + L.S.pad + L.body / 2;
+  fig.line(Mx, y, fig.w - Mx, y, fig.T.LINE, 0.8);
+  if (L.logo) drawLogo(fig, Mx, cy - L.S.logoH / 2, L.S.logoW, L.S.logoH, "left");
+  if (L.lines.length) fig.text(Mx + L.tx, cy, L.lines.map(l => fig.clip(l, L.tw, L.S.pt, { family: "display" })).join("\n"),
+    { size: L.S.pt, family: "display", color: fig.T.INK_2, va: "center", lineSpacing: BAND_LS });
+  drawCorner(fig, cy + L.ch / 2);
 }

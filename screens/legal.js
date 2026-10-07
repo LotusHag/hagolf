@@ -12,7 +12,7 @@ export function privacy() {
     <h3>What is kept, and why</h3>
     <ul>
       <li><b>Your account:</b> the email address of the Google account you sign in with, your name, your handle, your handicap index and rating, and the settings you choose. The email is used to sign you in and to reach you about your account. It is never shown to other people: everywhere in the app you are your name.</li>
-      <li><b>Your golf:</b> the rounds you score or are scored into, hole by hole, with the extras you switch on (putts, fairways and so on), the leagues you are in, and the people in your address book with the index they last played off.</li>
+      <li><b>Your golf:</b> the rounds you score or are scored into, hole by hole, with the extras you switch on (putts, fairways and so on), the societies you are in, and the people in your address book with the index they last played off.</li>
       <li><b>Your friends:</b> who you asked, who asked you, who said yes, and whom you blocked.</li>
       <li><b>What changed:</b> every correction to a card is logged with what it was, what it became, and which account made it, so a card can be corrected years later and still say who did.</li>
       <li><b>Where to wake your phone:</b> if you switch notifications on, the push address your phone gives us. The push itself carries no content at all.</li>
@@ -20,9 +20,9 @@ export function privacy() {
     </ul>
     <h3>Who sees what</h3>
     <ul>
-      <li>A round is seen by the people on it, by the members of the leagues it counts for, and by anyone you share it with. A card you make a public link for is readable by anyone with the link; the people on it are told.</li>
-      <li>A league's table is seen by its members. Its organiser can make it readable by link or public; you can ask to appear as initials on any board that is not private.</li>
-      <li>Your name and handle can be found by search only by people who share a league with you, unless you switch that to everyone or to nobody. A friend link you hand out always works.</li>
+      <li>A round is seen by the people on it, by the members of the societies it counts for, and by anyone you share it with. A card you make a public link for is readable by anyone with the link; the people on it are told.</li>
+      <li>A society's table is seen by its members. Its organiser can make it readable by link or public; you can ask to appear as initials on any board that is not private.</li>
+      <li>Your name and handle can be found by search only by people who share a society with you, unless you switch that to everyone or to nobody. A friend link you hand out always works.</li>
       <li>Nobody sees your email address, your friends list, or your inbox.</li>
     </ul>
     <h3>Who we work with</h3>
@@ -49,7 +49,7 @@ export function terms() {
     <h3>Other people</h3>
     <p>The people on your cards are real. Enter their scores honestly, share cards only where they would expect it, and do not use search, invites or sharing to bother anyone. Blocking is available to everyone, and an account used to harass people will be closed.</p>
     <h3>Your golf</h3>
-    <p>Your rounds are yours. Cards are shared records: everybody who was on one may correct it, and every correction is logged. A league's organiser decides how it is scored and who may read its table.</p>
+    <p>Your rounds are yours. Cards are shared records: everybody who was on one may correct it, and every correction is logged. A society's organiser decides how it is scored and who may read its table.</p>
     <h3>What we promise, and do not</h3>
     <p>We work to keep the service up and your data safe, and to fix what breaks. We do not promise that it is never down, that a handicap worked out here is the one your club would give you, or that a rating for a course is correct: check the card in the clubhouse before a competition.</p>
     <h3>Ending</h3>

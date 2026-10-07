@@ -1,7 +1,7 @@
 {
   "name": "Hagolf",
   "short_name": "Hagolf",
-  "description": "Score a golf round on the phone, keep leagues with your friends and generate the posters and player cards.",
+  "description": "Score a golf round on the phone, keep societies with your friends and generate the posters and player cards.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

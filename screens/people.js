@@ -26,9 +26,9 @@ export function people() {
   const found = ui.found;
   page("People", `
     ${acct ? `<input id="q" class="search" placeholder="Find people by name or @handle" value="${esc(q)}" autocomplete="off" autocapitalize="off">
-    ${q.trim().length >= 2 ? `<div class="list" id="found">${found === null ? `<div class="muted small">Searching…</div>` : found.length ? found.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">@${esc(p.handle || "")}${p.league ? " · in a league with you" : ""}</div></div></span>
+    ${q.trim().length >= 2 ? `<div class="list" id="found">${found === null ? `<div class="muted small">Searching…</div>` : found.length ? found.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">@${esc(p.handle || "")}${p.league ? " · in a society with you" : ""}</div></div></span>
         ${p.state === "accepted" ? `<span class="pill done">friend</span>` : p.state === "requested" ? `<span class="pill">requested</span>` : `<button class="btn small primary" data-act="request" data-id="${esc(p.id)}">Add</button>`}</div>`).join("")
-        : `<div class="muted small">Nobody found. People who share a league with you, and anyone who has switched on "everyone", can be found by name. Or ask for their link.</div>`}</div>` : ""}` : `<div class="banner"><a href="#welcome">Sign in</a> to find friends.</div>`}
+        : `<div class="muted small">Nobody found. People who share a society with you, and anyone who has switched on "everyone", can be found by name. Or ask for their link.</div>`}</div>` : ""}` : `<div class="banner"><a href="#welcome">Sign in</a> to find friends.</div>`}
     ${held.incoming.length ? `<h2>Requests</h2><div class="list">${held.incoming.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">wants to be your friend</div></div></span>
       <span class="btnrow" style="margin:0;flex:none"><button class="btn small primary" data-act="accept" data-id="${esc(p.id)}">Accept</button><button class="btn small" data-act="decline" data-id="${esc(p.id)}">No</button></span></div>`).join("")}</div>` : ""}
     ${held.outgoing.length ? `<h2>Sent</h2><div class="list">${held.outgoing.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">waiting for them</div></div></span><button class="btn small" data-act="decline" data-id="${esc(p.id)}">Cancel</button></div>`).join("")}</div>` : ""}
@@ -94,7 +94,7 @@ export async function person(id) {
     ${incoming ? `<div class="btnrow"><button class="btn primary" data-act="accept">Accept</button><button class="btn" data-act="decline">Decline</button></div>` : ""}
     ${!f && !incoming && !outgoing ? `<div class="btnrow"><button class="btn primary" data-act="request">${ICONS.friend} Add as a friend</button></div>` : ""}
     ${f ? `<div class="list">
-      <button data-act="invite"><span class="lead">${ICONS.trophy}<div><div class="name">Invite to a league</div></div></span><span class="chev">›</span></button>
+      <button data-act="invite"><span class="lead">${ICONS.trophy}<div><div class="name">Invite to a society</div></div></span><span class="chev">›</span></button>
       <button data-act="sharecard"><span class="lead">${ICONS.card}<div><div class="name">Share a card with ${esc(firstName(name))}</div></div></span><span class="chev">›</span></button>
     </div>` : ""}
     ${together.length ? `<h2>Rounds together</h2><div class="list">${together.map(roundRow).join("")}</div>` : rounds.length ? `<h2>Rounds you can see</h2><div class="list">${rounds.map(roundRow).join("")}</div>` : `<p class="muted center" style="margin:24px 0">No rounds together yet.</p>`}
@@ -110,10 +110,10 @@ export async function person(id) {
       if (act === "accept") { await F.accept(id); toast("You are now friends"); return person(id); }
       if (act === "decline") { await F.decline(id); return person(id); }
       if (act === "remove") { if (await confirmSheet(`Remove ${firstName(name)}?`, "You can add each other again any time.", { label: "Remove", danger: true })) { await F.remove(id); go("#people"); } return; }
-      if (act === "block") { if (await confirmSheet(`Block ${firstName(name)}?`, "They cannot find you, send you requests or share cards with you. They are not told. Leagues you are both in are unchanged.", { label: "Block", danger: true })) { await F.block(id); go("#people"); } return; }
+      if (act === "block") { if (await confirmSheet(`Block ${firstName(name)}?`, "They cannot find you, send you requests or share cards with you. They are not told. Societies you are both in are unchanged.", { label: "Block", danger: true })) { await F.block(id); go("#people"); } return; }
       if (act === "invite") {
         const gs = S.leagues();
-        if (!gs.length) return toast("You have no league to invite them to yet");
+        if (!gs.length) return toast("You have no society to invite them to yet");
         const v = await sheet({ title: `Invite ${firstName(name)} to`, body: `<div class="list">${gs.map(g => `<button data-act="${esc(g.id)}" data-sheet-act><span class="lead">${ICONS.trophy}<div><div class="name">${esc(g.name)}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`, actions: [{ label: "Cancel", value: "no" }] });
         if (v && v !== "no") { await F.inviteFriend(v, id); toast("Invited"); }
         return;
@@ -164,7 +164,7 @@ export function player(id) {
   page(isMe ? "My rounds" : p.name, `
     <div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">${p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))} · ` : ""}${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(rs.length, "round")}${linkedTo ? ` · <a href="#person/${esc(p.linkedAccount)}">friend</a>` : ""}</div></div></div>
     ${stats}
-    ${leagueLines ? `<h2>Leagues</h2><div class="list">${leagueLines}</div>` : ""}
+    ${leagueLines ? `<h2>Societies</h2><div class="list">${leagueLines}</div>` : ""}
     ${career.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(career, `Over ${plural(career.holes, "hole")} of ${plural(rs.length, "round")}.`, { per18: true })}` : ""}
     ${sgMine.total === null ? "" : `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sgMine, "everyone else on the card")}`}
     ${nines.length ? `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18.`)}

@@ -2,6 +2,7 @@
 // icons, the theme painter, and the small text helpers. Screens import this and the stores; nothing here
 // imports a screen.
 import { DATA } from "./data.js";
+import * as B from "./brand.js";
 import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
@@ -29,7 +30,7 @@ document.addEventListener("click", ev => {
 });
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const go = hash => { location.hash = hash; };
-export const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+export const plural = (n, w, ws = `${w}s`) => `${n} ${n === 1 ? w : ws}`;
 export const andList = xs => xs.length < 2 ? (xs[0] || "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 export const firstName = n => String(n || "").trim().split(/\s+/)[0];
 /** Tees are named after the markers' colour, so the picker shows the colour itself. */
@@ -145,7 +146,7 @@ export const ICONS = {
   golf: I(`<circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/>`),
   shop: I(`<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`),
 };
-export const TABS = [["home", "#home", "Home", "home"], ["play", "#play", "Rounds", "play"], ["leagues", "#leagues", "Leagues", "leagues"], ["people", "#people", "People", "people"], ["shop", "#shop", "Shop", "shop"]];
+export const TABS = [["home", "#home", "Home", "home"], ["play", "#play", "Rounds", "play"], ["leagues", "#leagues", "Societies", "leagues"], ["people", "#people", "People", "people"], ["shop", "#shop", "Shop", "shop"]];
 
 // ---------------------------------------------------------------- the page shell
 let toastTimer = null;
@@ -155,7 +156,7 @@ let toastTimer = null;
  * and a title. `actions` are extra header buttons, `bar` a fixed action bar instead of the tabs, `bare` the
  * gate (no chrome at all). A screen with no `back` and a `tabs` key is top level and gets the centred masthead.
  */
-export function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false, actions = "", bell = true } = {}) {
+export function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false, actions = "", bell = true, wide = false } = {}) {
   const y = keepScroll ? scrollPos() : 0;
   const badge = N.actionable();
   const nav = tabs ? `<nav class="tabs">${TABS.filter(([k]) => k !== "shop" || Y.enabled()).map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "people" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
@@ -171,7 +172,7 @@ export function page(title, body, { back = "#home", bar = "", sub = "", tabs = n
       <div class="ttl">${brand ? `<div class="brand">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
       <div class="acts">${actions}${bellBtn}${gearBtn}</div></header>`;
   app.innerHTML = bare ? `<main class="bare">${body}</main>` : `${head}
-    <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}">${body}</main>
+    <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}${wide ? " wide" : ""}">${body}</main>
     ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
   scrollAt(y);
   cueTabs();
@@ -387,12 +388,17 @@ export const emptyState = (icon, title, text = "", action = "") => `<div class="
 // ---------------------------------------------------------------- the look
 // chalk became hagolf's own colours; leagues, clubs and phones that still say chalk get the same look
 const RETIRED = { chalk: "hagolf" };
-export const themeNamed = n => DATA.themes.find(t => t.name === (RETIRED[n] || n)) || null;
-const clubTheme = () => { const c = A.account() && A.account().club; return c && c.theme && !S.state.settings.themeChosen ? themeNamed(c.theme) : null; };
+export const themeNamed = n => DATA.themes.find(t => t.name === (RETIRED[n] || n)) || B.brandThemeNamed(n) || null;
+// a course's members wear the course on every screen unless they chose a look of their own; a company stays on its rounds
+const clubTheme = () => {
+  if (S.state.settings.themeChosen) return null;
+  const c = B.myBrands().find(x => x.kind !== "company");
+  return c ? B.brandTheme(B.brandById(c.id) || c) : null;
+};
 export const appTheme = () => clubTheme() || themeNamed(S.state.settings.theme) || themeNamed("hagolf") || DATA.themes[0];
-export const leagueTheme = g => (g && themeNamed(g.theme)) || null;
+export const leagueTheme = g => (g && (B.brandTheme(B.brandOfLeague(g)) || themeNamed(g.theme))) || null;
 export const themeFor = g => leagueTheme(g) || appTheme();
-export const themeForRound = rid => S.leaguesOfRound(rid).map(leagueTheme).find(Boolean) || appTheme();
+export const themeForRound = rid => B.brandTheme(B.brandOfRound(rid)) || S.leaguesOfRound(rid).map(leagueTheme).find(Boolean) || appTheme();
 const LEAGUE_SCREENS = ["league", "leagueimages", "leagueposter", "statsposter"];
 const ROUND_SCREENS = ["players", "score", "review", "attach", "graphics"];
 export function themeHere() {
@@ -412,12 +418,13 @@ export function paint(t) {
   const meta = document.querySelector("meta[name=theme-color]");
   if (meta) meta.content = t.ui.bg;
 }
-/** What the account brings to the look: the mark, and the club's theme unless the phone chose its own. */
+/** What the account brings to the look: the mark, and a course's theme unless the phone chose its own. */
 export function applyBrand() {
-  const club = A.account() && A.account().club;
-  if (club) { setMarkText(club.name); setMarked(true); }
-  else { setMarkText(null); setMarked(E.marked()); }
+  setMarkText(null);
+  setMarked(E.marked());
+  painted = null;
   paint(themeHere());
+  B.refreshBrands().then(() => { painted = null; paint(themeHere()); });
 }
 /** One chip a look, its swatch drawn from that theme's own tokens. */
 export function tchip(input, t, label, on) {
