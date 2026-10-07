@@ -1,12 +1,12 @@
-// Home: the honours board. A round in play takes the whole top of the screen; with nothing on the go the
-// player takes it instead, and home never asks for a round -- starting one lives under Rounds. Then where you
-// stand and what you last played, as ruled rows. Nothing here names a colour of its own, so all hundred
-// themes carry it: only the accent, the ink and the hairline.
+// Home: the honours board. A round in play takes the top of the screen; with nothing on the go the player
+// takes it instead, and home never asks for a round -- starting one lives under Rounds. Then where you stand and
+// what you last played, each in a panel of its own so the parts never run together. Nothing here names a colour
+// of its own, so all hundred themes carry it: only the card, the accent, the ink and the hairline.
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, sect } from "../ui.js";
+import { page, bind, esc, plural, firstName, ordinal, shortDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, panel, avatar, leagueBadge } from "../ui.js";
 import { compute, handicapFor, stableford, fix, fmtIndex } from "../model.js";
 import { leagueResults, standingsFor, standingValue, FORMAT_NAMES } from "./formats.js";
 import { noteLine } from "./updates.js";
@@ -47,13 +47,13 @@ function inPlay(r) {
   const top = L ? L.rows.slice(0, 3) : [];
   const thru = r.status === "scoring" && L && L.through ? `Through ${L.through}${c ? ` of ${c.n}` : ""}`
     : `${plural(r.entries.length, "player")} · not started`;
-  return `<section class="inplay"><div class="rule"></div>
+  return `<div class="panel hero live"><section class="inplay"><div class="rule"></div>
     <div class="k">${r.status === "scoring" ? "In play" : "Being set up"}</div>
     <h1>${esc(r.name)}</h1>
     <p class="where">${esc(courseTitle(c || { name: r.course }))}</p></section>
     ${top.length ? `<div class="board">${top.map((x, i) => `<div><span class="p">${i + 1}</span><span class="who">${esc(x.name)}</span><span class="v">${x.pts}</span></div>`).join("")}</div>` : ""}
     <p class="thru caps">${esc(thru)}</p>
-    <a class="btn primary plate" href="${resumeHash(r)}">${r.status === "scoring" ? "Continue scoring" : "Add players"}</a>`;
+    <a class="btn primary plate" href="${resumeHash(r)}">${r.status === "scoring" ? "Continue scoring" : "Add players"}</a></div>`;
 }
 
 const today = () => new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
@@ -69,18 +69,18 @@ function meHero(a, me, mine) {
   const wins = mine.filter(x => x.win).length;
   const where = hi === null || hi === undefined ? "" : `Handicap ${esc(fmtIndex(Number(hi)))}`;   // the rounds are in the strip below
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
-  return `<section class="inplay"><div class="rule"></div>
+  return `<div class="panel hero"><section class="inplay me">${name ? avatar(name, "big") : ""}<div>
     <div class="k quiet">${esc(today())}</div>
     ${name ? `<h1>${esc(firstName(name))}</h1>` : ""}
-    ${where ? `<p class="where">${where}</p>` : ""}</section>
+    ${where ? `<p class="where">${where}</p>` : ""}</div></section>
     ${pts.length ? `<div class="mecard herostats"><div class="stats">${tile(pts.length, plural(pts.length, "round").split(" ")[1])}
       ${tile(fix(pts.reduce((x, y) => x + y, 0) / pts.length), "avg pts")}${tile(Math.max(...pts), "best")}
-      ${wins ? tile(wins, plural(wins, "win").split(" ")[1]) : ""}</div></div>` : ""}`;
+      ${wins ? tile(wins, plural(wins, "win").split(" ")[1]) : ""}</div></div>` : ""}</div>`;
 }
 
 /** The rounds open behind the one in the hero. */
-const alsoOpen = rs => rs.length ? `${sect("Also on the go")}<div class="rows">${rs.map(r => `<a class="hrow" href="${resumeHash(r)}">
-  <span class="t"><b>${esc(r.name)}</b><span>${esc(roundWhere(r))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>` : "";
+const alsoOpen = rs => rs.length ? panel("play", "Also on the go", `<div class="rows">${rs.map(r => `<a class="hrow" href="${resumeHash(r)}">
+  <span class="t"><b>${esc(r.name)}</b><span>${esc(roundWhere(r))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>`) : "";
 
 /** Every league this player is on, scored the way that league opens, with their own place in the accent. */
 function myLeagues(me) {
@@ -91,12 +91,11 @@ function myLeagues(me) {
     // a league collapses a claimed contact into its account, so my line is under my identity as often as my id
     const row = me ? standingsFor(g, Ms, members, kind).rows.find(r => r.id === S.identityOf(me.id) || r.id === me.id) : null;
     const suffix = row ? ordinal(row.place).slice(String(row.place).length) : "";
-    rows.push(`<a class="hrow" href="#league/${g.id}"><span class="t"><b>${esc(g.name)}</b>
+    rows.push(`<a class="hrow lead" href="#league/${g.id}">${leagueBadge(g)}<span class="t"><b>${esc(g.name)}</b>
       <span>${row ? `${standingValue(kind, row)} from ${plural(row.played, "round")}` : `${plural(S.leagueRoundIds(g.id).length, "round")} · ${FORMAT_NAMES[kind]}`}</span></span>
-      ${row ? `<span class="v top">${row.place}<small>${suffix}</small></span>` : `<span class="chev">›</span>`}</a>`);
+      ${row ? `<span class="v place">${row.place}<small>${suffix}</small></span>` : `<span class="chev">›</span>`}</a>`);
   }
-  return rows.length ? `${sect("Your standing", rows.length > 4 ? `<a href="#leagues">All leagues</a>` : "")}
-    <div class="rows">${rows.slice(0, 4).join("")}</div>` : "";
+  return rows.length ? panel("leagues", "Your standing", `<div class="rows">${rows.slice(0, 4).join("")}</div>`, rows.length > 4 ? `<a href="#leagues">All leagues</a>` : "") : "";
 }
 
 /** Every finished round I have a line in, newest first. */
@@ -112,15 +111,20 @@ function myRounds(me) {
 }
 
 /** The last few cards as ruled rows: the club, then the day, the loop and where you came, then the points. */
-const recent = (me, mine) => mine.length ? `${sect(mine.length === 1 ? "Last round" : "Recent rounds", `<a href="#player/${me.id}">All rounds</a>`)}
-  <div class="rows">${mine.slice(0, 3).map(({ r, field, pts, place }) => `<a class="hrow" href="#review/${r.id}">
-    <span class="t"><b>${esc(roundClub(r))}</b><span>${[shortDate(r.date), roundLoop(r), place ? `${ordinal(place)} of ${field}` : ""].filter(Boolean).map(esc).join(" · ")}</span></span>
-    <span class="v">${pts === null ? "–" : pts}<small class="u"> PTS</small></span></a>`).join("")}</div>` : "";
+const recent = (me, mine) => mine.length ? panel("flag", mine.length === 1 ? "Last round" : "Recent rounds", `<div class="rows">${mine.slice(0, 3).map(({ r, field, pts, place }) => `<a class="hrow lead" href="#review/${r.id}">
+    ${dayBlock(r.date)}<span class="t"><b>${esc(roundClub(r))}</b><span>${[roundLoop(r), place ? `${ordinal(place)} of ${field}` : ""].filter(Boolean).map(esc).join(" · ")}</span></span>
+    <span class="v">${pts === null ? "–" : pts}<small class="u"> PTS</small></span></a>`).join("")}</div>`, `<a href="#player/${me.id}">All rounds</a>`) : "";
+
+/** A date as the day over the month, the way a diary prints it, so a list of rounds reads down its left edge. */
+export const dayBlock = d => {
+  const t = d ? new Date(`${d}T12:00:00`) : null;
+  return t && !isNaN(t) ? `<span class="dblock"><b>${t.getDate()}</b><small>${t.toLocaleDateString("en-GB", { month: "short" })}</small></span>` : `<span class="dblock"><b>–</b></span>`;
+};
 
 /** A phone with nothing on it yet: the two things worth doing first. */
-const starters = () => `${sect("To begin")}<div class="rows">
+const starters = () => panel("flag", "To begin", `<div class="rows">
   <a class="hrow" href="#leagues"><span class="t"><b>Join a league</b><span>With a link from the organiser, or start your own</span></span><span class="chev">›</span></a>
-  <a class="hrow" href="#people"><span class="t"><b>Find your friends</b><span>Search by name, or share your link</span></span><span class="chev">›</span></a></div>`;
+  <a class="hrow" href="#people"><span class="t"><b>Find your friends</b><span>Search by name, or share your link</span></span><span class="chev">›</span></a></div>`);
 
 export function home() {
   const rounds = S.rounds();
@@ -137,7 +141,7 @@ export function home() {
     ${banners.join("")}
     ${open.length ? inPlay(open[0]) : meHero(a, me, mine)}
     ${alsoOpen(open.slice(1))}
-    ${fresh.length ? `${sect("New", `<a href="#updates">All updates</a>`)}<div class="rows">${fresh.map(n => noteLine(n, true)).join("")}</div>` : ""}
+    ${fresh.length ? panel("bell", "New", `<div class="rows">${fresh.map(n => noteLine(n, true)).join("")}</div>`, `<a href="#updates">All updates</a>`) : ""}
     ${me ? myLeagues(me) : ""}
     ${me ? recent(me, mine) : ""}
     ${!rounds.length && !S.leagues().length ? starters() : ""}

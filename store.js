@@ -677,7 +677,7 @@ export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "
 export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
-  const g = { id: uid(), owner: myAccount(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null };
+  const g = { id: uid(), owner: myAccount(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null, icon: null };
   state.leagues.push(g);
   touch("leagues", g);
   save();

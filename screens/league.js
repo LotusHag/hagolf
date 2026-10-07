@@ -7,7 +7,7 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn, ICONS, leagueBadge } from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
@@ -72,16 +72,12 @@ const cardKey = c => encodeURIComponent(c.key ?? c.id);
 const personHash = id => (S.state.players.find(x => x.id === id && !x.deleted) ? `#player/${id}` : `#person/${id}`);
 const dayWhere = c => (c.course && (c.course.loop || c.course.name)) || c.name || "";
 
-/** Invite, share and the rest, as icons in the header, where they cost no page at all. */
-const headActions = runs => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share the board") + iconBtn("lgmore", "more", runs ? "Posters, and running the league" : "Posters and settings");
+/** Invite, share and the menu, as icons in the header, where they cost no page at all. */
+const headActions = () => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share the board") + iconBtn("lgmenu", "menu", "The league");
 
 function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = false } = {}) {
-  page(title, body, { back, actions: headActions(runs), bell: false, keepScroll });
+  page(title, body, { back, actions: headActions(), bell: false, keepScroll });
 }
-
-/** The pieces of chrome every view under a league carries at its foot. */
-const posterRow = gid => `${sect("Make something")}<div class="rows">
-  <a class="hrow" href="#leagueimages/${gid}"><span class="t"><b>Images</b><span>The standings and the season's sheets, in any look</span></span><span class="chev">›</span></a></div>`;
 
 // ---------------------------------------------------------------- the board
 /**
@@ -132,24 +128,29 @@ function lastDay(C, move, cards) {
   const win = board[0];
   const shared = board.filter(p => D.value(p) === D.value(win));
   const who = shared.length > 1 ? shared.slice(0, 2).map(p => firstName(p.name)).join(" & ") : firstName(win.name);
-  return `<section class="inplay"><div class="rule"></div>
+  return `<div class="panel lastout"><section class="inplay"><div class="rule"></div>
       <div class="k">Last time out${shared.length > 1 ? " · shared" : ""}</div>
       <h1>${esc(who)}</h1>
       <p class="where">${esc([dayWhere(c), fmtDate(c.date)].filter(Boolean).join(" · "))}</p></section>
     ${top.length ? `<div class="board">${top.map((x, i) => `<div><span class="p">${i + 1}</span><span class="who">${esc(x.name)}</span><span class="v">${esc(D.value(x))}</span></div>`).join("")}</div>` : ""}
-    <a class="thru caps dayl" href="#league/${C.gid}/day/${cardKey(c)}">${plural(board.length, "player")} · the whole day ›</a>`;
+    <a class="thru caps dayl" href="#league/${C.gid}/day/${cardKey(c)}">${plural(board.length, "player")} · the whole day ›</a></div>`;
 }
 
-/** Your own line, above the table, so nobody has to find themselves in it. */
-function yourLine(C, Sx, move) {
+/** The league's face, and your own place under it, so nobody has to find themselves in the table. */
+function leagueHero(C, Sx, move, nCards) {
   const r = myRow(Sx.rows, C.me);
-  if (!r) return "";
+  const fmts = C.formats.map(f => FORMAT_NAMES[f]).join(" · ");
+  const id = `<div class="lid">${leagueBadge(C.g, "big")}<div><h1>${esc(C.g.name)}</h1>
+    <p class="where">${esc([fmts, plural(nCards, "card"), plural(Sx.rows.length, "player")].join(" · "))}</p></div></div>`;
+  if (!r) return `<div class="panel hero lhero">${id}</div>`;
   const L = boardLine(C.kind, r, C.g);
   const d = move && move.was && move.was.has(r.id) ? move.was.get(r.id) - r.place : null;
-  const mv = d === null ? "" : d > 0 ? `<i class="mv up">▲${d}</i>` : d < 0 ? `<i class="mv dn">▼${-d}</i>` : `<i class="mv">·</i>`;
-  return `<a class="youline" href="#league/${C.gid}/p/${esc(r.id)}">
-    <span class="caps">You</span>
-    <span class="t">${ordinal(r.place)} of ${Sx.rows.length} · ${esc(L.value)} ${esc(L.unit)}</span>${mv}<span class="chev">›</span></a>`;
+  const mv = d === null ? "–" : d > 0 ? `<i class="mv up">▲${d}</i>` : d < 0 ? `<i class="mv dn">▼${-d}</i>` : "=";
+  const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
+  const suffix = ordinal(r.place).slice(String(r.place).length);
+  return `<div class="panel hero lhero">${id}
+    <a class="youline" href="#league/${C.gid}/p/${esc(r.id)}"><span class="caps">You</span><div class="stats">
+      ${tile(`${r.place}<small>${suffix}</small>`, `of ${Sx.rows.length}`)}${tile(esc(L.value), esc(L.unit) || "&nbsp;")}${tile(mv, "last card")}</div><span class="chev">›</span></a></div>`;
 }
 
 /** The sentences that are only true sometimes, and are therefore only drawn when they are. */
@@ -165,18 +166,6 @@ function boardNotes(C, Sx) {
       : `Each player's best ${C.g.bestN} cards count — nobody has ${C.g.bestN} yet, so every card is counting.`);
   }
   return out.length ? `<p class="muted small bnotes">${out.join(" ")}</p>` : "";
-}
-
-/** A league scored several ways says so in one line, carrying the answer, rather than in a row of tabs. */
-function alsoScored(C) {
-  const others = C.formats.filter(f => f !== C.kind);
-  if (!others.length) return "";
-  return `<div class="alsorow">${others.map(f => {
-    const Sx = standingsFor(C.g, C.Ms, C.members, f);
-    const mine = myRow(Sx.rows, C.me);
-    const lead = Sx.rows[0] ? `${firstName(Sx.rows[0].name)} leads` : "nothing scored yet";
-    return `<button class="alsol" data-act="board-set" data-f="${f}">Also scored as <b>${esc(FORMAT_NAMES[f])}</b> — ${esc(lead)}${mine ? `, you ${ordinal(mine.place)}` : ""} ›</button>`;
-  }).join("")}</div>`;
 }
 
 /** A day of yours this league has not got, offered where it is noticed rather than buried under a tab. */
@@ -205,26 +194,17 @@ function boardView(C, keepScroll) {
     : `<span class="caps">${esc(FORMAT_NAMES[C.kind])}</span>`;
   const SHOWN = 6;
   const shown = Sx.rows.length > SHOWN + 1 ? Sx.rows.slice(0, SHOWN) : Sx.rows;
+  // the table, the last day and you; everything else about the league is one tap away under the menu
   const body = `
     ${claimBanner(C)}${attachPrompt(C)}
-    ${yourLine(C, Sx, move)}
-    ${sectRaw(pick, infoBtn(FORMAT_NAMES[C.kind], FORMAT_NOTES[C.kind]))}
+    ${leagueHero(C, Sx, move, nCards)}
+    <section class="panel lpanel"><div class="ph">${ICONS.trophy}${pick}${infoBtn(FORMAT_NAMES[C.kind], FORMAT_NOTES[C.kind])}</div>
     ${nCards > 1 ? stateOfPlay(C, Sx) : ""}
     ${Sx.rows.length ? `<div class="rows lboard">${shown.map(r => boardRow(C, r, move, Sx)).join("")}
       ${shown.length < Sx.rows.length ? `<a class="hrow more" href="#league/${gid}/table/${C.kind}"><span class="t"><b>The whole table</b><span>${plural(Sx.rows.length, "player")}, every column</span></span><span class="chev">›</span></a>` : ""}</div>`
       : `<p class="muted center" style="margin:22px 0">${C.kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[C.kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
-    ${boardNotes(C, Sx)}
-    ${alsoScored(C)}
-    ${lastDay(C, move, nCards)}
-    ${sect("The league")}
-    <div class="rows">
-      <a class="hrow" href="#league/${gid}/table/${C.kind}"><span class="t"><b>The whole table</b><span>${esc(FORMAT_NAMES[C.kind])}, every column${C.formats.length > 1 ? `, and the other ${plural(C.formats.length - 1, "way")}` : ""}</span></span><span class="chev">›</span></a>
-      <a class="hrow" href="#league/${gid}/days"><span class="t"><b>Cards</b><span>${plural(nCards, "day")} played</span></span><span class="chev">›</span></a>
-      <a class="hrow" href="#league/${gid}/stats"><span class="t"><b>The numbers</b><span>How the field scores</span></span><span class="chev">›</span></a>
-      ${h2hDoor(C, Sx)}
-      ${C.runs ? `<a class="hrow" href="#league/${gid}/admin"><span class="t"><b>Running the league</b><span>Cards, members, how it is scored</span></span><span class="chev">›</span></a>` : memberDoor(C)}
-    </div>
-    ${posterRow(gid)}`;
+    ${boardNotes(C, Sx)}</section>
+    ${lastDay(C, move, nCards)}`;
   shell(g, g.name, body, { keepScroll, runs: C.runs });
   wireBoard(C, Sx);
 }
@@ -276,18 +256,15 @@ async function pickMember(C, title, exclude) {
   return v && v !== "no" ? v : null;
 }
 
-/** The head-to-head door names who it opens on, so it says what is behind it. */
-function h2hDoor(C, Sx) {
+/** The pair the head-to-head opens on, named, so the menu says what is behind it. */
+function h2hPair(C, Sx) {
   const mine = myRow(Sx.rows, C.me);
   const a = mine ? mine.id : (Sx.rows[0] && Sx.rows[0].id);
   const b = (Sx.rows.find(r => r.id !== a) || {}).id;
-  if (!a || !b) return "";
+  if (!a || !b) return null;
   const them = Sx.rows.find(r => r.id === b);
-  return `<a class="hrow" href="#league/${C.gid}/vs/${esc(a)}/${esc(b)}"><span class="t"><b>Head to head</b>
-    <span>${esc(mine ? `You and ${firstName(them.name)}` : `${firstName(Sx.rows[0].name)} and ${firstName(them.name)}`)}</span></span><span class="chev">›</span></a>`;
+  return { href: `#league/${C.gid}/vs/${a}/${b}`, sub: mine ? `You and ${firstName(them.name)}` : `${firstName(Sx.rows[0].name)} and ${firstName(them.name)}` };
 }
-
-const memberDoor = C => `<a class="hrow" href="#league/${C.gid}/admin"><span class="t"><b>Members and this league</b><span>Who is in it, and how it is scored</span></span><span class="chev">›</span></a>`;
 
 /** Somebody has joined and the cards do not know which player is them. The prompt belongs where they are. */
 function claimBanner(C) {
@@ -319,7 +296,6 @@ function wireBoard(C, Sx) {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     const act = b.dataset.act;
-    if (act === "board-set") { ui.boardOf[C.gid] = b.dataset.f; return league(C.gid, undefined, undefined, undefined, true); }
     if (act === "board-pick") { const v = await formatSheet(C); if (v) { ui.boardOf[C.gid] = v; league(C.gid); } return; }
     if (act === "board-cols") return columnsSheet(C, Sx);
     if (act === "new-in-league") { S.setSetting("lastLeague", C.gid); return go("#new"); }
@@ -596,7 +572,11 @@ function settingsBody(C, formats) {
   const mine = S.FORMATS.filter(f => E.formatAllowed(f) || formats.includes(f));
   const missing = [...new Set(S.FORMATS.filter(f => !mine.includes(f)).map(f => E.FORMAT_SKU[f]))];
   return `${runs ? `${sect("How it is scored")}
-    <form id="gform" class="card form open"><label style="margin-top:0">League name<input name="name" value="${esc(g.name)}"></label>
+    <form id="gform" class="card form open">
+      <div class="iconpick"><span id="liconprev">${leagueBadge(g, "big")}</span><div><b>Icon</b><small>Beside the league's name on every member's phone</small>
+        <div class="btnrow"><label class="btn small">${ICONS.image} ${g.icon ? "Change" : "Upload an image"}<input type="file" accept="image/*" id="liconfile" hidden></label>
+        ${g.icon ? `<button type="button" class="btn small" data-act="icon-clear">Remove</button>` : ""}</div></div></div>
+      <label>League name<input name="name" value="${esc(g.name)}"></label>
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the league opens on)</span></label>
       <div class="fmtlist">${mine.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       ${missing.length ? shopBtn("More ways of ranking in the shop", missing) : ""}
@@ -621,6 +601,26 @@ function settingsBody(C, formats) {
     <div class="btnrow">${member && g.owner !== S.myAccount() ? `<button class="btn danger" data-act="leave">Leave this league</button>` : ""}${runs ? `<button class="btn danger" data-act="del-league">Delete this league</button>` : ""}</div>`;
 }
 
+// Square, small and re-encoded on the phone: every member pulls the league row, so the icon has to stay a few kB.
+function shrinkIcon(file, size = 128) {
+  return new Promise((ok, no) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      const x = c.getContext("2d"), k = Math.min(img.naturalWidth, img.naturalHeight);
+      x.fillStyle = "#fff";   // a transparent logo sits on white, the same whether this phone writes webp or only jpeg
+      x.fillRect(0, 0, size, size);
+      x.drawImage(img, (img.naturalWidth - k) / 2, (img.naturalHeight - k) / 2, k, k, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      const webp = c.toDataURL("image/webp", 0.82);
+      ok(webp.startsWith("data:image/webp") ? webp : c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); no(new Error("That file is not an image this phone can read")); };
+    img.src = url;
+  });
+}
+
 const nameIn = (C, id) => { for (const M of C.Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
 
 async function wireSettings(C) {
@@ -633,6 +633,13 @@ async function wireSettings(C) {
     g.formats = S.cleanFormats([...ev.target.querySelectorAll("input[name=fmt]:checked")].map(i => i.value));
     g.theme = ev.target.ltheme.value || null;
     S.saveLeague(g); paint(themeHere()); toast("Saved"); go(`#league/${gid}`);
+  });
+  const lf = document.getElementById("liconfile");
+  if (lf) lf.addEventListener("change", async () => {
+    const file = lf.files && lf.files[0];
+    if (!file) return;
+    try { g.icon = await shrinkIcon(file); } catch (e) { return toast(e.message, 4000); }
+    S.saveLeague(g); toast("Icon saved"); league(gid, "admin");
   });
   const showhcp = document.getElementById("showhcp");
   if (showhcp) showhcp.addEventListener("change", ev => {
@@ -649,6 +656,7 @@ async function wireSettings(C) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === "new-in-league") { S.setSetting("lastLeague", gid); return go("#new"); }
+    if (act === "icon-clear") { g.icon = null; S.saveLeague(g); toast("Icon removed"); return league(gid, "admin"); }
     if (act === "toggle-round") { S.setLeagueRound(gid, b.dataset.rid, b.dataset.on === "1"); return league(gid, "admin"); }
     if (act === "merge") {
       const keep = document.getElementById("mkeep").value, drop = document.getElementById("mdrop").value;
@@ -699,6 +707,22 @@ async function wireSettings(C) {
 }
 
 // ---------------------------------------------------------------- what every view answers
+/** Everything about the league that is not the board itself: the menu behind the three lines in the header. */
+function menuItems(C) {
+  const { gid } = C;
+  const nCards = leagueCards(C.Ms).length;
+  const Sx = C.Ms.length ? standingsFor(C.g, C.Ms, C.members, C.kind) : { rows: [] };
+  const vs = h2hPair(C, Sx);
+  return [
+    ...(C.Ms.length ? [[`#league/${gid}/table/${C.kind}`, "table", "The whole table", `${FORMAT_NAMES[C.kind]}, every column${C.formats.length > 1 ? `, and the other ${plural(C.formats.length - 1, "way")}` : ""}`]] : []),
+    [`#league/${gid}/days`, "card", "Cards", `${plural(nCards, "day")} played`],
+    ...(C.Ms.length ? [[`#league/${gid}/stats`, "chart", "The numbers", "How the field scores"]] : []),
+    ...(vs ? [[vs.href, "vs", "Head to head", vs.sub]] : []),
+    [`#leagueimages/${gid}`, "image", "Images", "The standings and the season's sheets, in any look"],
+    [`#league/${gid}/admin`, "settings", C.runs ? "Running the league" : "Members and this league", C.runs ? "Cards, members, the icon, how it is scored" : "Who is in it, and how it is scored"],
+  ];
+}
+
 /** The header icons, handled once. Returns true when it took the event. */
 async function common(C, ev) {
   const b = ev.target.closest("[data-act]");
@@ -706,13 +730,11 @@ async function common(C, ev) {
   const act = b.dataset.act;
   if (act === "invite") { await inviteSheet(C.g); return true; }
   if (act === "share-board") { await boardShare(C.g); return true; }
-  if (act === "lgmore") {
-    const v = await sheet({ title: C.g.name, body: `<div class="list">
-      <button data-sheet="images"><div><div class="name">Make images</div></div><span class="chev">›</span></button>
-      <button data-sheet="admin"><div><div class="name">${C.runs ? "Running the league" : "Members and this league"}</div></div><span class="chev">›</span></button></div>`,
+  if (act === "lgmenu") {
+    const v = await sheet({ title: C.g.name, body: `<div class="list lmenu">${menuItems(C).map(([href, icon, name, sub]) => `<button data-sheet="${esc(href)}">
+      <span class="lead">${ICONS[icon]}<div><div class="name">${esc(name)}</div><div class="muted small">${esc(sub)}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`,
       actions: [{ label: "Close", value: "no" }] });
-    if (v === "images") go(`#leagueimages/${C.gid}`);
-    if (v === "admin") go(`#league/${C.gid}/admin`);
+    if (v && v.startsWith("#")) go(v);
     return true;
   }
   return false;

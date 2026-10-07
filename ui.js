@@ -135,6 +135,10 @@ export const ICONS = {
   shield: I(`<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>`),
   db: I(`<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>`),
   more: I(`<circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/>`),
+  menu: I(`<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>`),
+  image: I(`<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>`),
+  table: I(`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M3 15h18"/><path d="M9 4v16"/>`),
+  vs: I(`<circle cx="7" cy="8" r="3"/><circle cx="17" cy="8" r="3"/><path d="M2 20a5 5 0 0 1 10 0"/><path d="M12 20a5 5 0 0 1 10 0"/>`),
   edit: I(`<path d="M4 20h4l10-10-4-4L4 16z"/><path d="m12 8 4 4"/>`),
   inbox: I(`<path d="M4 4h16v16H4z"/><path d="M4 14h5l1.5 2h3L15 14h5"/>`),
   mail: I(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>`),
@@ -351,6 +355,8 @@ export const tip = (text, label = "How this works") => `<div class="tiphead solo
 export const sect = (label, end = "") => `<div class="sect"><span class="caps">${esc(label)}</span><span class="fill"></span>${end}</div>`;
 /** The same, where the label is itself a control (the board's heading is its own format switch). */
 export const sectRaw = (labelHtml, end = "") => `<div class="sect">${labelHtml}<span class="fill"></span>${end}</div>`;
+/** A part of a screen in a box of its own, headed by an icon, so one part never runs into the next. */
+export const panel = (icon, label, inner, end = "", cls = "") => `<section class="panel ${cls}"><div class="ph">${ICONS[icon] || ""}<span class="caps">${esc(label)}</span>${end}</div>${inner}</section>`;
 document.addEventListener("click", ev => {
   const b = ev.target.closest("[data-tip]");
   const t = b && b.nextElementSibling;
@@ -370,6 +376,12 @@ export function cueTabs() {
 }
 window.addEventListener("resize", cueTabs);
 export const avatar = (name, cls = "") => `<span class="avatar ${cls}" aria-hidden="true">${esc(inits(name) || "?")}</span>`;
+// only an image the phone itself shrank is drawn, so a league row can never carry a script into a src
+const ICON_URL = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+/** A league's face: its uploaded icon, or its initials on the accent. */
+export const leagueBadge = (g, cls = "") => g && g.icon && ICON_URL.test(g.icon)
+  ? `<img class="lbadge ${cls}" src="${g.icon}" alt="">`
+  : `<span class="lbadge mono ${cls}" aria-hidden="true">${esc(inits(g && g.name) || "?")}</span>`;
 export const emptyState = (icon, title, text = "", action = "") => `<div class="empty">${ICONS[icon] || ""}<b>${esc(title)}</b>${text ? `<div>${esc(text)}</div>` : ""}${action}</div>`;
 
 // ---------------------------------------------------------------- the look

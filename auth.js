@@ -51,7 +51,8 @@ async function call(path, body, extra = {}, method = body === undefined ? "GET" 
   });
   const text = await res.text();
   let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) { data = { error: text.slice(0, 200) }; }
+  // an HTML page here is Cloudflare's own error page, which means nothing to a golfer
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = { error: /^\s*</.test(text) ? `The server failed (${res.status}). Try again in a moment.` : text.slice(0, 200) }; }
   if (!res.ok) { const e = new Error((data && (data.error || data.message)) || `${res.status}`); e.status = res.status; e.data = data; throw e; }
   return data;
 }

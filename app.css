@@ -211,7 +211,7 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .hrow .v { flex: none; font-family: "Oswald", sans-serif; font-weight: 500; font-size: 22px; line-height: 1; }
 .hrow .v small { font-size: 11px; }
 .hrow .v .u { font-size: 11px; letter-spacing: 1.2px; color: var(--ink3); }
-.hrow .v.top { color: var(--green); }
+.hrow .v.place { color: var(--green); }
 .hrow .chev { align-self: center; }
 /* an update on the home page is a ruled row like the rest; the Updates screen keeps the card */
 .rows .note, .rows .note.unread { padding: 13px 2px; background: none; }
@@ -219,6 +219,50 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .rows .note .ic svg { width: 19px; height: 19px; stroke: var(--ink3); }
 .rows .note.unread .ic svg { stroke: var(--green); }
 .rows .note.unread .body p { font-weight: 600; }
+/* ---- panels: each part of a screen in a box of its own, headed by an icon, so the parts are told apart at a
+   glance. Still only the card, the line, the accent and the inks, so every theme carries them. */
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 0 14px; margin-top: 14px; }
+.panel > .ph { display: flex; align-items: center; gap: 9px; padding: 12px 0 11px; border-bottom: 1px solid var(--line); }
+.panel > .ph svg { width: 17px; height: 17px; flex: none; stroke: var(--green); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.panel > .ph .caps { flex: 1; color: var(--ink2); }
+.panel > .ph a { font-size: 12px; font-weight: 600; }
+.panel .rows .hrow { padding: 12px 0; }
+.panel .rows .hrow:active { background: none; opacity: .7; }
+.panel .rows .note, .panel .rows .note.unread { padding: 12px 0; }
+.hrow.lead { align-items: center; }
+.hrow.lead .chev { align-self: center; }
+.panel.hero { padding: 16px 16px 4px; border-top: 3px solid var(--green); }
+.panel.hero .inplay { padding: 0; }
+.panel.hero .inplay .rule { display: none; }
+.panel.hero.live { padding-bottom: 16px; }
+.panel.hero .board { margin-top: 16px; border-bottom: 0; }
+.panel.hero .herostats { border-bottom: 0; margin-top: 16px; }
+.inplay.me { display: flex; align-items: center; gap: 16px; text-align: left; }
+.inplay.me h1 { margin-top: 4px; }
+.inplay.me .where { margin-top: 3px; }
+.dblock { flex: none; width: 38px; display: flex; flex-direction: column; align-items: center; padding-right: 12px; border-right: 1px solid var(--line); line-height: 1; }
+.dblock b { font-family: "Oswald", sans-serif; font-weight: 500; font-size: 21px; }
+.dblock small { margin-top: 3px; font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--ink3); }
+.lbadge { width: 38px; height: 38px; border-radius: 9px; flex: none; object-fit: cover; display: grid; place-items: center; }
+.lbadge.mono { background: var(--green-soft); color: var(--green); font-family: "Oswald", sans-serif; font-weight: 600; font-size: 15px; letter-spacing: .5px; }
+.lbadge.big { width: 60px; height: 60px; border-radius: 14px; font-size: 23px; }
+.lbadge.small { width: 30px; height: 30px; border-radius: 7px; font-size: 12px; }
+/* the Rounds tab: start and scan side by side, and a season as one line a round */
+.startrow { display: flex; gap: 8px; margin: 12px 0 4px; }
+.startrow .btn.big { flex: 1; margin: 0; }
+.startrow .scanb { flex: none; width: 64px; min-height: 54px; padding: 4px; flex-direction: column; gap: 2px; }
+.startrow .scanb small { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--ink3); }
+.filter.mini { margin: 10px 0 2px; padding: 3px; gap: 3px; }
+.filter.mini button { min-height: 30px; font-size: 13px; }
+.panel .search { margin: 8px 0 2px; }
+.rlist .t b .tag { font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--green); margin-left: 6px; vertical-align: 2px; }
+.rlist .t .who { margin-top: 3px; color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlist .who em { font-style: normal; }
+.rlist .who em.me { color: var(--green); font-weight: 600; }
+.rlist .rround.hrow { display: flex; padding: 12px 0; }
+.rlist .v { text-align: right; }
+.rlist .v .pl { display: block; margin-top: 4px; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--ink3); }
+
 
 /* ---- forms */
 label { display: block; color: var(--ink2); font-size: 13px; font-weight: 600; margin: 14px 0 0; }
@@ -949,11 +993,37 @@ a.kv:active { background: var(--card2); }
 .mv { flex: none; align-self: center; width: 30px; text-align: right; font-size: 11px; font-weight: 700; font-style: normal; color: var(--ink3); }
 .mv.up { color: var(--green); }
 .mv.new { font-size: 10px; letter-spacing: .4px; text-transform: uppercase; }
-main > .youline:first-child { border-top: 0; }
-.youline { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 2px; margin-top: 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--ink); }
-.youline .caps { flex: none; }
-.youline .t { flex: 1; min-width: 0; font-size: 15px; }
-.youline:active { background: var(--card2); }
+/* the league's own hero: its badge and name, then your place in three figures, one tap from your page */
+.lhero { padding-bottom: 0; }
+.lhero .lid { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; }
+.lhero .lid > div { min-width: 0; }
+.lhero h1 { margin: 0; font-family: "Oswald", sans-serif; font-weight: 500; font-size: 23px; line-height: 1.1; letter-spacing: .3px; text-transform: uppercase; }
+.lhero .where { margin: 4px 0 0; font-size: 12px; color: var(--ink3); }
+.youline { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 0; border-top: 1px solid var(--line); color: var(--ink); }
+.youline > .caps { flex: none; color: var(--green); }
+.youline .stats { flex: 1; margin: 0; gap: 6px; flex-wrap: nowrap; }
+.youline .stats div { flex: 1; align-items: center; }
+.youline .stats b { font-family: "Oswald", sans-serif; font-weight: 500; font-size: 23px; line-height: 1; }
+.youline .stats b small { font-size: 12px; color: inherit; text-transform: none; letter-spacing: 0; }
+.youline .stats b .mv { width: auto; font-size: 20px; font-weight: 500; }
+.youline .stats > div > small { margin-top: 4px; font-size: 10px; }
+.youline:active { opacity: .7; }
+.lpanel > .ph .lfmt { flex: 1; text-align: left; color: var(--ink2); }
+.lpanel > .ph .caps:not(.lfmt) { flex: 1; }
+.lpanel .story { margin: 12px 0 2px; }
+.lpanel .lboard .lrow { padding-left: 0; padding-right: 0; }
+.lpanel .lboard .lrow.me { padding-left: 8px; }
+.lpanel .bnotes { margin: 0 0 12px; }
+.panel.lastout { padding-top: 18px; }
+.panel.lastout .board { border-bottom: 0; }
+.panel.lastout a.dayl { border-top: 1px solid var(--line); margin-top: 0; }
+.lmenu .lead svg { stroke: var(--green); }
+.iconpick { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+.iconpick > div { min-width: 0; }
+.iconpick b { display: block; font-size: 15px; }
+.iconpick small { display: block; color: var(--ink3); font-size: 12px; }
+.iconpick .btnrow { margin-top: 8px; }
+.iconpick .btnrow .btn { flex: none; }
 .story { margin: 0 2px 4px; color: var(--ink2); font-size: 15px; }
 .bnotes { margin: 10px 4px 0; }
 a.dayl { display: block; padding: 13px 0; margin-top: -2px; color: var(--ink3); }
@@ -962,10 +1032,6 @@ a.dayl:active { color: var(--green); }
 .lfmt { border: 0; background: none; font: inherit; color: var(--ink3); cursor: pointer; padding: 13px 4px; margin: -13px -4px; }
 .lfmt i { font-style: normal; font-size: 13px; }
 .lfmt:active { color: var(--green); }
-.alsorow { margin: 10px 0 0; }
-.alsol { display: block; width: 100%; padding: 11px 2px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.alsol b { color: var(--ink); font-weight: 600; }
-.alsol:active { background: var(--card2); }
 .fmtpicks { margin: 4px 0 2px; }
 .fmtpick { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 13px 2px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .fmtpick:first-child { border-top: 0; }

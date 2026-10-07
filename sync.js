@@ -147,8 +147,8 @@ const TABLES = {
     // kind, visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
     // them only through /league/<id>/visibility, so a phone editing the name offline cannot undo them.
     collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
-      created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null,
+      created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
+    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null,
       kind: r.kind || "friendly", visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0,
       deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
@@ -398,6 +398,7 @@ async function doPull(again = false) {
   const full = !Object.keys(cur).length, seen = {};   // a read from the start says what this account may see, in full
   const leaguesBefore = S.myLeagueIds();
   const sharesBefore = S.sharedWithMe();
+  const arrived = new Set();   // rounds this pull told us about, as a header or as a card added to a league
   let changed = drainHeld();
   try {
     for (const [table, t] of Object.entries(TABLES)) {
@@ -410,7 +411,11 @@ async function doPull(again = false) {
           since = row.server_ts;
           if (full) seen[table].add(keyOf(table, row));
           if (dirtyKeys[keyOf(table, row)]) { S.state.held.push({ table, row }); changed = true; continue; }  // mine is unpushed: decide after the push
-          if (t.apply(row)) changed = true;
+          if (t.apply(row)) {
+            changed = true;
+            if (table === "rounds") arrived.add(row.id);
+            if (table === "league_rounds" && !row.deleted) arrived.add(row.round_id);
+          }
         }
         cur[table] = since;
         localStorage.setItem(CURSOR_KEY, JSON.stringify(cur));
@@ -427,6 +432,11 @@ async function doPull(again = false) {
     // everything: shares are far more common than joining a league, and one is four small requests.
     const fresh = [...S.sharedWithMe()].filter(id => !sharesBefore.has(id) && !S.getRound(id));
     if (fresh.length) { await fetchRounds(fresh); changed = true; }
+    // A round can become mine to read long after it was written -- added to a league later, or a contact on it
+    // linked to me -- and its rows are then older than every cursor. What arrives is the header or the league's
+    // row alone, so a round that came without its card is fetched whole.
+    const late = [...arrived].filter(id => { const r = S.state.rounds.find(x => x.id === id); return !r || r.stub || (!r.deleted && !r.entries.length); });
+    if (late.length) { await fetchRounds(late); changed = true; }
     if (!again && newLeaguesSince(leaguesBefore)) {   // a league just became visible: its history predates the cursor
       localStorage.removeItem(CURSOR_KEY);
       sync.pulling = false;

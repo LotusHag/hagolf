@@ -2,9 +2,9 @@
 // the round's few options.
 import * as S from "../store.js";
 import * as A from "../auth.js";
-import { page, scrollPos, scrollAt, bind, esc, go, ui, plural, fmtDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, tip, ICONS, emptyState, firstName, ordinal, sheet } from "../ui.js";
+import { page, scrollPos, scrollAt, bind, esc, go, ui, plural, fmtDate, courseTitle, courseBy, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, safeCompute, tip, ICONS, emptyState, firstName, ordinal, sheet, panel } from "../ui.js";
 import { compute } from "../model.js";
-import { nowCard } from "./home.js";
+import { nowCard, dayBlock } from "./home.js";
 
 // ---------------------------------------------------------------- the list
 export function play() {
@@ -17,24 +17,27 @@ export function play() {
   const shown = f === "mine" ? finished.filter(r => S.iPlayed(r)) : f === "shared" ? finished.filter(r => shared.has(r.id)) : finished;
   const q = (ui.search || "").toLowerCase().trim();
   const hit = r => !q || [fmtDate(r.date), roundWhere(r), r.name, ...r.entries.map(e => e.name)].join(" ").toLowerCase().includes(q);
+  const thisYear = String(new Date().getFullYear());
+  // one line a round: the day, the club, who was out, and what you scored, so a season fits on a screen
   const row = r => {
     const M = safeCompute(compute, r);
     const mine = M && me ? M.players.find(x => x.id === me.id) : null;
-    const loop = roundLoop(r);
-    return `<a class="rround" href="${resumeHash(r)}"><div class="d">${esc(fmtDate(r.date))}${shared.has(r.id) ? ` <span class="pill">shared with you</span>` : ""}</div><div class="name">${esc(roundClub(r))}</div>
-      ${loop ? `<div class="loop">${esc(loop)}</div>` : ""}
-      <div class="who">${r.entries.map(e => `<span class="${me && e.playerId === me.id ? "me" : ""}">${esc(e.name)}</span>`).join("")}</div>
-      ${mine ? `<div class="muted small" style="margin-top:6px">You: ${mine.pts} pts · ${ordinal(mine.splace)} of ${M.field}</div>` : ""}</a>`;
+    const year = r.date && !String(r.date).startsWith(thisYear) ? String(r.date).slice(0, 4) : "";
+    return `<a class="rround hrow lead" href="${resumeHash(r)}">${dayBlock(r.date)}
+      <span class="t"><b>${esc(roundClub(r))}${shared.has(r.id) ? ` <i class="tag">shared</i>` : ""}</b>
+        <span>${esc([year, roundLoop(r), plural(r.entries.length, "player")].filter(Boolean).join(" · "))}</span>
+        <span class="who">${r.entries.map(e => `<em class="${me && e.playerId === me.id ? "me" : ""}">${esc(e.name)}</em>`).join(", ")}</span></span>
+      ${mine ? `<span class="v">${mine.pts}<small class="u"> PTS</small><small class="pl">${ordinal(mine.splace)} of ${M.field}</small></span>` : `<span class="chev">›</span>`}</a>`;
   };
   const list = shown.filter(hit);
   page("Rounds", `
-    <a class="btn primary big" href="#new">${ICONS.plus} Start a round</a>
-    <div class="btnrow" style="margin-top:0"><a class="btn small" href="#scan">${ICONS.camera} Scan a paper card</a></div>
+    <div class="startrow"><a class="btn primary big" href="#new">${ICONS.plus} Start a round</a>
+      <a class="btn scanb" href="#scan" aria-label="Scan a paper card">${ICONS.camera}<small>Scan</small></a></div>
     ${open.length ? `<h2>Playing now</h2>${open.map(nowCard).join("")}` : ""}
-    ${finished.length ? `<h2>Finished rounds</h2>
-      <div class="filter"><button data-act="rf" data-v="all" class="${f === "all" ? "on" : ""}">All</button><button data-act="rf" data-v="mine" class="${f === "mine" ? "on" : ""}">Mine</button><button data-act="rf" data-v="shared" class="${f === "shared" ? "on" : ""}">Shared with me</button></div>
+    ${finished.length ? panel("flag", "Finished rounds", `
+      <div class="filter mini"><button data-act="rf" data-v="all" class="${f === "all" ? "on" : ""}">All</button><button data-act="rf" data-v="mine" class="${f === "mine" ? "on" : ""}">Mine</button><button data-act="rf" data-v="shared" class="${f === "shared" ? "on" : ""}">Shared</button></div>
       ${finished.length > 6 ? `<input id="q" class="search" placeholder="Search by date, course or player" value="${esc(ui.search || "")}" autocomplete="off">` : ""}
-      ${list.length ? `<div class="list">${list.map(row).join("")}</div>` : `<p class="muted center">Nothing here.</p>`}`
+      ${list.length ? `<div class="rows rlist">${list.map(row).join("")}</div>` : `<p class="muted center small">Nothing here.</p>`}`, `<span class="muted small">${shown.length}</span>`)
       : (open.length ? "" : emptyState("golf", "No rounds yet", "Start one, or scan an old paper card."))}`,
     { back: "", tabs: "play", brand: false });
   const qEl = document.getElementById("q");

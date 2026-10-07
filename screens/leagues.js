@@ -3,7 +3,7 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, ordinal, ICONS, emptyState, sheet, promptSheet } from "../ui.js";
+import { page, bind, esc, go, toast, plural, ordinal, ICONS, emptyState, sheet, promptSheet, leagueBadge } from "../ui.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, leagueResults, standingsFor, standingValue, myRow } from "./formats.js";
 
 export function leagues() {
@@ -16,7 +16,7 @@ export function leagues() {
     const Sx = standingsFor(g, Ms, members, kind);
     const mine = myRow(Sx.rows, me);
     const fmts = S.cleanFormats(g.formats).map(f => FORMAT_NAMES[f]).join(" · ");
-    return `<a href="#league/${g.id}"><span class="lead">${ICONS.trophy}<div><div class="name">${esc(g.name)}</div><div class="muted small">${plural(S.leagueRoundIds(g.id).length, "round")} · ${fmts}${Sx.rows[0] ? ` · leads: ${esc(Sx.rows[0].name)}` : ""}</div></div></span>
+    return `<a href="#league/${g.id}"><span class="lead">${leagueBadge(g)}<div><div class="name">${esc(g.name)}</div><div class="muted small">${plural(S.leagueRoundIds(g.id).length, "round")} · ${fmts}${Sx.rows[0] ? ` · leads: ${esc(Sx.rows[0].name)}` : ""}</div></div></span>
       ${mine ? `<span class="pill done">${ordinal(mine.place)} · ${standingValue(kind, mine)}</span>` : `<span class="chev">›</span>`}</a>`;
   }).join("");
   page("Leagues", `
