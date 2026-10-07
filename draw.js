@@ -746,9 +746,10 @@ export function legend(ax, x, y, items, fontsize = 8, sw = 0.028, sh = 0.018, pa
 }
 
 /** Scorecard notation. `cell` is the glyph size in x data units; glyphs are drawn square in inches. */
-export function scoreGlyph(ax, x, y, cell, delta, text, fontsize = 15, lw = 1.6, ink = null) {
+export function scoreGlyph(ax, x, y, cell, delta, text, fontsize = 15, lw = 1.6, ink = null, colors = null) {
   const T = ax.fig.T, fig = ax.fig;
-  const col = T.OUTCOMES[outcome(delta)][1];
+  // `colors` stands in for T.OUTCOMES' four, so a partner's sheet keeps to the partner's own palette
+  const col = colors ? colors[outcome(delta)] : T.OUTCOMES[outcome(delta)][1];
   const cx = ax.X(x), cy = ax.Y(y), cellIn = ax.DX(cell);
   if (delta < 0) {
     for (let k = 0; k < (delta <= -2 ? 2 : 1); k++) fig.circle(cx, cy, cellIn * (0.68 + 0.18 * k), col, lw);

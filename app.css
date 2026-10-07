@@ -1104,7 +1104,8 @@ main.wide { max-width: 1120px; }
 .codebig { text-align: center; }
 .codebig small { color: var(--ink3); }
 .codebig > b { display: block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 30px; letter-spacing: 4px; margin: 6px 0 10px; color: var(--ink); }
-.codebig .qrwrap { width: 160px; height: 160px; margin: 0 auto; }
+.codebig .qrwrap { width: 180px; margin: 0 auto; }
+.codebig .qr { width: 180px; height: 180px; margin: 0 auto 10px; }
 .codebig .btnrow { justify-content: center; }
 .logoprev { width: 132px; height: 64px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px dashed var(--line2); border-radius: var(--r-xs); background: var(--card2); }
 .logoprev img { max-width: 120px; max-height: 56px; }

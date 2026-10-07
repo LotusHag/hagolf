@@ -9,6 +9,7 @@ import { compute, leagueStats } from "../model.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster } from "../posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster, statsExtrasPoster } from "../statsposters.js";
 import { renderCards } from "../cards.js";
+import { BRAND_STYLES, dayOutSheet, personalSheet, leagueSheet } from "../brandsheets.js";
 import { FORMAT_NAMES, leagueResults, standingsFor } from "./formats.js";
 import { ninesForPoster, leagueRounds } from "./stats.js";
 import { ui } from "../ui.js";
@@ -117,14 +118,16 @@ export function graphics(rid) {
   // what was made last time on this phone, less anything the account no longer holds
   const saved = S.imageChoice();
   const can = k => !k.full || boardTier === "full";
-  const kinds = offered.filter(k => can(k) && (saved.kinds || []).includes(k.key)).map(k => k.key);
-  const picked = kinds.length ? kinds : [offered[0].key];
+  const bsHere = brand ? ["dayout", "personal"].flatMap(kind => BRAND_STYLES[kind].map(s => `bs:${kind}:${s.key}`)) : [];
+  const kinds = [...offered.filter(k => can(k)).map(k => k.key), ...bsHere].filter(v => (saved.kinds || []).includes(v));
+  const picked = kinds.length ? kinds : brand ? [`bs:dayout:${styleOf(brand, "dayout")}`] : [offered[0].key];
   const savedThemes = (saved.themes || []).filter(n => themeNamed(n) && E.canTheme(n));
-  const themes = brandT ? [brandT.name] : themeLeague || !savedThemes.length ? [themeForRound(rid).name] : savedThemes;
+  const themes = brand ? [(brandT || themeForRound(rid)).name] : themeLeague || !savedThemes.length ? [themeForRound(rid).name] : savedThemes;
   const missing = [...(boardTier === "full" ? [] : ["boards"]), ...(cardTier === "full" ? [] : ["card"])];
   const whose = () => { const n = ticked("card").length; return n === M.players.length ? "Everyone" : n ? `${n} of ${M.players.length}` : "Nobody"; };
   const body = `
-    <h2>Which images</h2>
+    ${brand ? `<h2>${esc(brand.name)}'s own</h2><p class="muted small gsays">Few words, the logo at the centre.</p>
+      <div class="ggrid">${brandTiles(brand, "g", ["dayout", "personal"], picked, { personal: ` <small>${M.field}</small>` })}</div><h2>Every board and card</h2>` : `<h2>Which images</h2>`}
     <div class="ggrid">${offered.map(k => kindTile(k, picked.includes(k.key), k.card ? ` <small>${M.field}</small>` : "", !!brand)).join("")}</div>
     ${bulkRow}
     <div class="card checks gmore" id="opts">
@@ -142,10 +145,12 @@ export function graphics(rid) {
   let everything = false;   // "every look" is a one-off, not a choice to offer again on the next round
   const count = () => {
     const want = ticked("g"), looks = Math.max(ticked("theme").length, 1) * sizeCount();
-    return looks * (want.filter(k => k !== "cards").length + (want.includes("cards") ? ticked("card").length : 0));
+    const perCard = k => k === "cards" || k.startsWith("bs:personal:");
+    return looks * (want.filter(k => !perCard(k)).length + want.filter(perCard).length * ticked("card").length);
   };
-  const paint = wireLive(count, whose, () => ticked("g").includes("cards"));
-  bindGrid(app.querySelector(".ggrid"), () => S.setImageChoice({ kinds: ticked("g") }));
+  const cardsWanted = () => ticked("g").some(k => k === "cards" || k.startsWith("bs:personal:"));
+  const paint = wireLive(count, whose, cardsWanted);
+  app.querySelectorAll(".ggrid").forEach(gr => bindGrid(gr, () => S.setImageChoice({ kinds: ticked("g") })));
   bindLook(app.querySelector(".lookfold"));
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
@@ -166,7 +171,7 @@ export function graphics(rid) {
     const cardOpts = { extras: !!(cx && cx.checked) };
     if (cx) S.setStatsOnImages(cardOpts.extras);
     if (!want.length) return toast("Tick at least one image");
-    if (want.includes("cards") && !cardNames.length) return toast("Pick at least one card under Whose cards");
+    if (cardsWanted() && !cardNames.length) return toast("Pick at least one card under Whose cards");
     if (!chosen.length) return toast("Pick at least one look");
     S.setImageChoice(everything || themeLeague || brand ? { kinds: want } : { kinds: want, themes: chosen });
     const jobs = [];
@@ -180,10 +185,26 @@ export function graphics(rid) {
       if (want.includes("holes") && tier === "full") add("3_holes.png", Tz => holesPoster(M, Tz));
       if (want.includes("both") && tier === "full") add("4_leaderboard_both.png", Tz => bothBoards(M, Tz));
       if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) add(renderCards(M, T, [p.name], cardTier, cardOpts)[0].file, Tz => renderCards(M, Tz, [p.name], cardTier, cardOpts)[0].fig);
+      for (const { kind, style } of bsOf(want)) {
+        if (kind === "dayout") add(`0_day_out_${style}.png`, Tz => dayOutSheet(M, Tz, style));
+        if (kind === "personal") M.players.filter(p => cardNames.includes(p.name)).forEach((p, i, ps) => {
+          const dupe = ps.some((q, j) => j !== i && slugFile(q.name) === slugFile(p.name));   // "Zoë" and "Zoe" make the same file name
+          add(`0_card_${slugFile(p.name)}${dupe ? `_${i + 1}` : ""}_${style}.png`, Tz => personalSheet(M, p.name, Tz, style));
+        });
+      }
     }
     await B.withBrand(brand, r.date, () => runJobs(jobs, slugFile(r.name)));
   });
 }
+
+// A partner's own sheets, few words and its logo at the centre: one tile a style, named "bs:<kind>:<style>".
+const BS_NAMES = { dayout: "Day out board", personal: "Personal card", league: "Society table" };
+const styleOf = (b, kind) => { const s = b && b.template && b.template.styles && b.template.styles[kind]; return BRAND_STYLES[kind].some(x => x.key === s) ? s : BRAND_STYLES[kind][0].key; };
+const brandTiles = (b, name, kinds, picked, extra = {}) => kinds.flatMap(kind => BRAND_STYLES[kind].map(s => {
+  const v = `bs:${kind}:${s.key}`;
+  return tile(name, v, `${BS_NAMES[kind]} · ${s.name}`, `bs-${kind}-${s.key}-${b.kind === "company" ? "company" : "course"}`, picked.includes(v), extra[kind] || "");
+})).join("");
+const bsOf = want => want.filter(v => v.startsWith("bs:")).map(v => { const [, kind, style] = v.split(":"); return { kind, style }; });
 
 /** In a partner's round the look is the partner's: one fixed row instead of the picker, saying whose. */
 const brandLook = (b, t) => `<div class="card brandlook"><input type="checkbox" name="theme" value="${esc(t.name)}" checked hidden>
@@ -212,13 +233,16 @@ export function leagueImages(gid) {
   const who = St.players.some(p => p.id === ui.statsWho[gid]) ? ui.statsWho[gid] : "";
   const themes = [(brandT || themeFor(g)).name];
   // the tiles are one list under one name, so what was picked last time is one list to remember
-  const here = [...formats.map(f => `standings:${f}`), ...(season ? sheets.map(k => `stats:${k.key}`) : [])];
+  const bsHere = brand ? BRAND_STYLES.league.map(s => `bs:league:${s.key}`) : [];
+  const here = [...bsHere, ...formats.map(f => `standings:${f}`), ...(season ? sheets.map(k => `stats:${k.key}`) : [])];
   const saved = (S.imageChoice().league || []).filter(v => here.includes(v));
-  const picked = saved.length ? saved
+  const picked = saved.length ? saved : brand ? [`bs:league:${styleOf(brand, "league")}`]
     : [...formats.map(f => `standings:${f}`), ...(season ? ["stats:field", ...(who ? ["stats:players"] : [])] : [])];
   const whose = () => { const n = ticked("sp").length; return n === St.players.length ? "Everyone" : n ? `${n} of ${St.players.length}` : "Nobody"; };
   page("Images", `
     <h2>Which images</h2>
+    ${brand ? `<p class="muted small gsays">${esc(brand.name)}'s own: few words, the logo at the centre${formats.length > 1 ? `, one for each way the society is scored` : ""}.</p>
+      <div class="ggrid">${brandTiles(brand, "gi", ["league"], picked)}</div><h2>Every sheet</h2>` : ""}
     <div class="ggrid">
       ${formats.map(f => tile("gi", `standings:${f}`, FORMAT_NAMES[f], `st-${f}`, picked.includes(`standings:${f}`))).join("")}
       ${sheets.map(k => season ? tile("gi", `stats:${k.key}`, k.name, `sf-${k.key === "players" ? "player" : k.key}`, picked.includes(`stats:${k.key}`), ` <small>${extraOf[k.key]}</small>`)
@@ -236,10 +260,10 @@ export function leagueImages(gid) {
     { back: `#league/${gid}`, sub: g.name, bar: `<button class="btn primary" data-act="generate">Generate images</button>` });
   const count = () => {
     const want = ticked("gi"), looks = Math.max(ticked("theme").length, 1) * sizeCount();
-    return looks * (want.filter(v => v !== "stats:players").length + (want.includes("stats:players") ? ticked("sp").length : 0));
+    return looks * (want.filter(v => v !== "stats:players" && !v.startsWith("bs:")).length + bsOf(want).length * formats.length + (want.includes("stats:players") ? ticked("sp").length : 0));
   };
   const paint = wireLive(count, whose, () => ticked("gi").includes("stats:players"));
-  bindGrid(app.querySelector(".ggrid"), () => S.setImageChoice({ league: ticked("gi") }));
+  app.querySelectorAll(".ggrid").forEach(gr => bindGrid(gr, () => S.setImageChoice({ league: ticked("gi") })));
   bindLook(app.querySelector(".lookfold"));
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
@@ -261,6 +285,7 @@ export function leagueImages(gid) {
       const prefix = chosen.length > 1 ? `${tn}/` : "";
       const T0 = makeTheme(themeNamed(tn));
       const add = (label, make) => sized(jobs, T0, `${prefix}${label}`, make);
+      for (const { style } of bsOf(want)) formats.forEach(f => add(`0_society_${f}_${style}.png`, T => leagueSheet(standingsFor(g, Ms, members, f), g, T, f, style)));
       formats.filter(f => want.includes(`standings:${f}`)).forEach((f, k) =>
         add(`${4 + k}_standings_${f}.png`, T => standingsPoster(standingsFor(g, Ms, members, f), g, T, f)));
       if (want.includes("stats:field")) add("6_stats_field.png", T => statsFieldPoster(St, g, T, opts));

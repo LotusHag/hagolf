@@ -9,8 +9,8 @@ import { DATA } from "../data.js";
 import { page, bind, esc, go, toast, ui, plural, fmtDate, avatar, sheet, confirmSheet, alertSheet, saveFiles, subtabs, sect, courseTitle, makeTheme,
   qrHtml, shareLink, appBase, applyBrand, FAMILIES, themesIn, ICONS, app } from "../ui.js";
 import { loadFonts } from "../draw.js";
-import { stablefordLeaderboard } from "../posters.js";
-import { showcaseRound } from "../sample.js";
+import { BRAND_STYLES, dayOutSheet, personalSheet, leagueSheet } from "../brandsheets.js";
+import { showcaseRound, showcaseLeague } from "../sample.js";
 import { buildRound, courseOf } from "./public.js";
 import { standingsFor, standingsTable, FORMAT_NAMES } from "./formats.js";
 import { fmtToPar } from "../model.js";
@@ -22,7 +22,8 @@ const skuName = s => PACK_NAMES[s] || (s.startsWith("theme:") ? `The ${s.slice(6
 const PERK_WORDS = { themes: "every theme, everywhere", pass: "everything in the shop, everywhere" };
 const perkLine = c => c.perks && c.perks.length ? `Your seat carries ${c.perks.map(p => PERK_WORDS[p] || p).join(" and ")}.` : "Its rounds are made in full for everyone on them.";
 const card = (title, body) => `<div class="card">${title ? `<div class="name" style="margin-bottom:6px">${esc(title)}</div>` : ""}${body}</div>`;
-const csvCell = v => { const s = v === null || v === undefined ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+// a name typed as =HYPERLINK(...) would run in the partner's spreadsheet, so text that starts like a formula is quoted
+const csvCell = v => { let s = v === null || v === undefined ? "" : String(v); if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const downloadCsv = (name, rows) => saveFiles([new File([rows.map(r => r.map(csvCell).join(",")).join("\n")], `${name}.csv`, { type: "text/csv" })], name);
 
 // ---------------------------------------------------------------- the look, offered on a round or a league
@@ -145,13 +146,30 @@ const cache = {};
 
 const tile = (label, value, note = "") => `<div class="dtile"><small>${esc(label)}</small><b>${value}</b>${note ? `<span>${note}</span>` : ""}</div>`;
 
+/**
+ * A round still being played, as far as it has gone: scored as a finished card would be, then summed over the
+ * holes actually walked, so a pick-up counts as it will on the card and the leader is the one ahead on points.
+ */
+function liveRound(P, r, course) {
+  const entries = P.entries.filter(e => e.roundId === r.id);
+  let M = { players: [] };
+  try { M = buildRound(P, r, entries, P.scores.filter(s => s.roundId === r.id), course, true); } catch (e) { console.warn("dashboard: live round", r.id, e.message); }
+  const rows = M.players.map(p => {
+    const walked = p.raw_scores.map((v, i) => v !== null && v !== undefined ? i : -1).filter(i => i >= 0);
+    const sum = xs => walked.reduce((a, i) => a + (xs[i] || 0), 0);
+    return { name: p.name, thru: walked.length, pts: sum(p.hpts), gross: sum(p.scores), topar: sum(p.deltas) };
+  }).sort((a, b) => b.pts - a.pts || b.thru - a.thru);
+  return { id: r.id, name: r.name, date: r.date, status: r.status, hidden: r.hidden, course, field: entries.length, live: rows, stbl_board: [] };
+}
+
 /** The rounds a partner's look is on, as the app's own model scores them. */
 function modelRounds(P) {
   const out = [];
   for (const r of P.rounds) {
     const course = courseOf(r.course, P.courses);
     if (!course) continue;
-    try { out.push(Object.assign(buildRound(P, r, P.entries.filter(e => e.roundId === r.id), P.scores.filter(s => s.roundId === r.id), course, r.status === "done"), { status: r.status, hidden: r.hidden, course })); }
+    if (r.status !== "done") { out.push(liveRound(P, r, course)); continue; }
+    try { out.push(Object.assign(buildRound(P, r, P.entries.filter(e => e.roundId === r.id), P.scores.filter(s => s.roundId === r.id), course, true), { status: r.status, hidden: r.hidden, course })); }
     catch (e) { console.warn("dashboard: round left out", r.id, e.message); }
   }
   return out;
@@ -185,7 +203,7 @@ export async function partner(id, tab = "rounds") {
 async function roundsOf(C, refresh = false) {
   const c = cache[C.id];
   const q = c.range || {};
-  if (!c.P || refresh) c.P = await A.api(`/club/${C.id}/rounds${q.from || q.to ? `?from=${q.from || ""}&to=${q.to || ""}` : ""}`);
+  if (!c.P || refresh || Date.now() - (c.at || 0) > 30000) c.at = Date.now(), c.P = await A.api(`/club/${C.id}/rounds${q.from || q.to ? `?from=${q.from || ""}&to=${q.to || ""}` : ""}`);
   return c.P;
 }
 
@@ -200,8 +218,10 @@ const PANES = {
       ${Ms.length ? `<div class="dtable"><table><thead><tr><th>Date</th><th>Round</th><th>Course</th><th class="n">Players</th><th>Leader</th><th></th></tr></thead><tbody>
         ${Ms.map(M => `<tr class="click" data-act="open" data-r="${esc(M.id)}"><td>${esc(fmtDate(M.date))}</td><td>${esc(M.name)}${M.status === "done" ? "" : ` <span class="live">live</span>`}</td>
           <td>${esc(courseTitle(M.course))}</td><td class="n">${M.field}${M.hidden ? ` <span class="muted" title="kept their scores from you">+${M.hidden}</span>` : ""}</td>
-          <td>${M.stbl_board[0] ? `${esc(M.stbl_board[0].name)} · ${M.stbl_board[0].pts} pts` : ""}</td><td class="chev">${open === M.id ? "⌄" : "›"}</td></tr>
-          ${open === M.id ? `<tr class="sub"><td colspan="6"><table class="inner"><thead><tr><th>#</th><th>Player</th><th class="n">Hcp</th><th class="n">Gross</th><th class="n">To par</th><th class="n">Net</th><th class="n">Pts</th></tr></thead><tbody>${boardRows(M)}</tbody></table>
+          <td>${M.live ? `in play, ${M.live[0] && M.live[0].thru ? `${esc(M.live[0].name)} · ${M.live[0].pts} pts after ${M.live[0].thru}` : "nobody out yet"}` : M.stbl_board[0] ? `${esc(M.stbl_board[0].name)} · ${M.stbl_board[0].pts} pts` : ""}</td><td class="chev">${open === M.id ? "⌄" : "›"}</td></tr>
+          ${open === M.id ? `<tr class="sub"><td colspan="6"><table class="inner">${M.live
+            ? `<thead><tr><th>Player</th><th class="n">Holes</th><th class="n">Gross so far</th><th class="n">To par</th><th class="n">Pts</th></tr></thead><tbody>${M.live.map(p => `<tr><td>${esc(p.name)}</td><td class="n">${p.thru}</td><td class="n">${p.thru ? p.gross : ""}</td><td class="n">${p.thru ? fmtToPar(p.topar) : ""}</td><td class="n"><b>${p.thru ? p.pts : ""}</b></td></tr>`).join("")}</tbody>`
+            : `<thead><tr><th>#</th><th>Player</th><th class="n">Hcp</th><th class="n">Gross</th><th class="n">To par</th><th class="n">Net</th><th class="n">Pts</th></tr></thead><tbody>${boardRows(M)}</tbody>`}</table>
             ${M.hidden ? `<p class="muted small">${plural(M.hidden, "golfer")} on this card chose to keep their scores from you.</p>` : ""}</td></tr>` : ""}`).join("")}
         </tbody></table></div>` : `<p class="muted center" style="margin:30px 0">No rounds wear the look${q.from || q.to ? " in those dates" : " yet"}. Rounds and societies set up by someone holding a code show here as they are played.</p>`}`;
     pane.querySelector("#range").addEventListener("submit", async ev => { ev.preventDefault(); c.range = { from: ev.target.from.value, to: ev.target.to.value }; await roundsOf(C, true); PANES.rounds(pane, C); });
@@ -210,7 +230,7 @@ const PANES = {
       if (!t) return;
       if (t.dataset.act === "open") { ui.dashOpen = ui.dashOpen === t.dataset.r ? null : t.dataset.r; PANES.rounds(pane, C); }
       if (t.dataset.act === "csv") downloadCsv(`${C.name} rounds`, [["date", "round", "course", "status", "position", "player", "handicap", "gross", "to par", "net", "points"],
-        ...Ms.flatMap(M => M.stbl_board.map(p => [M.date, M.name, courseTitle(M.course), M.status, p.splace, p.name, p.ph, p.gross, p.topar, p.net, p.pts]))]);
+        ...Ms.filter(M => !M.live).flatMap(M => M.stbl_board.map(p => [M.date, M.name, courseTitle(M.course), M.status, p.splace, p.name, p.ph, p.gross, p.topar, p.net, p.pts]))]);
     };
   },
 
@@ -239,8 +259,7 @@ const PANES = {
     pane.innerHTML = P.leagues.map(l => {
       const g = { id: l.id, name: l.name, formats: S.cleanFormats(l.formats), bestN: l.bestN };
       const LM = Ms.filter(M => l.rounds.includes(M.id)), members = [...new Set(LM.flatMap(M => M.players.map(p => p.id)))];
-      const f = g.formats[0];
-      return `${sect(l.name, `<span class="muted small">${plural(LM.length, "round")} · ${esc(FORMAT_NAMES[f])}</span>`)}${LM.length ? standingsTable(f, standingsFor(g, LM, members, f), g, null) : `<p class="muted small">No finished rounds yet.</p>`}`;
+      return `${sect(l.name, `<span class="muted small">${plural(LM.length, "round")}</span>`)}${LM.length ? g.formats.map(f => `${g.formats.length > 1 ? `<h3 class="small">${esc(FORMAT_NAMES[f])}</h3>` : ""}${standingsTable(f, standingsFor(g, LM, members, f), g, null)}`).join("") : `<p class="muted small">No finished rounds yet.</p>`}`;
     }).join("");
   },
 
@@ -299,7 +318,7 @@ const PANES = {
     const t = C.template || {}, f = new Set(C.contract.fields), pal = C.palette || {};
     const base = pal.base || C.theme || "hagolf", baseT = DATA.themes.find(x => x.name === base) || DATA.themes[0];
     const has = k => f.has(k);
-    const lock = what => `<p class="muted small lockline">${ICONS.lock} ${esc(what)} come with Clubhouse and Signature.</p>`;
+    const lock = (what, tiers) => `<p class="muted small lockline">${ICONS.lock} ${esc(what)} come with ${tiers}.</p>`;
     const courses = new Set(C.courses || []);
     pane.innerHTML = `<form id="lookf" class="dlook">
       <div class="card"><div class="iconpick"><span class="logoprev">${C.logo ? `<img src="${C.logo}" alt="">` : `<span class="muted small">No logo</span>`}</span><div><b>Logo</b><small>On every board and card, top right. A PNG with a clear background reads best.</small>
@@ -316,10 +335,13 @@ const PANES = {
           <label>A QR code to<input name="link" type="url" value="${esc(t.link || "")}" placeholder="https://…"></label>
           <label class="switch"><span>The date on every sheet</span><input type="checkbox" name="date" ${t.date ? "checked" : ""}></label>
           <label>Images offered</label><div class="checks">${[["stbl", "Stableford board"], ["gross", "Gross board"], ["both", "Both boards"], ["holes", "How the holes played"], ["cards", "Player cards"]].map(([k, l]) =>
-            `<label><input type="checkbox" name="kinds" value="${k}" ${!t.kinds || t.kinds.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>` : lock("A footer line, a QR code, the date and the choice of images")}
+            `<label><input type="checkbox" name="kinds" value="${k}" ${!t.kinds || t.kinds.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>` : lock("A footer line, a QR code, the date and the choice of images", "Clubhouse and Signature")}
         ${has("titles") ? `<label>Own titles <span class="muted">(leave empty for ours)</span></label><div class="two">${[["stbl", "Stableford board"], ["gross", "Gross board"], ["both", "Both boards"], ["holes", "The holes"], ["standings", "Society standings"]].map(([k, l]) =>
             `<label>${l}<input name="title-${k}" maxlength="50" value="${esc((t.titles || {})[k] || "")}"></label>`).join("")}</div>
-          <label>House style<select name="house"><option value="">The look's own</option>${FAMILIES.map(fm => `<option value="${fm.key}" ${t.house === fm.key ? "selected" : ""}>${esc(fm.name)}</option>`).join("")}</select></label>` : has("foot") ? lock("Your own titles and house style") : ""}</div>
+          <label>House style<select name="house"><option value="">The look's own</option>${FAMILIES.map(fm => `<option value="${fm.key}" ${t.house === fm.key ? "selected" : ""}>${esc(fm.name)}</option>`).join("")}</select></label>` : has("foot") ? lock("Your own titles and house style", "Signature") : ""}</div>
+      <div class="card"><div class="name">Your own sheets</div><p class="muted small">Few words and your logo at the centre. The style each one opens on; anyone making images can still pick another.</p>
+        <div class="two">${[["dayout", "Day out board"], ["personal", "Personal card"], ["league", "Society table"]].map(([k, l]) =>
+          `<label>${l}<select name="style-${k}">${BRAND_STYLES[k].map(s => `<option value="${s.key}" ${(t.styles || {})[k] === s.key ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>`).join("")}</div></div>
       ${C.kind === "course" ? `<div class="card"><div class="name">Your courses</div><p class="muted small">A round set up on one of these offers your look first.</p>
         <input class="search" id="cq" placeholder="Search courses" autocomplete="off"><div class="checks" id="clist"></div></div>` : ""}
       <div class="btnrow"><button class="btn primary" type="submit">Save the look</button><button class="btn" type="button" data-act="preview">Preview</button></div>
@@ -344,12 +366,15 @@ const PANES = {
       const bt = DATA.themes.find(x => x.name === palette.base) || baseT;
       for (const k of ["ACCENT", "BG", "PANEL", "INK"]) if (v(k).toUpperCase() !== String(bt[k]).toUpperCase()) palette[k] = v(k).toUpperCase();
       const template = { kicker: v("kicker"), mark: v("mark"), foot: v("foot"), link: v("link"), date: fd.get("date") === "on", kinds: has("kinds") ? fd.getAll("kinds") : undefined, house: v("house"),
-        titles: Object.fromEntries(["stbl", "gross", "both", "holes", "standings"].map(k => [k, v(`title-${k}`)]).filter(([, x]) => x)) };
+        titles: Object.fromEntries(["stbl", "gross", "both", "holes", "standings"].map(k => [k, v(`title-${k}`)]).filter(([, x]) => x)),
+        styles: Object.fromEntries(["dayout", "personal", "league"].map(k => [k, v(`style-${k}`)])) };
       return { name: v("name"), palette, template, courses: [...courses] };
     };
     form.addEventListener("submit", async ev => {
       ev.preventDefault();
-      try { const r = await A.api(`/club/${C.id}/brand`, { ...collect(), logo }); B.remember([r.brand]); toast("Saved"); partner(C.id, "look"); }
+      const draft = collect();
+      if (has("kinds") && !draft.template.kinds.length) return toast("Tick at least one image to offer");
+      try { const r = await A.api(`/club/${C.id}/brand`, { ...draft, logo }); B.remember([r.brand]); toast("Saved"); partner(C.id, "look"); }
       catch (e) { toast(e.message, 5000); }
     });
     pane.querySelector("#logofile").addEventListener("change", async ev => {
@@ -367,7 +392,8 @@ const PANES = {
         out.innerHTML = `<p class="muted small">Drawing…</p>`;
         const draft = { ...C, ...collect(), logo, id: `${C.id}-draft-${Date.now()}` };
         draft.template = { ...draft.template, kinds: null };
-        try { out.innerHTML = `<img class="lookimg" src="${await previewOn(draft)}" alt="The showcase round in this look">
+        out.querySelectorAll("img").forEach(i => URL.revokeObjectURL(i.src));
+        try { out.innerHTML = `${(await previewOn(draft)).map(([src, what]) => `<img class="lookimg" src="${src}" alt="${what} in this look">`).join("")}
           <p class="muted small">Drawn on the showcase round, four invented golfers at Heron's Reach. What the contract does not include is left off when it is saved.</p>`; }
         catch (e) { out.innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
       }
@@ -375,12 +401,15 @@ const PANES = {
   },
 };
 
-/** The showcase round's Stableford board in a draft look, as an image to show. */
+/** The partner's own three sheets in a draft look, drawn on the showcase round and society, as images to show. */
 async function previewOn(b) {
   await loadFonts(DATA.fonts);
-  const T = makeTheme(B.brandTheme(b) || DATA.themes[0]);
-  const fig = await B.withBrand(b, showcaseRound().date, () => stablefordLeaderboard(showcaseRound(), T, "full"));
-  return URL.createObjectURL(await fig.toBlob());
+  const T = makeTheme(B.brandTheme(b) || DATA.themes[0]), st = b.template.styles || {};
+  const M = showcaseRound(), L = showcaseLeague();
+  const figs = await B.withBrand(b, M.date, () => [
+    [dayOutSheet(M, T, st.dayout), "The day out board"], [personalSheet(M, M.stbl_board[0].name, T, st.personal), "A personal card"],
+    [leagueSheet(standingsFor(L.g, L.Ms, L.members, "stableford"), L.g, T, "stableford", st.league), "The society table"]]);
+  return Promise.all(figs.map(async ([fig, what]) => [URL.createObjectURL(await fig.toBlob()), what]));
 }
 
 // Fitted inside 640 by 256 and re-encoded on the phone, keeping a clear background, so every phone that draws it pulls a few tens of kB.

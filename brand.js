@@ -99,7 +99,8 @@ export function loadLogo(b) {
   return p;
 }
 
-const longDate = d => { try { return new Date(`${d}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); } catch { return d; } };
+// en-GB writes "Sunday, 21 June 2026"; the sheets set the day without the comma
+const longDate = d => { try { return new Date(`${d}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).replace(",", ""); } catch { return d; } };
 /** What draw.js needs, from the partner and the day the sheet is about. */
 export async function sheetBrand(b, date = null) {
   if (!b) return null;
