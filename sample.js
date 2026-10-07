@@ -168,3 +168,89 @@ export const SAMPLE_BRANDS = {
       date: true },
   },
 };
+
+// ---------------------------------------------------------------- three invented clubs, three looks
+// For the courses page: how far one contract's look can go. Each club is made up, logo and links included, and
+// each takes a quiet palette over a base with its own typeface, its own house rules, sheet styles and words.
+
+// A heater shield in taupe, a lark in the stone chief, a pin on the downs below.
+const LARKHOLT_SHIELD = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <path d="M18 12 H182 V112 C182 172 142 212 100 232 C58 212 18 172 18 112 Z" fill="#6E5F4F"/>
+  <path d="M30 24 H170 V112 C170 164 135 198 100 216 C65 198 30 164 30 112 Z" fill="none" stroke="#ECE5D8" stroke-width="2.5"/>
+  <path d="M30 24 H170 V74 H30 Z" fill="#ECE5D8"/>
+  <path d="M66 50 C80 36 92 38 99 50 C106 38 120 36 134 50 C120 46 110 49 103 58 L106 66 L100 62 L94 66 L97 58 C90 49 80 46 66 50 Z" fill="#6E5F4F"/>
+  <circle cx="100" cy="48" r="4.5" fill="#6E5F4F"/>
+  <clipPath id="field"><path d="M31 25 H169 V112 C169 163 134 197 100 215 C66 197 31 163 31 112 Z"/></clipPath>
+  <g stroke="#ECE5D8" stroke-linecap="round" fill="none" clip-path="url(#field)">
+    <path d="M100 96 V168" stroke-width="3.5"/>
+    <path d="M20 178 Q70 156 100 168 T180 160" stroke-width="3.5"/>
+    <path d="M20 196 Q80 178 106 188 T180 182" stroke-width="3"/>
+  </g>
+  <path d="M102 96 L138 108 L102 120 Z" fill="#ECE5D8"/>
+</svg>`);
+
+// A millstone in a seal, its name running round the rim: oatmeal on graphite.
+const MILLSTONE_SEAL = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <defs><path id="top" d="M30 120 A90 90 0 0 1 210 120"/><path id="low" d="M20 120 A100 100 0 0 0 220 120"/></defs>
+  <circle cx="120" cy="120" r="116" fill="#2E3236"/>
+  <circle cx="120" cy="120" r="111" fill="none" stroke="#D8CBB0" stroke-width="3"/>
+  <circle cx="120" cy="120" r="76" fill="none" stroke="#D8CBB0" stroke-width="1.5"/>
+  <g font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="17" fill="#D8CBB0" letter-spacing="3.5" text-anchor="middle">
+    <text><textPath href="#top" startOffset="50%">MILLSTONE HEATH</textPath></text>
+    <text><textPath href="#low" startOffset="50%">GOLF CLUB · 1898</textPath></text>
+  </g>
+  <circle cx="22" cy="120" r="3" fill="#D8CBB0"/><circle cx="218" cy="120" r="3" fill="#D8CBB0"/>
+  <circle cx="120" cy="120" r="60" fill="#D8CBB0"/>
+  <g stroke="#2E3236" stroke-width="3" stroke-linecap="round">
+    <path d="M120 74 L126 104 M152.5 87.5 L133 107 M166 120 L136 126 M152.5 152.5 L133 133 M120 166 L114 136 M87.5 152.5 L107 133 M74 120 L104 114 M87.5 87.5 L107 107"/>
+  </g>
+  <circle cx="120" cy="120" r="11" fill="#2E3236"/>
+</svg>`);
+
+// A wren cocking its tail on a reed, a hairline, and the name set wide: charcoal and muted brass on ivory.
+const WRENMERE_WORDMARK = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="140" viewBox="0 0 640 140">
+  <path d="M14 112 H118" stroke="#8C6E43" stroke-width="3" stroke-linecap="round"/>
+  <g fill="#262422">
+    <ellipse cx="60" cy="82" rx="30" ry="21" transform="rotate(-12 60 82)"/>
+    <circle cx="36" cy="66" r="14"/>
+    <path d="M76 70 C84 54 92 38 102 24 Q110 24 114 30 C106 46 100 64 94 84 Z"/>
+    <path d="M24 64 L8 68 L24 70 Z"/>
+  </g>
+  <path d="M50 78 C62 70 76 74 84 84 C70 88 58 86 50 78 Z" fill="#8C6E43"/>
+  <circle cx="33" cy="63" r="2.4" fill="#F7F3EA"/>
+  <path d="M54 101 L52 112 M64 101 L64 112" stroke="#262422" stroke-width="3" stroke-linecap="round"/>
+  <path d="M150 26 V114" stroke="#8C6E43" stroke-width="1.5"/>
+  <text x="182" y="80" font-family="'Century Gothic', Futura, 'Trebuchet MS', Arial, sans-serif" font-size="54" letter-spacing="14" fill="#262422">WRENMERE</text>
+  <text x="185" y="112" font-family="'Century Gothic', Futura, 'Trebuchet MS', Arial, sans-serif" font-size="20" letter-spacing="9" fill="#8C6E43">LINKS  ·  EST. 1904</text>
+</svg>`);
+
+/** Three invented clubs, each with the names its sample sheets carry (`showcase`) and the styles it opens on. */
+export const SHOWCASE_CLUBS = [
+  {
+    id: "showcase-larkholt", kind: "course", name: "Larkholt Golf Club", logo: LARKHOLT_SHIELD,
+    palette: { base: "silverware", BG: "#E8E2D6", PANEL: "#F3EFE7", PANEL_2: "#DDD6C9", LINE: "#C9C0B1", ACCENT: "#6E5F4F",
+      INK: "#2A2520", INK_2: "#4F4840", INK_3: "#6B635A", SILVER: "#A9A59D", BRONZE: "#A3805F", BAR: "#6E5F4F" },
+    template: { kicker: "Members' Section", mark: "Larkholt GC · Est. 1912", foot: "Tee times from the starter's hut or the members' line",
+      link: "https://example.com/larkholt", date: true, titles: { stbl: "Monthly Medal", standings: "Order of Merit" } },
+    styles: { league: "crest", personal: "numeral", dayout: "crest" },
+    showcase: { course: "Larkholt", loop: "Downs course", society: "Larkholt Sunday Society", round: "Midsummer Medal" },
+  },
+  {
+    id: "showcase-millstone", kind: "course", name: "Millstone Heath Golf Club", logo: MILLSTONE_SEAL,
+    palette: { base: "carbon", BG: "#25282B", PANEL: "#2F3337", PANEL_2: "#3A3E43", LINE: "#4C5157", ACCENT: "#D8CBB0",
+      INK: "#F1ECE2", INK_2: "#CBC5BA", INK_3: "#A29C92", SILVER: "#B7BBC0", BRONZE: "#B39470", BAR: "#8E8676" },
+    template: { kicker: "On the Heath", mark: "millstoneheath · since 1898", foot: "Winter greens from November · visitors welcome midweek",
+      date: false, titles: { stbl: "Heath Points", standings: "The Heath Ladder" } },
+    styles: { league: "podium", personal: "crest", dayout: "podium" },
+    showcase: { course: "Millstone Heath", loop: "Heath course", society: "Millstone Heath Society", round: "Heath Stableford" },
+  },
+  {
+    id: "showcase-wrenmere", kind: "course", name: "Wrenmere Links", logo: WRENMERE_WORDMARK,
+    palette: { base: "typewriter", BG: "#F7F3EA", PANEL: "#FFFDF8", PANEL_2: "#EEE8DC", LINE: "#DCD4C5", ACCENT: "#8C6E43",
+      INK: "#262422", INK_2: "#4A4642", INK_3: "#6E6862", SILVER: "#A7A6A1", BRONZE: "#A87E55", BAR: "#3A3735" },
+    template: { kicker: "The Links Card", mark: "example.com/wrenmere", foot: "Scan to book the links",
+      link: "https://example.com/wrenmere", date: false, titles: { stbl: "The Links Stableford", standings: "Links Table" } },
+    styles: { league: "ticket", personal: "banner", dayout: "banner" },
+    showcase: { course: "Wrenmere", loop: "Links", society: "Wrenmere Links Society", round: "Summer Links Cup" },
+  },
+];

@@ -98,6 +98,8 @@ export async function partners() {
         <div class="row"><div><div class="name">${esc(c.name)}</div><div class="muted small">${esc(KIND_WORD[c.kind] || "Partner")} · ${c.role === "owner" ? "you run it" : c.role === "organiser" ? "you organise it" : "member"}${c.live ? "" : " · contract ended"}</div></div>
           ${["owner", "organiser"].includes(c.role) ? `<a class="btn small primary" href="#partner/${esc(c.id)}">Dashboard</a>` : ""}</div>
         <p class="muted small" style="margin:8px 0">${c.live ? `Rounds and societies you set up can wear its look. ${perkLine(c)}` : "Its look stays on the rounds it was on; new ones go without."}</p>
+        ${c.live ? `<div class="btnrow"><button class="btn small" data-act="scan" data-club="${esc(c.id)}">${ICONS.camera || ""} Scan a paper card</button><button class="btn small" data-act="society" data-club="${esc(c.id)}">${ICONS.trophy || ""} Start a society</button></div>
+        <p class="muted small" style="margin:6px 0 0">${c.kind === "company" ? "Play on paper and photograph the card afterwards, no tournament to set up; or start a friendly competition with colleagues." : "Photograph a paper card afterwards, or start a society for your members."} Either way it wears ${esc(c.name)}'s look.</p>` : ""}
         <label class="switch"><span>Keep all my rounds from its dashboard</span><input type="checkbox" data-act="optall" data-club="${esc(c.id)}" ${keptFrom(c.id) ? "checked" : ""}></label>
         ${c.role === "owner" ? "" : `<div class="btnrow"><button class="btn small" data-act="leave" data-club="${esc(c.id)}">Leave</button></div>`}</div>`).join("")}`
       : `<p class="muted small center" style="margin:18px 0">You are not in a course or company yet.</p>`}
@@ -111,6 +113,9 @@ export async function partners() {
     catch (e) { toast(e.message, 5000); i.checked = !i.checked; }
   }));
   bind(async ev => {
+    const s = ev.target.closest("[data-act=scan], [data-act=society]");
+    if (s && s.dataset.act === "scan") { ui.scanBrand = s.dataset.club; return go("#scan"); }
+    if (s) return (await import("./leagues.js")).newLeagueSheet(s.dataset.club);
     const b = ev.target.closest("[data-act=leave]");
     if (!b) return;
     if (!await confirmSheet("Leave?", "Its look goes from the rounds you set up from now on, and anything your seat carried goes too. Your rounds stay yours.", { label: "Leave", danger: true })) return;

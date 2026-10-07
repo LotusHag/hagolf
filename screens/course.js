@@ -1,5 +1,7 @@
 // Adding a club, and reading an old paper scorecard. Three ways in for a club, one check before anything is
 // saved; a card is photographed one at a time and laid end to end.
+import { brandField } from "./partner.js";
+import { brandForCourse } from "../brand.js";
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import { page, bind, esc, go, toast, plural, sum, courseTitle, tip, ICONS, ui } from "../ui.js";
@@ -323,6 +325,7 @@ export function scan() {
     ${missing > 0 ? `<div class="banner">${esc(courseTitle(course))} is ${want} holes and ${covered} are read so far. Take the next card: holes ${covered + 1} to ${want}.</div>` : missing < 0 ? `<div class="banner warn">${covered} holes have been read but ${esc(courseTitle(course))} is only ${want}. Pick an 18-hole course, or start again.</div>` : ""}
     <label>Played on<input id="sdate" type="date" value="${esc(first.date || S.today())}"></label>
     <label>Name of the round<input id="sname" value="${esc(first.name || ((first.course ? first.course + " " : "") + (first.date || "")).trim() || "Scanned round")}"></label>
+    ${brandField("sbrand", ui.scanBrand || (course && (brandForCourse(course.slug) || {}).id) || null)}
     <h2>Whose card is this?</h2>
     <p class="muted small">Check the numbers read off the photo${st.cards.length > 1 ? "s" : ""}, then say who each row belongs to.</p>
     ${tip(`<p>The rows are in the order they sit on the card, and a number the reader was unsure of is marked in amber.</p><p>Walked 18 as two cards of nine? Pick the same player on both and the two halves become one round for them. Untick a row to leave that player out.</p>`, "Reading a photographed card")}
@@ -418,7 +421,9 @@ export function scan() {
     }
     const short = [...byPlayer.values()].find(e => e.cards.size !== st.cards.length);
     if (short) return toast(`${short.name} is on ${plural(short.cards.size, "card")} of ${st.cards.length}. Pick them on the other one too, or untick them.`, 6000);
-    const r = S.createRound({ course: course.slug, name: document.getElementById("sname").value.trim() || "Scanned round", date, defaultTee: [...byPlayer.values()][0].tee || dfltTee, allowance: 100 });
+    const r = S.createRound({ course: course.slug, name: document.getElementById("sname").value.trim() || "Scanned round", date, defaultTee: [...byPlayer.values()][0].tee || dfltTee, allowance: 100,
+      brand: (document.getElementById("sbrand") || {}).value || null });
+    ui.scanBrand = null;
     for (const x of byPlayer.values()) {
       const e = S.addEntry(r, course.n, { name: x.name, hi: x.hi, tee: x.tee, gender: x.gender, courseHandicap: null });
       x.scores.forEach((v, h) => { if (v !== null) S.setScore(r, e, h, v); });

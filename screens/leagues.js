@@ -1,4 +1,5 @@
 // Leagues: the ones you are in, invitations waiting, and the two ways into another.
+import { brandField } from "./partner.js";
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
@@ -44,11 +45,12 @@ export function leagues() {
   });
 }
 
-/** Name it, choose how it is scored, done. Everything else lives under the league's Settings. */
-export async function newLeagueSheet() {
+/** Name it, choose how it is scored, done. Everything else lives under the league's Settings. `brand` presets a partner's look. */
+export async function newLeagueSheet(brand = null) {
   if (!A.signedIn()) return toast("Sign in to make a society");
   let made = null;
   await sheet({ title: "New society", body: `<form id="newg"><label style="margin-top:0">Name<input name="name" placeholder="e.g. Thursday society" required></label>
+      ${brandField("gbrand", brand)}
       <label>Scored by</label><div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${f === "stableford" ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div></form>`,
     actions: [{ label: "Create", value: "ok", kind: "primary" }, { label: "Cancel", value: "no" }],
     onOpen: (el, close) => {
@@ -59,6 +61,8 @@ export async function newLeagueSheet() {
         if (!name) return toast("Give the society a name");
         const fmts = [...f.querySelectorAll("input[name=fmt]:checked")].map(i => i.value);
         made = S.createLeague(name, 0, S.me() ? S.me().name : null, fmts);
+        const look = f.querySelector("select[name=gbrand]");
+        if (look && look.value) { made.brand = look.value; S.saveLeague(made); }
         close("ok");
       };
       f.addEventListener("submit", ev => { ev.preventDefault(); submit(); });

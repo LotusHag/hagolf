@@ -521,9 +521,14 @@ export function qrHtml(link) {
 export function canShareFiles() {
   try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File([""], "x.png", { type: "image/png" })] })); } catch (e) { return false; }
 }
+const allImages = files => files.every(f => f.type.startsWith("image/"));
+// Android's share sheet has no way into the gallery, but a downloaded image lands in it; an iPhone can only reach Photos through the sheet
+const sheetForPhotos = () => canShareFiles() && !isAndroid();
 export async function saveFiles(files, title) {
-  if (canShareFiles() && navigator.canShare({ files })) {
-    try { await navigator.share({ files, title }); return; } catch (err) { if (err.name === "AbortError") return; console.warn(err); }
+  const photos = allImages(files);
+  if (canShareFiles() && navigator.canShare({ files }) && !(photos && isAndroid())) {
+    // iOS can leave "Save Image" out of the sheet when the share carries words, so images go alone
+    try { await navigator.share(photos ? { files } : { files, title }); return; } catch (err) { if (err.name === "AbortError") return; console.warn(err); }
   }
   for (const f of files) {
     const a = document.createElement("a");
@@ -534,7 +539,8 @@ export async function saveFiles(files, title) {
     a.remove();
     await new Promise(res => setTimeout(res, 400));
   }
-  toast(files.length === 1 ? "Saved to your downloads" : `${files.length} files sent to your downloads`);
+  if (photos && isAndroid()) toast(files.length === 1 ? "Saved to your photos" : `${files.length} images saved to your photos`);
+  else toast(files.length === 1 ? "Saved to your downloads" : `${files.length} files sent to your downloads`);
 }
 export function slugFile(s) {
   return String(s).normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "round";
@@ -577,8 +583,8 @@ export async function runJobs(jobs, prefix) {
   const ok = results.filter(x => x.blob);
   out.innerHTML = `
     <h2>${plural(ok.length, "image")} ready</h2>
-    <div class="saveall"><button class="btn primary" data-act="save-all">${canShareFiles() ? "Save all to phone" : "Download all"}</button>
-      <div class="muted small">${canShareFiles() ? "Choose “Save Image” or “Save to Files” in the sheet. " : ""}Or save one at a time below.</div></div>
+    <div class="saveall"><button class="btn primary" data-act="save-all">${sheetForPhotos() ? "Save all to Photos" : onPhone() ? "Save all to phone" : "Download all"}</button>
+      <div class="muted small">${sheetForPhotos() ? "Tap “Save Images” in the sheet. " : onPhone() ? "They go straight to your photos. " : ""}Or save one at a time below.</div></div>
     <div class="thumbs">${results.map((x, i) => x.blob ? `
       <figure>${thumbImg(x, i)}<figcaption><span class="tname">${esc(x.label).replace(/([/_])/g, "$1<wbr>")} <span class="muted">${x.w}×${x.h}</span></span>
         <button class="btn small" data-act="save-one" data-i="${i}">Save</button></figcaption></figure>`
