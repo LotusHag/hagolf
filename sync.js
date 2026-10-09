@@ -427,6 +427,7 @@ async function doPull(again = false) {
     for (const row of orphanStats) { if (TABLES.hole_stats.apply(row)) changed = true; }
     if (full && sweep(seen)) changed = true;
     if (full) { localStorage.setItem(ACCOUNT_KEY, accountId()); localStorage.setItem(FULL_KEY, new Date().toISOString()); }
+    if (S.foldMe()) changed = true;
     if (changed || orphans.length || S.state.orphanScores.length) S.afterPull();
     // A card just handed to me is older than every cursor, so it is fetched by name rather than by re-reading
     // everything: shares are far more common than joining a league, and one is four small requests.

@@ -168,7 +168,22 @@ export function linkMe(account) {
   state.settings.meId = p.id;
   state.settings.welcomed = true;
   save();
-  return p;
+  foldMe();
+  return me() || p;
+}
+
+/**
+ * A new phone signs in before its first pull, so it makes its own "me" and then pulls the one the old phone made:
+ * two contacts, both mine and linked to me, and every card on the other one stops being mine. They fold into the
+ * oldest, the same on every phone, so two phones healing at once cannot each delete the other's.
+ */
+export function foldMe() {
+  const acct = myAccount();
+  if (!acct) return false;
+  const selves = state.players.filter(p => !p.deleted && p.owner === acct && p.linkedAccount === acct)
+    .sort((a, b) => String(a.created || "9").localeCompare(String(b.created || "9")) || a.id.localeCompare(b.id));
+  for (const drop of selves.slice(1)) mergePlayers(selves[0].id, drop.id);
+  return selves.length > 1;
 }
 
 // ---------------------------------------------------------------- roster
