@@ -1199,7 +1199,7 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS, ba
   return { rows: out, rounds: cards, bestN, table, basis };
 }
 
-// Everyone starts at 1500; a day is worth K, doubled for a player's first few days so a newcomer finds their level.
+// The rating starts at 1500 and is never shown; a day is worth K, doubled for a player's first few days so a newcomer finds their level.
 export const ELO = { start: 1500, k: 32, provisionalDays: 5, provisionalK: 2, scale: 400 };
 export const ELO_BASES = ["points", "net", "match"];
 
@@ -1230,14 +1230,18 @@ export const eloExpected = (ra, rb) => 1 / (1 + 10 ** ((rb - ra) / ELO.scale));
  * the margin decides the size, so a winner always gains on the player they beat. A player's day is
  * K / (opponents) times the sum over opponents, so a field of twenty moves nobody further than a two-ball.
  * Days run in date order, every card of a day off the ratings from before it; nothing is stored.
+ *
+ * What a player sees is `score`: it starts at 0, takes the same change as the rating, and never goes below 0,
+ * so at 0 a loss costs nothing and a win counts at once. That makes it how far the rating is above its lowest
+ * point so far. The rating stays underneath to set what each pair was expected to do.
  */
 export function eloStandings(results, memberIds, basis = "all") {
   const members = new Set(memberIds);
   const bases = basis === "all" ? ELO_BASES : [basis];
   const rows = new Map();
   const row = p => {
-    if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, rating: ELO.start, played: 0, won: 0, drawn: 0, lost: 0,
-      peak: ELO.start, last: null, lastDate: null, history: [] });
+    if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, rating: ELO.start, score: 0, played: 0, won: 0, drawn: 0, lost: 0,
+      peak: 0, last: null, lastDate: null, history: [] });
     const r = rows.get(p.id);
     r.name = p.name;
     return r;
@@ -1274,14 +1278,16 @@ export function eloStandings(results, memberIds, basis = "all") {
     // applied after the whole day, so the second loop of a Sunday is not played against the first loop's ratings
     for (const [id, d] of delta) {
       const r = rows.get(id);
-      r.rating += d; r.played++; r.last = d; r.lastDate = date || null;
-      r.peak = Math.max(r.peak, r.rating);
-      r.history.push({ date: date || null, rating: r.rating, delta: d });
+      const was = r.score;
+      r.rating += d; r.score = Math.max(0, r.score + d); r.played++; r.last = r.score - was; r.lastDate = date || null;
+      r.peak = Math.max(r.peak, r.score);
+      r.history.push({ date: date || null, rating: r.rating, score: r.score, delta: d });
     }
   }
   // alone on every card is nobody played, as in the match tables
   const out = [...rows.values()].filter(r => r.played).map(r => ({ ...r, provisional: r.played < ELO.provisionalDays }));
-  out.sort((a, b) => b.rating - a.rating || b.played - a.played || a.name.localeCompare(b.name));
+  // equal scores, which at 0 is common, go to the higher rating underneath
+  out.sort((a, b) => b.score - a.score || b.rating - a.rating || b.played - a.played || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
   return { rows: out, rounds: cards, basis };
 }

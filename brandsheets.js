@@ -555,8 +555,8 @@ export function leagueSheet(Sx, g, T, kind, style) {
     : `${shortDate(dates[0], dates[0].slice(0, 4) !== dates[dates.length - 1].slice(0, 4))} – ${shortDate(dates[dates.length - 1])}`) : "";
   const line = [title, `${rounds.length} round${rounds.length === 1 ? "" : "s"}`, (B && B.date) || span].filter(Boolean).join(SEP);
   const match = kind.startsWith("match") || kind.startsWith("soccer"), elo = kind.startsWith("elo");
-  const label = elo ? "Elo" : match ? "Points" : kind === "stroke" ? (Sx.bestN > 0 ? `Best ${Sx.bestN}` : "Net to par") : Sx.bestN > 0 ? `Best ${Sx.bestN}` : "Points";
-  const value = r => elo ? String(Math.round(r.rating)) : match ? String(r.points) : kind === "stroke" ? (r.played ? fmtToPar(r.counted) : "–") : String(r.counted);
+  const label = elo ? "Points" : match ? "Points" : kind === "stroke" ? (Sx.bestN > 0 ? `Best ${Sx.bestN}` : "Net to par") : Sx.bestN > 0 ? `Best ${Sx.bestN}` : "Points";
+  const value = r => elo ? String(Math.round(r.score)) : match ? String(r.points) : kind === "stroke" ? (r.played ? fmtToPar(r.counted) : "–") : String(r.counted);
   const rows = Sx.rows.map(r => ({ place: r.place, name: r.name, value: value(r), aside: r.played }));
   // a table reads equal figures as an equal place, =4 and =4, the way a society's noticeboard does
   rows.forEach((r, i) => {

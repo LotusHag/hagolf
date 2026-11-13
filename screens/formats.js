@@ -33,7 +33,7 @@ export const FORMAT_BLURB = {
   elostroke: "The same rating, with each pair settled on net score",
   elomatch: "The same rating, with each pair settled by a match on net score, hole by hole",
 };
-const ELO_HOW = `Everyone starts on ${ELO.start}. Each day, every pair of this society's players on the card played a game: beating someone rated above you gains more than beating someone below, and losing to them costs less. Winning decides which way it goes; the margin decides how far, from half for one shot or point or hole up, to double for fifteen or more. A day moves you at most about ${ELO.k * 2} however many were out, and twice that in your first ${ELO.provisionalDays} days while the table finds your level. Missing a day costs nothing. <b>W D L</b> is every head-to-head on the days you played.`;
+const ELO_HOW = `Everyone starts on 0 and nobody goes below it: at 0 a bad day costs nothing, and a good one counts straight away. Each day, every pair of this society's players on the card played a game: beating someone stronger than you gains more than beating someone weaker, and losing to them costs less. Winning decides which way it goes; the margin decides how far, from half for one shot or point or hole up, to double for fifteen or more. A day moves you at most about ${ELO.k * 2} however many were out, and twice that in your first ${ELO.provisionalDays} days while the table finds your level. Missing a day costs nothing. Who is stronger comes from a rating the table keeps underneath, which also settles equal scores. <b>W D L</b> is every head-to-head on the days you played.`;
 export const FORMAT_NOTES = {
   stableford: "<b>Stroke play.</b> Everyone plays for their own score and nobody plays against anybody: each round gives you your Stableford points and this table adds them up. <b>Rds</b> is rounds played, <b>Wins</b> how often you had the most points on the day, <b>Avg</b> your points per round.",
   stroke: "<b>Stroke play.</b> Each round counts your net score against par, so −2 means two under. The lowest total wins. A round you did not finish a full card for counts nothing and is marked NR.",
@@ -90,7 +90,7 @@ export function sinceLast(g, Ms, members, kind) {
 
 /** What a player's line in a league's table is worth, in that league's own units. */
 export function standingValue(kind, r) {
-  if (kind in ELO_BASIS) return String(Math.round(r.rating));
+  if (kind in ELO_BASIS) return `${Math.round(r.score)} pts`;
   if (kind === "stroke") return r.played ? fmtToPar(r.counted) : "–";
   if (kind in MATCH_BASIS) return `${r.points} pts`;
   return `${r.counted} pts`;
@@ -105,7 +105,7 @@ export function boardLine(kind, r, g) {
   const cards = n => plural(n, "card");
   if (kind in ELO_BASIS) {
     const moved = r.last === null ? "" : ` · ${eloDelta(r.last)} last time`;
-    return { value: String(Math.round(r.rating)), unit: "Elo",
+    return { value: String(Math.round(r.score)), unit: "pts",
       sub: `${plural(r.played, "day")} · ${r.won} W ${r.drawn} D ${r.lost} L${moved}${r.provisional ? " · finding level" : ""}` };
   }
   if (kind in MATCH_BASIS) {
@@ -129,7 +129,7 @@ export function boardLine(kind, r, g) {
 }
 
 /** The value a table is actually ordered on, so the screen can tell when two rows were split on countback. */
-export const decidingValue = (kind, r) => kind in MATCH_BASIS ? r.points : kind in ELO_BASIS ? Math.round(r.rating) : r.counted;
+export const decidingValue = (kind, r) => kind in MATCH_BASIS ? r.points : kind in ELO_BASIS ? Math.round(r.score) : r.counted;
 export const eloDelta = d => { const x = Math.round(d); return x > 0 ? `+${x}` : x < 0 ? `−${-x}` : "±0"; };
 
 /** What a round is settled on in each way of scoring: Stableford points, or net strokes against par. */
@@ -166,8 +166,8 @@ export function standingsTable(kind, Sx, g, me, cls = "") {
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
   if (kind in GP_BASIS) return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Points"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
-  if (kind in ELO_BASIS) return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Days</th><th>W</th><th>D</th><th>L</th><th>Peak</th><th>Last</th><th>Elo</th></tr></thead>
-    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.provisional ? ` <span class="muted small">(new)</span>` : ""}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${Math.round(r.peak)}</td><td>${r.last === null ? "–" : eloDelta(r.last)}</td><td class="acc">${Math.round(r.rating)}</td></tr>`).join("")}</tbody></table>`;
+  if (kind in ELO_BASIS) return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Days</th><th>W</th><th>D</th><th>L</th><th>Peak</th><th>Last</th><th>Pts</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.provisional ? ` <span class="muted small">(new)</span>` : ""}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${Math.round(r.peak)}</td><td>${r.last === null ? "–" : eloDelta(r.last)}</td><td class="acc">${Math.round(r.score)}</td></tr>`).join("")}</tbody></table>`;
   if (kind === "stroke") return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Net ±"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best === null ? "–" : fmtToPar(r.best)}</td><td>${r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"}</td><td class="acc">${r.played ? fmtToPar(r.counted) : "–"}</td></tr>`).join("")}</tbody></table>`;
   return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>Up</th><th>Pts</th></tr></thead>
