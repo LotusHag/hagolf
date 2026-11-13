@@ -82,7 +82,7 @@ const dPairs = fn => (ax, c, y, r) => {
   const T = ax.fig.T, pairs = fn(r);
   const flat = pairs.map(([l, v]) => `${l} ${v}`).join("  ·  ");
   const size = ax.fig.fitOne(flat, Math.abs(ax.DX(c.x1 - c.x0)), PH.sub, PH.subMin);
-  run(ax, c.x0, y, pairs.flatMap(([l, v], i) => [[`${i ? "  ·  " : ""}${l} `, T.INK_3], [String(v), T.INK_2]]), size);
+  run(ax, c.x0, y, pairs.flatMap(([l, v], i) => [[`${i ? "  ·  " : ""}${l ? `${l} ` : ""}`, T.INK_3], [String(v), T.INK_2]]), size);
 };
 
 /** What a second-line chart means, set over the column heads: a colour key, or a line of text from the right. */
@@ -564,7 +564,7 @@ export function standingsPoster(S, group, T, kind = "stableford") {
       num("Peak", 6.7, 7.5, r => String(Math.round(r.peak))), num("Last", 7.6, 8.3, moved),
       col("Pts", 8.4, 9.95, dVal(elo, 22, (r, T) => T.ACCENT, "display"))];
     total = ["Pts", elo];
-    pairs = r => [["days", r.played], ["W-D-L", `${r.won}-${r.drawn}-${r.lost}`], ["peak", Math.round(r.peak)], ["last", moved(r)]];
+    pairs = r => [["days", r.played], ["", `${r.won}–${r.drawn}–${r.lost}`], ["peak", Math.round(r.peak)], ["last", moved(r)]];
     right = `Elo rating
 ${how}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [lead, "the leader", T.ACCENT]];

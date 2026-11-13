@@ -33,7 +33,7 @@ export const FORMAT_BLURB = {
   elostroke: "The same rating, with each pair settled on net score",
   elomatch: "The same rating, with each pair settled by a match on net score, hole by hole",
 };
-const ELO_HOW = `Everyone starts on 0 and nobody goes below it: at 0 a bad day costs nothing, and a good one counts straight away. Each day, every pair of this society's players on the card played a game: beating someone stronger than you gains more than beating someone weaker, and losing to them costs less. Winning decides which way it goes; the margin decides how far, from half for one shot or point or hole up, to double for fifteen or more. A day moves you at most about ${ELO.k * 2} however many were out, and twice that in your first ${ELO.provisionalDays} days while the table finds your level. Missing a day costs nothing. Who is stronger comes from a rating the table keeps underneath, which also settles equal scores. <b>W D L</b> is every head-to-head on the days you played.`;
+const ELO_HOW = `Everyone starts on 0 and nobody goes below it: at 0 a bad day costs nothing, and a good one counts straight away. Each day, every pair of this society's players on the card played a game: beating someone stronger than you gains more than beating someone weaker, and losing to them costs less. Winning decides which way it goes; the margin decides how far, from half for one shot or point or hole up, to double for fifteen or more. A day moves you at most about ${ELO.k * 2} however many were out, and twice that in your first ${ELO.provisionalDays} days while the table finds your level. Missing a day costs nothing. Who is stronger comes from a rating the table keeps underneath, which also settles equal scores. The three numbers under your name are your wins, draws and losses, every head-to-head on the days you played.`;
 export const FORMAT_NOTES = {
   stableford: "<b>Stroke play.</b> Everyone plays for their own score and nobody plays against anybody: each round gives you your Stableford points and this table adds them up. <b>Rds</b> is rounds played, <b>Wins</b> how often you had the most points on the day, <b>Avg</b> your points per round.",
   stroke: "<b>Stroke play.</b> Each round counts your net score against par, so −2 means two under. The lowest total wins. A round you did not finish a full card for counts nothing and is marked NR.",
@@ -106,7 +106,7 @@ export function boardLine(kind, r, g) {
   if (kind in ELO_BASIS) {
     const moved = r.last === null ? "" : ` · ${eloDelta(r.last)} last time`;
     return { value: String(Math.round(r.score)), unit: "pts",
-      sub: `${plural(r.played, "day")} · ${r.won} W ${r.drawn} D ${r.lost} L${moved}${r.provisional ? " · finding level" : ""}` };
+      sub: `${plural(r.played, "day")} · ${r.won}–${r.drawn}–${r.lost}${moved}${r.provisional ? " · finding level" : ""}` };
   }
   if (kind in MATCH_BASIS) {
     const word = kind.startsWith("soccer") ? "played" : "matches";
