@@ -1267,9 +1267,9 @@ export function eloStandings(results, memberIds, basis = "all") {
           const games = bases.map(b => eloGame(pa, pb, b)).filter(Boolean);
           if (!games.length) continue;
           const E = eloExpected(ra.rating, row(pb).rating);
-          sum += games.reduce((s, g) => s + eloMargin(g.d) * (g.s - E), 0) / games.length;
+          sum += games.reduce((t, x) => t + eloMargin(x.d) * (x.s - E), 0) / games.length;
           opp++;
-          const s = games.reduce((t, g) => t + g.s, 0) / games.length;
+          const s = games.reduce((t, x) => t + x.s, 0) / games.length;
           if (s > 0.5) ra.won++; else if (s < 0.5) ra.lost++; else ra.drawn++;
         }
         if (opp) delta.set(pa.id, (delta.get(pa.id) || 0) + k * sum / opp);

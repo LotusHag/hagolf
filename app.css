@@ -295,6 +295,8 @@ details.card[open] > summary::after { transform: rotate(-90deg); }
 .foldrow > summary::-webkit-details-marker { display: none; }
 .foldrow > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
 .foldrow[open] > summary::after { transform: rotate(-90deg); }
+/* the Elo formula, set apart from the words around it */
+.elof { padding: 10px 12px; border-radius: 8px; background: var(--card2); color: var(--ink); font-weight: 600; text-align: center; }
 /* a switch row: the words on the left, the toggle on the right, the whole row tappable */
 .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); margin: 0; font-size: 16px; font-weight: 500; color: var(--ink); cursor: pointer; }
 .switch:first-of-type { border-top: 0; }
