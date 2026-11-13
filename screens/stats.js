@@ -1,7 +1,7 @@
 // What a pile of rounds says: the field, one player, their rivals, and the nines they walked.
 import * as S from "../store.js";
 import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, infoBtn, subtabs, safeCompute, ui } from "../ui.js";
-import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE } from "../model.js";
+import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE, isTeamFormat } from "../model.js";
 import { statBlock, statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
 import { H2H_BASES, basisUnit } from "./formats.js";
 import { nineName } from "./play.js";
@@ -290,7 +290,7 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
 /** Every finished round with my seat on it, computed so my seat answers to my identity. */
 export function myGame() {
   const meId = S.myAccount() || S.state.settings.meId;
-  const rounds = S.myRounds().filter(r => r.status === "done" && r.format !== "scramble");
+  const rounds = S.myRounds().filter(r => r.status === "done" && !isTeamFormat(r.format));
   const Ms = rounds.map(r => safeCompute(compute, r, true)).filter(Boolean);
   const St = leagueStats(Ms, meId ? [meId] : []);
   const p = St.players.find(x => x.id === meId) || null;

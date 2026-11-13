@@ -4,7 +4,7 @@
 import { brandForCourse } from "../brand.js";
 import * as S from "../store.js";
 import { page, bind, esc, go, ui, plural, courseTitle, courseBy, sheet, ICONS, tip } from "../ui.js";
-import { formatLabel, home, formatSheet } from "./home.js";
+import { formatLabel, home, formatSheet, offeredFormat } from "./home.js";
 import { dayCardId, joinDay } from "./together.js";
 
 // ---------------------------------------------------------------- where the clubs are
@@ -104,7 +104,7 @@ const shortDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return 
 export function newRound(slug = null) {
   if (slug === "unlisted") return unlistedForm();
   if (slug) return startRound(slug);
-  const fmt = S.state.settings.lastFormat || "stableford";
+  const fmt = offeredFormat(S.state.settings.lastFormat);
   const clubs = clubList();
   const near = here.lat !== null;
   const rec = playedBefore();
@@ -178,7 +178,8 @@ export function startRound(slug, { leagueId = ui.dayLeague || null, id = null } 
     if (S.getRound(id)) { joinDay(id); return S.getRound(id); }
   }
   const tees = Object.keys(c.tees);
-  const fmt = S.state.settings.lastFormat || "stableford";
+  const last = S.state.settings.lastFormat || "stableford";
+  const fmt = leagueId ? last : offeredFormat(last);
   const r = S.createRound({ course: slug, name: `${c.name} ${S.today()}`, date: S.today(), defaultTee: tees.includes("yellow") ? "yellow" : tees[0],
     allowance: 100, brand: (brandForCourse(slug) || {}).id || null, format: fmt, leagueId, id });
   if (leagueId) S.setLeagueRound(leagueId, r.id, true);
@@ -203,7 +204,7 @@ function unlistedForm() {
     if (b.dataset.act === "holes") { st.holes = Number(b.dataset.v); return unlistedForm(); }
     if (b.dataset.act !== "create-unlisted") return;
     const r = S.createUnlistedRound({ name: st.name.trim() || "Unlisted course", date: S.today(), holes: st.holes });
-    r.format = S.state.settings.lastFormat || "stableford";
+    r.format = offeredFormat(S.state.settings.lastFormat);
     S.saveRound(r);
     ui.unlisted = null;
     addMe(r, courseBy(r.course), [r.defaultTee]);

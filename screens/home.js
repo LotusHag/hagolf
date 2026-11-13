@@ -5,17 +5,15 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
 import { page, bind, esc, go, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS, fmtDate } from "../ui.js";
-import { handicapFor, stableford, fmtIndex } from "../model.js";
+import { handicapFor, stableford, fmtIndex, FORMATS_ROUND } from "../model.js";
 import { leagueResults, standingsFor } from "./formats.js";
 import { noteLine } from "./updates.js";
 
-export const ROUND_FORMATS = [
-  { key: "stableford", label: "Stableford", blurb: "points per hole" },
-  { key: "stroke", label: "Stroke play", blurb: "every shot counts" },
-  { key: "match", label: "Match play", blurb: "hole by hole" },
-  { key: "scramble", label: "Scramble", blurb: "teams, one ball" },
-];
-export const formatLabel = k => (ROUND_FORMATS.find(f => f.key === k) || ROUND_FORMATS[0]).label;
+// the four a new card offers; stroke stays only for society stroke days and older cards
+export const ROUND_FORMATS = FORMATS_ROUND.filter(f => f.key !== "stroke");
+export const formatLabel = k => (FORMATS_ROUND.find(f => f.key === k) || FORMATS_ROUND[0]).label;
+/** The format a casual card starts in: the last one picked, if it is still on offer. */
+export const offeredFormat = k => ROUND_FORMATS.some(f => f.key === k) ? k : "stableford";
 
 /** The board while a round is in play: points, or net to par, over the holes each card has played. */
 export function liveBoard(r, course = null) {
@@ -96,7 +94,7 @@ export function home() {
   const hero = cur
     ? `<a class="playbtn cont" href="${resumeHash(cur)}"><span class="pk">${esc(formatLabel(cur.format))} · ${esc(cur.name)}</span><b>${cur.status === "scoring" ? `Continue · hole ${Math.min(S.holeOf(cur) + 1, (courseBy(cur.course) || {}).n || 18)}` : "Continue"}</b>${liveLine(cur)}</a>
        <button class="btn wide" data-act="play">${ICONS.plus} Start another round</button>`
-    : `<button class="playbtn" data-act="play"><b>Play</b><span class="pk">Stableford, stroke, match or scramble</span></button>`;
+    : `<button class="playbtn" data-act="play"><b>Play</b><span class="pk">Strokes & points, match or scramble</span></button>`;
   const others = open.slice(1);
   const ask = asks();
   page("Hagolf", `
@@ -126,7 +124,7 @@ export function home() {
 
 /** How are you playing? Four tiles; the last one used is lit. Scan is a quiet way in below them. */
 export async function formatSheet() {
-  const last = S.state.settings.lastFormat || "stableford";
+  const last = offeredFormat(S.state.settings.lastFormat);
   const v = await sheet({
     title: "How are you playing?",
     body: `<div class="fmtgrid">${ROUND_FORMATS.map(f => `<button class="fmttile ${f.key === last ? "on" : ""}" data-sheet="${f.key}"><b>${esc(f.label)}</b><small>${esc(f.blurb)}</small></button>`).join("")}</div>

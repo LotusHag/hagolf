@@ -156,23 +156,22 @@ function clubAt(id) {
 // ---------------------------------------------------------------- which extras I keep
 export function keepPage() {
   const k = S.myKeep() || {};
-  const preset = ui.keepChoose ? "choose" : S.keepPreset(k);
-  const opt = (v, label, sub) => `<label class="radiorow"><input type="radio" name="keep" value="${v}" ${preset === v ? "checked" : ""}><span><b>${esc(label)}</b><small>${esc(sub)}</small></span></label>`;
+  const adv = S.keepsAny(k);
+  const opt = (v, label, sub) => `<label class="radiorow"><input type="radio" name="keep" value="${v}" ${(v === "advanced") === adv ? "checked" : ""}><span><b>${esc(label)}</b><small>${esc(sub)}</small></span></label>`;
   page("Stats I keep", `
     <div class="card radios">
-      ${opt("score", "Score only", "just the number on every hole")}
-      ${opt("putts", "Score + putts", "gives greens in regulation, up and down, putts per green")}
-      ${opt("all", "Everything", "putts, fairways, bunker shots and penalties")}
-      ${opt("choose", "Choose…", "pick them one by one")}
+      ${opt("simple", "Simple", "just the score on every hole")}
+      ${opt("advanced", "Advanced", "putts, fairways, bunker shots and penalties as well")}
     </div>
-    ${preset === "choose" ? `<div class="card checks">${STAT_SWITCHES.map(s => `<label><input type="checkbox" name="kind" value="${s.key}" ${k[s.key] ? "checked" : ""}> ${esc(s.label)}</label>`).join("")}</div>` : ""}
-    <p class="muted small">Greens in regulation, up and down and sand saves are worked out for you. This follows you onto every card; a guest can be switched on from their row.</p>`,
+    ${adv ? `<div class="card checks">${STAT_SWITCHES.map(s => `<label><input type="checkbox" name="kind" value="${s.key}" ${k[s.key] ? "checked" : ""}> ${esc(s.label)}</label>`).join("")}</div>
+    <p class="muted small">Greens in regulation, up and down and sand saves are worked out from these.</p>` : ""}
+    <p class="muted small">This follows you onto every card. One round can be switched under its options; a guest from their row.</p>`,
     { back: "#me", bell: false });
   document.querySelector("main").addEventListener("change", ev => {
     if (ev.target.name === "keep") {
-      ui.keepChoose = ev.target.value === "choose";
-      if (!ui.keepChoose) S.setMyKeep(S.KEEP_PRESETS[ev.target.value]);
+      S.setMyKeep(ev.target.value === "advanced" ? S.KEEP_PRESETS.all : S.KEEP_PRESETS.score);
     } else if (ev.target.name === "kind") {
+      // unticking the last one is choosing Simple
       S.setMyKeep(Object.fromEntries(STAT_SWITCHES.map(s => [s.key, !!document.querySelector(`input[name=kind][value=${s.key}]`).checked])));
     } else return;
     if (A.signedIn()) A.update({ keep: S.myKeep() }).catch(e => toast(e.message));

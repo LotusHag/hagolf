@@ -28,7 +28,7 @@ export function me(section) {
   const syncWord = st.status === "off" ? "Not connected" : st.status === "error" ? "Sync problem" : st.status === "signedout" ? "Signed out" : st.status === "syncing" ? "Syncing…" : "Synced";
   const held = F.held();
   const keep = S.myKeep();
-  const keepWord = { score: "Score only", putts: "Score and putts", all: "Everything", choose: STAT_SWITCHES.filter(k => (keep || {})[k.key]).map(k => k.short).join(", ") }[S.keepPreset(keep)];
+  const keepWord = !S.keepsAny(keep) ? "Simple: score only" : S.keepPreset(keep) === "all" ? "Advanced" : `Advanced: ${STAT_SWITCHES.filter(k => keep[k.key]).map(k => k.short).join(", ")}`;
   const clubs = S.bag().length;
   page("Me", `
     ${acct ? `<div class="person">${avatar(acct.name || "?", "big")}<div class="who"><div class="name">${esc(acct.name || "No name yet")}</div>
@@ -37,7 +37,7 @@ export function me(section) {
     <div class="list">
       ${row("#bag", "bag", "My bag", clubs ? `${plural(clubs, "club")} with distances` : "Your club distances, on every hole")}
       ${acct ? row("#people", "people", "Friends", held.incoming.length ? `${plural(held.incoming.length, "request")} waiting` : `${plural(held.friends.length, "friend")}`) : ""}
-      ${row("#me/keep", "chart", "Stats I keep", esc(keepWord || "Score only"))}
+      ${row("#me/keep", "chart", "Stats I keep", esc(keepWord))}
       ${acct ? row("#me/seats", "check", "Were you on these cards?", "Cards with your name that need a yes or no") : ""}
       ${Y.enabled() ? row("#shop", "shop", "Shop", "Looks, sheets and the season pass") : ""}
       ${acct ? row("#partners", "users", "Courses and companies", (acct.clubs || []).length ? esc(acct.clubs.map(c => c.name).join(", ")) : "Have a code? Use it here") : ""}

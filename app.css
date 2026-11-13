@@ -549,6 +549,24 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .hrowb { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 36px;
   border-bottom: 1px solid var(--line); }
 .hrowb:last-child { border-bottom: 0; }
+/* the board as a card: a box a hole, names pinned left and the total pinned right while the holes scroll */
+.hgwrap { overflow-x: auto; margin: 0 0 4px; -webkit-overflow-scrolling: touch; }
+.hgrid { border-collapse: separate; border-spacing: 2px; font-size: 12px; }
+.hgrid th, .hgrid td { padding: 0; text-align: center; white-space: nowrap; }
+.hgrid td[data-h] { width: 28px; min-width: 28px; height: 48px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xs); }
+.hgrid td[data-h] .mk { width: 24px; height: 24px; font-size: 14px; border-width: 1.5px; }
+.hgrid td[data-h] .mk.c2 { box-shadow: 0 0 0 1.5px var(--card), 0 0 0 2.5px var(--under); }
+.hgrid td[data-h] .mk.s2 { box-shadow: 0 0 0 1.5px var(--card), 0 0 0 2.5px var(--double); }
+.hgrid td[data-h] .mk.empty { font-size: 14px; }
+.hgpts { display: block; height: 12px; margin-top: 4px; color: var(--ink3); font-size: 10px; line-height: 12px; }
+.hghead th, .hgpar td, .hgpar th { color: var(--ink3); font-weight: 500; font-size: 11px; height: 18px; }
+.hgpar td { background: none; border: 0; }
+.hgrid .hgname { position: sticky; left: 0; z-index: 1; background: var(--bg); box-shadow: 2px 0 0 var(--bg), -2px 0 0 var(--bg); text-align: left !important; max-width: 104px; min-width: 72px;
+  overflow: hidden; text-overflow: ellipsis; padding-right: 6px !important; font-size: 13px; font-weight: 600; }
+.hgname b { display: inline-block; min-width: 14px; color: var(--ink3); font-family: "Oswald", sans-serif; font-weight: 500; }
+.hgrid .hgtot { position: sticky; right: 0; z-index: 1; background: var(--bg); box-shadow: -2px 0 0 var(--bg), 2px 0 0 var(--bg); min-width: 52px; padding-left: 6px !important; }
+.hgtot b { display: block; font-family: "Oswald", sans-serif; font-size: 18px; font-weight: 500; line-height: 1.1; }
+.hgtot small { display: block; color: var(--ink3); font-size: 10px; }
 
 /* ---- review */
 .pl { padding: 12px 14px; }
@@ -1196,7 +1214,7 @@ main.wide { max-width: 1120px; }
 .spark polyline { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .list.topics .name { font-size: 16px; }
 .radios { padding: 4px 14px; }
-.radiorow { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); margin: 0; }
+.radiorow, .sheet .radiorow { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); margin: 0; }
 .radiorow:first-child { border-top: 0; }
 .radiorow span { display: grid; gap: 2px; }
 .radiorow b { color: var(--ink); font-size: 16px; font-weight: 600; }

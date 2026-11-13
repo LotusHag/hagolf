@@ -7,7 +7,7 @@ import * as Y from "../sync.js";
 import * as Mo from "../model.js";
 import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet, ICONS, firstName, toast } from "../ui.js";
 import { handicapFor, stableford, NO_SCORE } from "../model.js";
-import { scoreStepper, extrasRows, ptsSoFar } from "../pad.js";
+import { scoreStepper, extrasRows, ptsSoFar, mark } from "../pad.js";
 import { statTap, statStep, seedStats } from "./extras.js";
 import { dropRound, inviteSheet } from "./players.js";
 import { formatLabel, liveBoard } from "./home.js";
@@ -27,19 +27,20 @@ function block(r, c, e, i, h, kinds) {
       <span class="muted small">joins at hole ${c.first_hole + e.fromHole - 1}</span></div></div>`;
   const v = e.scores[h], st = info && !c.unlisted ? info.strokes[h] : 0;
   const entered = e.scores.some(x => x !== null);
-  const stbl = (r.format || "stableford") === "stableford";
-  const pts = !stbl || v === null || !info || c.unlisted ? null : v === 0 ? 0 : stableford(v, par, info.strokes[h]);
+  // points come off the same strokes in every format, so every card shows them beside the total
+  const scored = !!info && !c.unlisted;
+  const pts = !scored || v === null ? null : v === 0 ? 0 : stableford(v, par, info.strokes[h]);
   const played = e.scores.map((x, k) => [x, k]).filter(([x]) => x !== null);
   const gross = played.reduce((t, [x]) => t + (x || NO_SCORE), 0);
   const toPar = info ? gross - played.reduce((t, [, k]) => t + info.par[k], 0) : null;
   const tally = !entered ? "" : `<span class="ptally">
-      <span class="ptot"><b class="num">${gross}</b><small>strokes</small>${stbl && info ? `<b class="num">${ptsSoFar(e, info)}</b><small>pts</small>`
+      <span class="ptot"><b class="num">${gross}</b><small>strokes</small>${scored ? `<b class="num">${ptsSoFar(e, info)}</b><small>pts</small>`
         : toPar !== null ? `<b class="num">${toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar}</b><small>to par</small>` : ""}</span>
-      ${stbl ? (pts === null ? `<b class="phole gap" aria-hidden="true"></b>` : `<b class="phole num ${pts ? "" : "nil"}">+${pts}</b>`) : ""}</span>`;
+      ${scored ? (pts === null ? `<b class="phole gap" aria-hidden="true"></b>` : `<b class="phole num ${pts ? "" : "nil"}">+${pts}</b>`) : ""}</span>`;
   const who = e.role === "team" ? `<small class="members">${esc(r.entries.filter(m => e.members.includes(m.playerId)).map(m => firstName(m.name)).join(" · "))}</small>` : "";
   return `<div class="prow" data-i="${i}">
     <div class="phead">
-      <span class="pname">${r.format === "match" && e.side ? `<i class="side">${e.side}</i>` : ""}${esc(e.name)}${st ? `<i class="dots"><span>${"•".repeat(Math.min(st, 4))}</span><span class="sr">${plural(st, "stroke")}</span></i>` : ""}${who}</span>
+      <span class="pname">${Mo.isMatchFormat(r.format) && (e.side === "A" || e.side === "B") ? `<i class="side">${e.side}</i>` : ""}${esc(e.name)}${st ? `<i class="dots"><span>${"•".repeat(Math.min(st, 4))}</span><span class="sr">${plural(st, "stroke")}</span></i>` : ""}${who}</span>
       ${tally}
     </div>
     ${scoreStepper(e, i, h, par)}
@@ -48,13 +49,16 @@ function block(r, c, e, i, h, kinds) {
 
 /** The state of a match, in one line, with a concede button for each side on this hole. */
 function matchStrip(r, c, h) {
-  if (r.format !== "match" || !Mo.matchPlay) return "";
+  if (!Mo.isMatchFormat(r.format) || !Mo.matchPlay) return "";
   let M;
   try { M = Mo.matchPlay(c, { ...S.toModelRound(r), final: false }); } catch (e) { return `<div class="matchstrip warn">${esc(e.message)} · <a href="#players/${r.id}">fix the sides</a></div>`; }
   const hole = M.holes[h];
   const decided = hole && hole.winner;
   return `<div class="matchstrip"><b>${esc(M.result || M.status)}</b>
-    ${decided || M.result ? "" : `<span class="concede">${["A", "B"].map(sd => `<button class="btn small ghost" data-act="concede" data-s="${sd}">${esc(M.sides[sd].map(firstName).join(" & "))} concede${M.sides[sd].length > 1 ? "" : "s"}</button>`).join("")}</span>`}</div>`;
+    ${decided || M.result ? "" : `<span class="concede">${["A", "B"].map(sd => {
+      const team = M.kind === "scramble", who = team ? M.sides[sd][0] : M.sides[sd].map(firstName).join(" & ");
+      return `<button class="btn small ghost" data-act="concede" data-s="${sd}">${esc(who)} concede${M.sides[sd].length > 1 || team && / & /.test(who) ? "" : "s"}</button>`;
+    }).join("")}</span>`}</div>`;
 }
 
 /** Synced, waiting, or offline: the trust signal on a shared card with one bar of signal. */
@@ -88,18 +92,42 @@ export async function bagSheet(r, c, h) {
 async function boardSheet(r, c) {
   const groups = [...new Set(r.entries.map(e => e.group || 1))].sort((a, b) => a - b);
   const gf = groupOf(r.id);
-  let list = [];
-  if (r.format === "match" && Mo.matchPlay) {
+  let board, through = 0;
+  if (Mo.isMatchFormat(r.format) && Mo.matchPlay) {
+    let list = [];
     try { const M = Mo.matchPlay(c, { ...S.toModelRound(r), final: false }); list = [{ place: "", name: `${M.sides.A.join(" & ")} v ${M.sides.B.join(" & ")}`, main: M.result || M.status, sub: "" }]; } catch (e) { list = []; }
+    board = list.length ? `<div class="hboard">${list.map(x => `<div class="hrowb"><span>${esc(x.name)}</span><span class="num">${esc(x.main)}</span></div>`).join("")}</div>` : `<p class="muted">Nothing to rank yet.</p>`;
   } else {
     const L = liveBoard(r);
-    list = L ? L.rows.filter(x => !gf || x.group === gf) : [];
+    const list = L ? L.rows.filter(x => !gf || x.group === gf) : [];
+    through = L ? L.through : 0;
+    board = list.length ? holeGrid(r, c, list, L.byNet) :`<p class="muted">Nothing to rank yet.</p>`;
   }
-  const rows = list.length ? list.map(x => `<div class="hrowb"><span><b>${x.place ?? "–"}</b> ${esc(x.name)}</span><span class="num">${esc(x.main)}${x.sub ? ` <small class="muted">${esc(x.sub)}</small>` : ""}</span></div>`).join("") : `<p class="muted">Nothing to rank yet.</p>`;
   const v = await sheet({ title: formatLabel(r.format), lead: `${r.name} · as it stands`,
-    body: `${groups.length > 1 ? `<div class="filter">${[0, ...groups].map(g => `<button data-sheet="gf-${g}" class="${gf === g ? "on" : ""}">${g ? `Group ${g}` : "All"}</button>`).join("")}</div>` : ""}<div class="hboard">${rows}</div>`,
-    actions: [{ label: "Close", value: "no", kind: "primary" }] });
+    body: `${groups.length > 1 ? `<div class="filter">${[0, ...groups].map(g => `<button data-sheet="gf-${g}" class="${gf === g ? "on" : ""}">${g ? `Group ${g}` : "All"}</button>`).join("")}</div>` : ""}${board}`,
+    actions: [{ label: "Close", value: "no", kind: "primary" }],
+    // open on the holes being played, not on hole 1, when the card is wider than the phone
+    onOpen: el => { const w = el.querySelector(".hgwrap"), td = w && w.querySelector(`[data-h="${Math.max(0, through - 1)}"]`); if (td) w.scrollLeft = Math.max(0, td.offsetLeft - w.clientWidth / 2); } });
   return v;
+}
+
+/** Every player a row, every hole a box, the total at the far right; rows in the order of the board. */
+function holeGrid(r, c, list, byNet) {
+  const seats = new Map(S.scoringSeats(r).map(e => [e.playerId, e]));
+  const holes = c.par.map((_, h) => h);
+  const head = `<tr class="hghead"><th class="hgname">Hole</th>${holes.map(h => `<th>${c.first_hole + h}</th>`).join("")}<th class="hgtot">Tot</th></tr>
+    <tr class="hgpar"><th class="hgname">Par</th>${holes.map(h => `<td>${c.par[h] ?? ""}</td>`).join("")}<td class="hgtot">${c.par.reduce((a, p) => a + (p || 0), 0)}</td></tr>`;
+  const rows = list.map(x => {
+    const e = seats.get(x.id);
+    if (!e) return "";
+    const info = infoFor(r, c, e);
+    const pts = h => { const v = e.scores[h]; return !info || c.unlisted || v === null ? "" : v === 0 ? 0 : stableford(v, info.par[h], info.strokes[h]); };
+    const cells = holes.map(h => (e.fromHole || 1) - 1 > h ? `<td data-h="${h}"></td>`
+      : `<td data-h="${h}">${mark(e.scores[h], info ? info.par[h] : c.par[h])}<small class="hgpts num">${pts(h)}</small></td>`).join("");
+    const tot = !x.holes ? "" : `<small>${x.pts} pts</small>${byNet ? `<small>${esc(x.main)}</small>` : ""}`;
+    return `<tr><th class="hgname"><b>${x.place ?? "–"}</b> ${esc(x.name)}</th>${cells}<td class="hgtot"><b class="num">${x.holes ? x.gross : "–"}</b>${tot}</td></tr>`;
+  }).join("");
+  return `<div class="hgwrap"><table class="hgrid">${head}${rows}</table></div>`;
 }
 
 async function menuSheet(r) {
@@ -183,7 +211,7 @@ export function score(rid, hArg) {
     if (ow) ow.classList.toggle("primary", d);
     const pill = document.querySelector(".syncpill");
     if (pill) pill.outerHTML = syncPill();
-    if (r.format === "match") { const ms = document.querySelector(".matchstrip"); if (ms) ms.outerHTML = matchStrip(r, c, h); }
+    if (Mo.isMatchFormat(r.format)) { const ms = document.querySelector(".matchstrip"); if (ms) ms.outerHTML = matchStrip(r, c, h); }
   };
   const refresh = i => {
     const el = document.querySelector(`.prow[data-i="${i}"]`);

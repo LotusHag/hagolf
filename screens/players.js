@@ -42,8 +42,20 @@ function refreshTeam(r, c, team) {
   const ch = Mo.teamHandicap ? Mo.teamHandicap(chs) : Math.round(chs.reduce((a, b) => a + b, 0) / Math.max(1, chs.length * 2));
   team.courseHandicap = chs.length ? ch : null;
   team.tee = first ? first.tee : r.defaultTee;
-  team.name = team.members.length ? r.entries.filter(m => team.members.includes(m.playerId)).map(m => firstName(m.name)).join(" & ") : team.name;
+  team.name = team.members.length ? r.entries.filter(m => team.members.includes(m.playerId)).map(m => firstName(m.name)).join(" & ")
+    : team.side === "A" || team.side === "B" ? `Team ${team.side}` : team.name;
   S.saveEntry(r, team);
+}
+
+/** A scramble match is always two teams, side A and side B; whatever is missing is made here. */
+function twoSides(r, c) {
+  const teams = r.entries.filter(e => e.role === "team");
+  for (const sd of ["A", "B"]) {
+    if (teams.some(t => t.side === sd)) continue;
+    let t = teams.find(x => x.side !== "A" && x.side !== "B");
+    if (!t) { t = S.addTeam(r, c.n, { name: `Team ${sd}`, members: [], tee: r.defaultTee }); teams.push(t); }
+    S.setSide(r, t, sd);
+  }
 }
 
 /** Who gets which strokes in a match, in words, worked out by the model. */
@@ -57,7 +69,7 @@ function matchLine(r, c) {
       const holes = st.map((k, h) => k ? c.first_hole + h : null).filter(Boolean);
       return e && holes.length ? `${esc(firstName(e.name))} gets ${holes.length}: ${holes.length > 8 ? `${holes.slice(0, 8).join(", ")}…` : holes.join(", ")}` : null;
     }).filter(Boolean);
-    return `<p class="muted small strokesline">${M.kind === "fourball" ? "Better ball, 90% of handicaps. " : ""}${bits.length ? bits.join(" · ") : "Level: nobody gets a stroke."}</p>`;
+    return `<p class="muted small strokesline">${M.kind === "fourball" ? "Better ball, 90% of handicaps. " : M.kind === "scramble" ? "Team handicaps, strokes off the lower one. " : ""}${bits.length ? bits.join(" · ") : "Level: nobody gets a stroke."}</p>`;
   } catch (e) { return `<p class="muted small strokesline">${esc(e.message)}</p>`; }
 }
 
@@ -70,6 +82,7 @@ export function players(rid, keep = false) {
   if (!S.isScorer(r)) return go(`#review/${rid}`);
   const tees = Object.keys(c.tees);
   const fmt = r.format || "stableford";
+  if (fmt === "scramblematch") twoSides(r, c);
   const lg = S.leaguesOfRound(rid);
   const me = S.myAccount();
   const people = r.entries.filter(e => e.role !== "team");
@@ -79,7 +92,7 @@ export function players(rid, keep = false) {
     const i = r.entries.indexOf(e);
     const info = seatInfo(r, c, e);
     const sub = [e.accountId && e.accountId === me ? "you" : e.accountId ? "" : e.proposedAccount ? "asked" : "guest",
-      info.error ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", e.trackStats ? "keeping extras" : ""].filter(Boolean).join(" · ");
+      info.error ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", e.trackStats ? "advanced stats" : ""].filter(Boolean).join(" · ");
     const side = fmt === "match" ? `<div class="eseg sides">${["A", "B"].map(sd => `<button data-act="side" data-i="${i}" data-s="${sd}" class="${e.side === sd ? "on" : ""}">${sd}</button>`).join("")}</div>` : "";
     return `<div class="card who" data-i="${i}">
       <div class="whotop"><button class="wname" data-act="psheet" data-i="${i}"><b>${esc(e.name)}</b><small>${esc(sub)}${info.error ? ` <span class="warn">${esc(info.error)}</span>` : ""}</small></button>
@@ -96,22 +109,28 @@ export function players(rid, keep = false) {
       <h2>Side A</h2>${a.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
       <h2>Side B</h2>${b.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
       ${a.length && b.length ? matchLine(r, c) : ""}`;
-  } else if (fmt === "scramble") {
+  } else if (Mo.isTeamFormat(fmt)) {
     const teams = r.entries.filter(e => e.role === "team");
     const free = people.filter(e => e.role !== "member");
-    rows = `${people.map(row).join("")}
-      <h2>Teams</h2>
-      ${teams.map(t => `<div class="card team"><div class="whotop"><div class="wname"><b>${esc(t.name)}</b><small>team handicap ${t.courseHandicap ?? "–"}</small></div>
+    const vs = fmt === "scramblematch";
+    const card = t => `<div class="card team"><div class="whotop"><div class="wname"><b>${esc(t.name)}</b><small>team handicap ${t.courseHandicap ?? "–"}</small></div>
           <label class="hiin"><span class="flab">Team hcp</span><input class="efv" data-act="teamch" data-tid="${esc(t.playerId)}" inputmode="numeric" value="${t.courseHandicap ?? ""}"></label></div>
         <div class="chips-wrap">${r.entries.filter(m => t.members.includes(m.playerId)).map(m => `<button class="pchip on" data-act="unteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span>${esc(m.name)}</span><small>tap to take out</small></button>`).join("")}
-          ${free.map(m => `<button class="pchip" data-act="toteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span><span class="plus">+</span>${esc(m.name)}</span></button>`).join("")}</div></div>`).join("")}
-      <div class="btnrow"><button class="btn" data-act="newteam">+ Team</button>${people.length >= 2 ? `<button class="btn" data-act="autoteams">Make teams for me</button>` : ""}</div>
+          ${free.map(m => `<button class="pchip" data-act="toteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span><span class="plus">+</span>${esc(m.name)}</span></button>`).join("")}</div></div>`;
+    const sided = ["A", "B"].map(sd => `<h2>Side ${sd}</h2>${teams.filter(t => t.side === sd).map(card).join("")}`).join("");
+    const stray = teams.filter(t => t.side !== "A" && t.side !== "B");
+    rows = `${people.map(row).join("")}
+      ${vs ? `${sided}${stray.length ? `<h2>Not in the match</h2>${stray.map(card).join("")}` : ""}` : `<h2>Teams</h2>${teams.map(card).join("")}`}
+      <div class="btnrow">${vs ? "" : `<button class="btn" data-act="newteam">+ Team</button>`}${people.length >= 2 ? `<button class="btn" data-act="autoteams">Make teams for me</button>` : ""}</div>
+      ${vs && teams.some(t => t.members.length) ? matchLine(r, c) : ""}
       ${teams.length ? `<p class="muted small">Team handicaps follow the World Handicap System: 35% and 15% for two, 30/20/10 for three, 25/20/15/10 for four.</p>` : ""}`;
   } else rows = people.map(row).join("");
 
-  const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 ? `${r.allowance}%` : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
+  const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 ? `${r.allowance}%` : "", S.cardKeepsStats(r) ? "advanced stats" : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
   const ready = fmt === "match" ? people.some(e => e.side === "A") && people.some(e => e.side === "B")
-    : fmt === "scramble" ? r.entries.some(e => e.role === "team" && e.members.length) : people.length > 0;
+    : fmt === "scramble" ? r.entries.some(e => e.role === "team" && e.members.length)
+    : fmt === "scramblematch" ? ["A", "B"].every(sd => r.entries.some(e => e.role === "team" && e.side === sd && e.members.length)) && !r.entries.some(e => e.role === "team" && e.side !== "A" && e.side !== "B" && e.members.length)
+    : people.length > 0;
   const bar = !people.length ? `<button class="btn" disabled>Add players to start</button>`
     : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
     : `<button class="btn primary big" data-act="tee-off" ${ready ? "" : "disabled"}>${r.status === "setup" ? "Tee off" : "Back to scoring ›"}</button>`;
@@ -140,7 +159,8 @@ export function players(rid, keep = false) {
       const t = r.entries.find(x => x.playerId === b.dataset.tid);
       const next = act === "toteam" ? [...t.members, b.dataset.pid] : t.members.filter(x => x !== b.dataset.pid);
       S.setTeamMembers(r, t, next);
-      if (!next.length && act === "unteam") { const k = r.entries.indexOf(t); S.removeEntry(r, k); }
+      // an emptied team goes, except a scramble match's own two sides
+      if (!next.length && act === "unteam" && !(r.format === "scramblematch" && (t.side === "A" || t.side === "B"))) { const k = r.entries.indexOf(t); S.removeEntry(r, k); }
       else refreshTeam(r, c, t);
       return players(rid, true);
     }
@@ -167,15 +187,16 @@ const teamsChanged = (r, c) => { for (const t of r.entries.filter(e => e.role ==
 /** Teams of two, three or four, drawn so each has a spread of handicaps: a snake down the list. */
 async function autoTeams(r, c) {
   const people = r.entries.filter(e => e.role !== "team");
-  const v = await sheet({ title: "Make teams", lead: `${plural(people.length, "player")}. How many in a team?`,
+  const vs = r.format === "scramblematch";
+  const v = vs ? "2" : await sheet({ title: "Make teams", lead: `${plural(people.length, "player")}. How many in a team?`,
     actions: [2, 3, 4].filter(n => n <= people.length).map(n => ({ label: `Teams of ${n}`, value: String(n), kind: n === 2 ? "primary" : "" })) });
   if (!v) return;
-  const size = Number(v), k = Math.max(1, Math.round(people.length / size));
+  const size = Number(v), k = vs ? 2 : Math.max(1, Math.round(people.length / size));
   for (const t of r.entries.filter(e => e.role === "team")) S.removeEntry(r, r.entries.indexOf(t));
   const sorted = [...people].sort((a, b) => (Number(a.hi) || 0) - (Number(b.hi) || 0));
   const groups = Array.from({ length: k }, () => []);
   sorted.forEach((e, i) => { const round = Math.floor(i / k), pos = i % k; groups[round % 2 ? k - 1 - pos : pos].push(e.playerId); });
-  groups.forEach((g, i) => { const t = S.addTeam(r, c.n, { name: `Team ${i + 1}`, members: g, tee: r.defaultTee }); refreshTeam(r, c, t); });
+  groups.forEach((g, i) => { const t = S.addTeam(r, c.n, { name: `Team ${i + 1}`, members: g, tee: r.defaultTee }); if (vs) S.setSide(r, t, "AB"[i]); refreshTeam(r, c, t); });
 }
 
 // ---------------------------------------------------------------- the round's own options, in one sheet
@@ -188,6 +209,9 @@ async function optionsSheet(r, c) {
       <label>Name<input name="name" value="${esc(r.name)}"></label>
       <div class="two"><label>Date<input name="date" type="date" value="${esc(r.date || "")}"></label>
       <label>Allowance<select name="allow">${[100, 95, 90, 85, 75].map(a => `<option value="${a}" ${Number(r.allowance) === a ? "selected" : ""}>${a}%</option>`).join("")}</select></label></div>
+      <p class="pickline" style="margin-top:16px">Stats</p>
+      <div class="card radios">${[["simple", "Simple", "just the score"], ["advanced", "Advanced", "putts, fairways, bunker shots and penalties as well"]].map(([v, label, sub]) =>
+        `<label class="radiorow"><input type="radio" name="stats" value="${v}" ${(v === "advanced") === S.cardKeepsStats(r) ? "checked" : ""}><span><b>${label}</b><small>${sub}</small></span></label>`).join("")}</div>
       ${brandField("rbrand", r.brand || null)}
       ${gs.length && !r.leagueId ? `<p class="pickline">Counts for</p><div class="checks">${gs.map(g => `<label><input type="checkbox" name="lg" value="${g.id}" ${on.has(g.id) ? "checked" : ""}> ${esc(g.name)}</label>`).join("")}</div>` : ""}
     </form>`,
@@ -207,6 +231,14 @@ async function optionsSheet(r, c) {
   if (f.get("rbrand") !== null) r.brand = f.get("rbrand") || null;
   S.state.settings.lastFormat = r.format;
   S.saveRound(r);
+  const adv = f.get("stats") === "advanced";
+  if (adv !== S.cardKeepsStats(r)) {
+    for (const e of r.entries) if (!!e.trackStats !== adv) S.setTrackStats(r, e, adv);
+    // the score screen would otherwise switch my seat back to what Stats I keep says
+    S.state.settings.trackAsked = { ...(S.state.settings.trackAsked || {}), [r.id]: 1 };
+    if (adv && S.state.settings.statsRound) delete S.state.settings.statsRound[r.id];
+    S.save();
+  }
   if (gs.length && !r.leagueId) {
     const want = new Set(f.getAll("lg"));
     for (const g of gs) if (want.has(g.id) !== on.has(g.id)) S.setLeagueRound(g.id, r.id, want.has(g.id));

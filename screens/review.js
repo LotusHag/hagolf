@@ -8,7 +8,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, saveFiles, slugFile, ICONS, makeTheme, loadFonts, sizedLooks, sizedName, themeForRound } from "../ui.js";
 import { DATA } from "../data.js";
-import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking } from "../model.js";
+import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat } from "../model.js";
 import { formatLabel } from "./home.js";
 import { renderCards } from "../cards.js";
 import { statTap, statStep, statLine, seedStats } from "./extras.js";
@@ -199,7 +199,7 @@ export function review(rid, keep = false) {
   };
   // the board in the round's own format, then every card underneath it to open and correct
   const ranking = R.rows.map(x => `<div class="rankrow ${x.place === 1 ? "p1" : ""}"><span class="pos">${x.place ?? "–"}</span><span class="t"><b>${esc(x.name)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span><span class="v">${esc(x.main)}</span></div>`).join("");
-  const order = fmt === "stableford" ? M.stbl_board : fmt === "match" ? M.players : R.rows.map(x => M.players.find(p => p.id === x.id)).filter(Boolean).concat(M.players.filter(p => !R.rows.some(x => x.id === p.id)));
+  const order = fmt === "stableford" ? M.stbl_board : isMatchFormat(fmt) ? M.players : R.rows.map(x => M.players.find(p => p.id === x.id)).filter(Boolean).concat(M.players.filter(p => !R.rows.some(x => x.id === p.id)));
   const missing = unfinished.map(e => {
     const holes = e.scores.map((v, i) => v === null && (e.fromHole || 1) - 1 <= i ? c.first_hole + i : null).filter(x => x !== null);
     return `<div class="card row warnrow"><div><div class="name">${esc(e.name)}</div><div class="muted small">missing hole${holes.length === 1 ? "" : "s"} ${holes.join(", ")}</div></div>

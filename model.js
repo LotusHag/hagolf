@@ -437,12 +437,16 @@ export function compute(courseIn, round) {
 }
 
 // ---------------------------------------------------------------- round formats
+// stroke is no longer offered for a new card; a society's stroke day and older cards still rank by net
 export const FORMATS_ROUND = [
-  { key: "stableford", label: "Stableford", blurb: "points per hole" },
+  { key: "stableford", label: "Strokes & points", blurb: "your own ball, both counted" },
   { key: "stroke", label: "Stroke play", blurb: "every shot counts" },
   { key: "match", label: "Match play", blurb: "hole by hole" },
   { key: "scramble", label: "Scramble", blurb: "teams, one ball" },
+  { key: "scramblematch", label: "Scramble match", blurb: "two teams, one ball each, hole by hole" },
 ];
+export const isMatchFormat = f => f === "match" || f === "scramblematch";
+export const isTeamFormat = f => f === "scramble" || f === "scramblematch";
 
 // WHS scramble allowances in whole percent, lowest course handicap first
 const TEAM_WEIGHTS = { 1: [100], 2: [35, 15], 3: [30, 20, 10], 4: [25, 20, 15, 10] };
@@ -461,16 +465,19 @@ export function matchPlay(courseIn, round) {
   const entries = (round.entries || []).filter(e => String(e.name || "").trim());
   const A = entries.filter(e => e.side === "A"), B = entries.filter(e => e.side === "B");
   if (A.length + B.length !== entries.length) throw new Error("everyone in a match plays for side A or side B");
+  const teams = entries.some(e => e.role === "team");
+  if (teams && (A.length !== 1 || B.length !== 1)) throw new Error(`a scramble match is one team against another, not ${A.length} against ${B.length}`);
   if (!(A.length === 1 || A.length === 2) || B.length !== A.length) {
     throw new Error(`match play is one against one or two against two, not ${A.length} against ${B.length}`);
   }
-  const kind = A.length === 1 ? "singles" : "fourball";
+  // a scramble team plays off its WHS team handicap, already its course handicap, like a single player
+  const kind = teams ? "scramble" : A.length === 1 ? "singles" : "fourball";
   const blank = v => v === null || v === undefined || v === "";
   const seats = entries.map(e => {
     const name = String(e.name).trim();
     let ch;
     try { ch = handicapFor(courseIn, e, defaultTee).ch; } catch (err) { throw new Error(`${name}: ${err.message}`); }
-    return { e, name, id: e.id ?? name, side: e.side, ph: kind === "singles" ? ch : playingHandicap(ch, 90) };
+    return { e, name, id: e.id ?? name, side: e.side, ph: kind === "fourball" ? playingHandicap(ch, 90) : ch };
   });
   // strokes are given off the best player in the match, who plays off scratch
   const low = Math.min(...seats.map(s => s.ph));
@@ -512,7 +519,8 @@ export function matchPlay(courseIn, round) {
   const sides = { A: A.map(e => String(e.name).trim()), B: B.map(e => String(e.name).trim()) };
   const label = k => sides[k].join(" & ");
   const margin = Math.abs(up);
-  const wins = k => `${label(k)} ${sides[k].length > 1 ? "win" : "wins"}`;
+  // a scramble team is one seat named after its members ("Anna & Bo"), and a pair wins, not wins
+  const wins = k => `${label(k)} ${sides[k].length > 1 || / & /.test(sides[k][0]) ? "win" : "wins"}`;
   const result = !closed && thru < n ? null : !leader ? "Halved" : `${wins(leader)} ${left ? `${margin}&${left}` : `${margin} UP`}`;
   const status = result || (!leader ? (thru ? `All square thru ${thru}` : "All square") : `${label(leader)} ${margin} UP thru ${thru}`);
   return {
@@ -524,7 +532,7 @@ export function matchPlay(courseIn, round) {
 export function roundRanking(courseIn, round) {
   const format = round.format || "stableford";
   if (!FORMATS_ROUND.some(f => f.key === format)) throw new Error(`'${format}' is not a round format`);
-  if (format === "match") {
+  if (isMatchFormat(format)) {
     const match = matchPlay(courseIn, round);
     const rows = ["A", "B"].map(k => ({ place: !match.leader || match.leader === k ? 1 : 2, id: k, name: match.sides[k].join(" & "), main: match.status, sub: null }));
     return { format, rows: rows.sort((a, b) => a.place - b.place), match };

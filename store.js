@@ -452,7 +452,7 @@ export function rounds() {
   return live(state.rounds).filter(r => !r.stub).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.created || "").localeCompare(a.created || ""));
 }
 
-export const ROUND_FORMATS = ["stableford", "stroke", "match", "scramble"];
+export const ROUND_FORMATS = ["stableford", "stroke", "match", "scramble", "scramblematch"];
 
 export function createRound({ course, name, date, defaultTee, allowance, brand = null, format = "stableford", leagueId = null, id = null }) {
   const r = { id: id || uid(), owner: myAccount(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup", brand,
