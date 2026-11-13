@@ -1199,6 +1199,9 @@ main.wide { max-width: 1120px; }
 .radiorow small { color: var(--ink3); font-size: 12.5px; }
 .list.bag .bagnum, .bagrow .num { font-size: 20px; }
 .list.bag .bagnum small, .bagrow .num small { font-family: -apple-system, "Segoe UI", sans-serif; font-size: 12px; color: var(--ink3); }
+.clubplace { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.clubplace > div { display: flex; align-items: center; gap: 6px; }
+.clubplace .btn.small { min-width: 40px; }
 .bagrows { display: grid; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .bagrow { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; align-items: baseline; padding: 10px 14px; border-top: 1px solid var(--line); }
 .bagrow:first-child { border-top: 0; }

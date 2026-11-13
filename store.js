@@ -843,6 +843,36 @@ export function saveClub(c) {
   return x;
 }
 
+function reorderBag(list) {
+  const me = myAccount() || "";
+  list.forEach((x, i) => { if (x.sort !== i) { x.sort = i; touch("club_bag", x, `${me}|${x.club_id}`); } });
+  save();
+}
+
+export function moveClub(clubId, step) {
+  const list = bag(), i = list.findIndex(x => x.club_id === clubId), j = i + step;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  reorderBag(list);
+}
+
+// A club that gets its carry for the first time slots in below the longer clubs and above the shorter ones;
+// clubs with no carry yet don't count, so filling in a starter bag in any order leaves it where it is.
+export function placeByCarry(clubId) {
+  const list = bag(), i = list.findIndex(x => x.club_id === clubId), x = list[i];
+  if (!x || !x.carry_m) return;
+  const rest = list.filter(y => y !== x);
+  let longer = -1, shorter = rest.length;
+  rest.forEach((y, k) => {
+    if (y.carry_m > x.carry_m) longer = k;
+    else if (y.carry_m && y.carry_m < x.carry_m && shorter === rest.length) shorter = k;
+  });
+  const at = i <= longer ? longer + 1 : i > shorter ? shorter : i;
+  if (at === i) return;
+  rest.splice(at, 0, x);
+  reorderBag(rest);
+}
+
 export function removeClub(clubId) {
   const me = myAccount() || "";
   const x = state.bag.find(y => y.account_id === me && y.club_id === clubId);

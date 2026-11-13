@@ -44,12 +44,14 @@ export function sgBlock(sg, who) {
   if (!sg || sg.total === null || !sg.holes) return "";
   const t = (v, label) => `<div class="stattile"><b class="${v > 0.05 ? "sgup" : v < -0.05 ? "sgdown" : ""}">${fmtSigned(v, 2)}</b><small>${esc(label)}</small></div>`;
   const per = sg.split ? sg.split.per18 : null;
+  const note = !per ? "No split: nobody they played against kept putts"
+    // The split runs on fewer holes than the total, so its two halves add up to their own figure, not the tile.
+    : sg.split.holes < sg.holes ? `Tee to green and putting come from the ${plural(sg.split.holes, "hole")} where both cards kept putts; on those they add up to ${fmtSigned(per.total, 2)} per 18`
+    : "";
   return `<div class="card">
-    <div class="muted small">Against ${esc(who)} · ${plural(sg.holes, "hole")}${sg.rounds > 1 ? ` in ${plural(sg.rounds, "round")}` : ""} · per 18</div>
+    <div class="muted small">Against ${esc(who)} · average per 18 holes, over ${plural(sg.holes, "hole")}${sg.rounds > 1 ? ` in ${plural(sg.rounds, "round")}` : ""}</div>
     <div class="statgrid">${t(sg.per18, "strokes gained")}${per ? t(per.teeToGreen, "tee to green") : ""}${per ? t(per.putting, "putting") : ""}</div>
-    ${per
-      ? `<p class="muted small" style="margin:10px 0 0">The split: ${plural(sg.split.holes, "hole")} where both cards kept putts</p>`
-      : `<p class="muted small" style="margin:10px 0 0">No split: nobody they played against kept putts</p>`}</div>`;
+    ${note ? `<p class="muted small" style="margin:10px 0 0">${note}</p>` : ""}</div>`;
 }
 
 export function sgWords(sg, them) {
@@ -63,8 +65,8 @@ export function sgWords(sg, them) {
 }
 
 export const SG_TIP = `<p>The published version of this compares every shot with what a tour player would do from the same distance and lie. A scorecard has neither, so this compares you with the people who actually played the same holes on the same day.</p>
-<p><b>Strokes gained</b> is what they averaged on a hole less what you took: plus means you took fewer. <b>Putting</b> is the same sum on putts alone, and <b>tee to green</b> is whatever is left over, so the two always add back up to the total.</p>
-<p>A hole picked up is left out, and the putting split only counts holes where both cards wrote putts down.</p>`;
+<p><b>Strokes gained</b> is what they averaged on a hole less what you took: plus means you took fewer. <b>Putting</b> is the same sum on putts alone, and <b>tee to green</b> is whatever is left over, so on the same holes the two always add back up to the total.</p>
+<p>Every figure is an average per 18 holes, so rounds of different lengths compare. A hole picked up is left out, and the putting split only counts holes where both cards wrote putts down; when that is fewer holes than the total, the split adds up to its own figure, which the card states.</p>`;
 
 export const STATS_TIP = `<p>These come off your own card, and only the ones you switched on. Nothing here is guessed at.</p>
 <p><b>GIR</b>, greens in regulation, is the green reached with two strokes still left for par, and is never asked for either: your strokes less your putts is where the ball was, so counting putts answers it. It is arithmetic, not an opinion, which is why there is no chip for it.</p>

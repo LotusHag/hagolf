@@ -111,7 +111,7 @@ export function bagPage() {
     ${clubs.length ? `<div class="list bag">${clubs.map(c => `<button data-act="edit" data-id="${esc(c.club_id)}"><div><div class="name">${esc(c.club)}</div>${c.note ? `<div class="muted small">${esc(c.note)}</div>` : ""}</div>
         <span class="num bagnum">${c.carry_m ? S.lengthIn(c.carry_m) : "–"}<small>${c.total_m ? ` / ${S.lengthIn(c.total_m)}` : ""} ${u}</small></span></button>`).join("")}</div>
         <p class="muted small center">Carry, then total. The bag button on the scoring screen shows these on every hole.</p>`
-      : `${emptyState("golf", "Your clubs and how far they go", "Note them once; they're one tap away on every hole.")}<button class="btn primary wide" data-act="starter">Start with a usual bag</button>`}
+      : `${emptyState("bag", "Your clubs and how far they go", "Note them once; they're one tap away on every hole.")}<button class="btn primary wide" data-act="starter">Start with a usual bag</button>`}
     <button class="btn wide" data-act="add">+ Add a club</button>`,
     { back: "#me", bell: false });
   bind(async ev => {
@@ -131,13 +131,26 @@ async function clubSheet(c) {
       <label>Club<input name="club" value="${esc(c ? c.club : "")}" placeholder="7 iron" autocapitalize="words"></label>
       <div class="two"><label>Carry (${u})<input name="carry" inputmode="numeric" value="${c && c.carry_m ? S.lengthIn(c.carry_m) : ""}"></label>
         <label>Total (${u}) <span class="muted">optional</span><input name="total" inputmode="numeric" value="${c && c.total_m ? S.lengthIn(c.total_m) : ""}"></label></div>
-      <label>Note <span class="muted">optional</span><input name="note" value="${esc(c ? c.note || "" : "")}" placeholder="into the wind: one more club"></label></form>`,
+      <label>Note <span class="muted">optional</span><input name="note" value="${esc(c ? c.note || "" : "")}" placeholder="into the wind: one more club"></label>
+      ${c ? `<div class="clubplace"><span>Place in the bag</span><div><span class="muted" id="clubat">${clubAt(c.club_id)}</span>
+        <button type="button" class="btn small" data-move="-1" aria-label="Move up">↑</button><button type="button" class="btn small" data-move="1" aria-label="Move down">↓</button></div></div>` : ""}</form>`,
     actions: [{ label: "Save", value: "ok", kind: "primary" }, ...(c ? [{ label: "Take it out of the bag", value: "del", kind: "danger" }] : []), { label: "Cancel", value: "no" }],
-    onOpen: el => { const f = el.querySelector("#clubf"); const k = () => { window.__club = Object.fromEntries(new FormData(f)); }; f.addEventListener("input", k); k(); f.club.focus(); } });
+    onOpen: el => {
+      const f = el.querySelector("#clubf"); const k = () => { window.__club = Object.fromEntries(new FormData(f)); }; f.addEventListener("input", k); k(); f.club.focus();
+      // Moves take effect at once, so the list behind is already in its new order whichever way the sheet shuts.
+      f.addEventListener("click", ev => { const m = ev.target.closest("[data-move]"); if (!m) return; S.moveClub(c.club_id, +m.dataset.move); f.querySelector("#clubat").textContent = clubAt(c.club_id); });
+    } });
   const d = window.__club; window.__club = null;
   if (v === "del" && c) return S.removeClub(c.club_id);
   if (v !== "ok" || !d || !d.club.trim()) return;
-  S.saveClub({ club_id: c ? c.club_id : undefined, club: d.club.trim(), carry_m: S.lengthOut(d.carry), total_m: S.lengthOut(d.total), note: d.note.trim(), sort: c ? c.sort : S.bag().length });
+  const carry = S.lengthOut(d.carry);
+  const x = S.saveClub({ club_id: c ? c.club_id : undefined, club: d.club.trim(), carry_m: carry, total_m: S.lengthOut(d.total), note: d.note.trim() });
+  if (carry && !(c && c.carry_m)) S.placeByCarry(x.club_id);
+}
+
+function clubAt(id) {
+  const list = S.bag();
+  return `${list.findIndex(x => x.club_id === id) + 1} of ${list.length}`;
 }
 
 // ---------------------------------------------------------------- which extras I keep

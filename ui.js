@@ -147,7 +147,8 @@ export const ICONS = {
   inbox: I(`<path d="M4 4h16v16H4z"/><path d="M4 14h5l1.5 2h3L15 14h5"/>`),
   mail: I(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>`),
   golf: I(`<path d="M7 21V4l9 3.5L7 11"/><ellipse cx="12" cy="21" rx="7" ry="1.5"/>`),
-  bag: I(`<path d="M8 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><rect x="5" y="8" width="14" height="13" rx="2"/><path d="M9 3v5M12 3v5M15 3v5"/>`),
+  // a stand bag, tilted on its leg, three clubs out of the top
+  bag: I(`<g transform="rotate(-16 12 12)"><path d="M7.5 8.5h8V20a1.8 1.8 0 0 1-1.8 1.8H9.3A1.8 1.8 0 0 1 7.5 20z"/><path d="M7.5 11.5h8"/><path d="M9.6 8.5V3.8l-2.2-.8"/><path d="M11.5 8.5V2.3h2.3"/><path d="M13.4 8.5V4.3l2.1-.8"/></g><path d="M16.2 12.6 19.3 21.2"/>`),
   shop: I(`<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`),
 };
 export const TABS = [["home", "#home", "Play", "golf"], ["stats", "#stats", "Stats", "chart"], ["leagues", "#leagues", "Societies", "leagues"], ["me", "#me", "Me", "me"]];

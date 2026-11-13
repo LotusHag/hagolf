@@ -35,7 +35,7 @@ export function me(section) {
       <div class="handle">${[acct.handle ? `@${esc(acct.handle)}` : "", acct.hi !== null && acct.hi !== undefined ? `index ${esc(fmtIndex(Number(acct.hi)))}` : "no index yet"].filter(Boolean).join(" · ")}</div></div><a class="btn small" href="#me/account">Edit</a></div>`
       : `<div class="card"><div class="muted small">Not signed in.</div><a class="btn primary" href="#welcome" style="margin-top:8px">Sign in</a></div>`}
     <div class="list">
-      ${row("#bag", "golf", "My bag", clubs ? `${plural(clubs, "club")} with distances` : "Your club distances, on every hole")}
+      ${row("#bag", "bag", "My bag", clubs ? `${plural(clubs, "club")} with distances` : "Your club distances, on every hole")}
       ${acct ? row("#people", "people", "Friends", held.incoming.length ? `${plural(held.incoming.length, "request")} waiting` : `${plural(held.friends.length, "friend")}`) : ""}
       ${row("#me/keep", "chart", "Stats I keep", esc(keepWord || "Score only"))}
       ${acct ? row("#me/seats", "check", "Were you on these cards?", "Cards with your name that need a yes or no") : ""}
