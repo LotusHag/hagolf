@@ -248,7 +248,7 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
         ? `${esc(first)} ${p.beat ? "beat" : "did not beat"} the rest of the field in the one round they have shared.`
         : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}</p>`;
   return `${want("core") ? `
-    <div class="mecard"><div class="stats">${tile(p.played, plural(p.played, "round").split(" ")[1])}${tile(fix(p.avgPts), "avg pts")}${one ? "" : tile(p.bestPts, "best")}${p.returns ? tile(fmtToPar(Math.round(p.avgTopar)), "avg to par") : ""}${p.wins ? tile(p.wins, plural(p.wins, "win").split(" ")[1]) : ""}</div></div>
+    ${want("notiles") && only ? "" : `<div class="mecard"><div class="stats">${tile(p.played, plural(p.played, "round").split(" ")[1])}${tile(fix(p.avgPts), "avg pts")}${one ? "" : tile(p.bestPts, "best")}${p.returns ? tile(fmtToPar(Math.round(p.avgTopar)), "avg to par") : ""}${p.wins ? tile(p.wins, plural(p.wins, "win").split(" ")[1]) : ""}</div></div>`}
     <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(`Every hole ${esc(first)} has played in this society: ${plural(p.holes, "hole")} over ${plural(p.played, "round")}. ${esc(first)} ${birdies ? `makes ${fix(birdies / p.played)} birdies or better` : "has yet to make a birdie"} and ${fix(per(2))} pars a round.`), "corner")}
       <div class="dwrap">${donut(p.counts, `${pct(parOrBetter(p), p.holes)}%`, "par or better")}${donutKey(p.counts, p.played, "round")}</div>
       <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} · ${fmtSigned(p.vspar, 2)} a hole against par</p></div>
@@ -301,7 +301,7 @@ export function myGame() {
 export function myGameBody(topic) {
   const { rounds, Ms, St, p } = myGame();
   if (!p) return `<p class="muted center" style="margin:30px 0">Finish a round and your numbers start here.</p>`;
-  const parts = { scoring: ["core"], extras: ["extras"], sg: ["sg"], nines: ["nines"], h2h: ["rivals"] }[topic] || ["core"];
+  const parts = { scoring: ["core", "notiles"], extras: ["extras"], sg: ["sg"], nines: ["nines"], h2h: ["rivals"] }[topic] || ["core", "notiles"];
   const nines = topic === "nines" ? ninesPlayerBlock(rounds, p.id, "You") || `<p class="muted center">No loop walked yet.</p>` : "";
   const body = playerStats(St, p, nines, "", leagueCards(Ms), parts);
   return `<div class="statsbody">${body.trim() || `<p class="muted center" style="margin:30px 0">Nothing here yet.</p>`}</div>`;

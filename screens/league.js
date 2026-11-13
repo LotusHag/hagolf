@@ -10,7 +10,7 @@ import * as F from "../social.js";
 import { brandField } from "./partner.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
-import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow } from "./formats.js";
+import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
 import { claimSheet } from "./gate.js";
 
@@ -180,8 +180,8 @@ function boardNotes(C, Sx) {
   const out = [];
   const val = r => decidingValue(C.kind, r);
   const ranked = Sx.rows.filter(r => r.played);
-  if (ranked.some((r, i) => i && val(r) === val(ranked[i - 1]))) out.push("Equal totals were separated on countback.");
-  if (C.g.bestN && !(C.kind in MATCH_BASIS)) {
+  if (!(C.kind in ELO_BASIS) && ranked.some((r, i) => i && val(r) === val(ranked[i - 1]))) out.push("Equal totals were separated on countback.");
+  if (C.g.bestN && !(C.kind in MATCH_BASIS) && !(C.kind in ELO_BASIS)) {
     const top = Sx.rows[0];
     out.push(top && top.counted_n >= C.g.bestN
       ? `Each player's best ${C.g.bestN} cards count. ${esc(firstName(top.name))} is counting ${top.counted_n} of ${top.played}.`
@@ -225,7 +225,7 @@ function boardView(C, keepScroll) {
     ${nCards > 1 ? stateOfPlay(C, Sx) : ""}
     ${Sx.rows.length ? `<div class="rows lboard">${shown.map(r => boardRow(C, r, move, Sx)).join("")}
       ${shown.length < Sx.rows.length ? `<a class="hrow more" href="#league/${gid}/table/${C.kind}"><span class="t"><b>The whole table</b><span>${plural(Sx.rows.length, "player")}, every column</span></span><span class="chev">›</span></a>` : ""}</div>`
-      : `<p class="muted center" style="margin:22px 0">${C.kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[C.kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
+      : `<p class="muted center" style="margin:22px 0">${C.kind in ELO_BASIS ? "Nobody has a rating yet — it needs two of the society's players out on the same day." : C.kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[C.kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
     ${boardNotes(C, Sx)}</section>
     ${lastDay(C, move, nCards)}`;
   shell(g, g.name, body, { keepScroll, runs: C.runs, seg: "" });
@@ -252,7 +252,7 @@ function tableView(C, fmt, keep = false) {
     ${C.formats.length > 1 ? `<p class="muted small" style="margin:0 4px 6px">${plural(C.formats.length, "way")} of scoring these rounds${mine ? ` · you are ${ordinal(mine.place)} here` : ""}. Tap the name to change it.</p>` : ""}
     ${stateOfPlay(Cx, Sx)}
     ${Sx.rows.length ? `<div class="rows lboard roomy">${Sx.rows.map(r => boardRow(Cx, r, move, Sx)).join("")}</div>`
-      : `<p class="muted center" style="margin:22px 0">${kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
+      : `<p class="muted center" style="margin:22px 0">${kind in ELO_BASIS ? "Nobody has a rating yet — it needs two of the society's players out on the same day." : kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
     ${boardNotes(Cx, Sx)}
     <div class="btnrow"><button class="btn small" data-act="board-cols">Every column ›</button>
       <a class="btn small" href="#leagueimages/${C.gid}">Make images ›</a></div>`,
@@ -792,7 +792,7 @@ export function league(gid, view, a, b, keep = false) {
 
 /** The society's day: its scoring picks the format, then the course; the card id is the same on every phone. */
 function playToday(C) {
-  const f = C.formats[0] === "stroke" || C.formats[0] === "gpstroke" ? "stroke" : "stableford";
+  const f = ["stroke", "gpstroke", "elostroke"].includes(C.formats[0]) ? "stroke" : "stableford";
   S.setSetting("lastFormat", f);
   ui.dayLeague = C.gid;
   go("#new");

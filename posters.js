@@ -7,7 +7,7 @@
 // stand side by side or one under the other. What a column contains and how a row is ranked never varies.
 import { house, caps, note, posChip, outcomeBar, legend, on, rowBand, isPhone, brandTitle, brandDate } from "./draw.js";
 import { sheet, block, blockAxes, heading, headingIn, dense } from "./sheet.js";
-import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE } from "./model.js";
+import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE, ELO } from "./model.js";
 
 const ROW_IN = 0.5;
 
@@ -500,6 +500,7 @@ export const STANDINGS_TITLES = {
   stableford: "Season standings", stroke: "Stroke play standings", match: "Matchplay standings",
   matchpts: "Matchplay standings, Stableford", soccer: "League table", soccerpts: "League table, Stableford",
   gp: "Grand Prix standings", gpstroke: "Grand Prix standings, stroke play",
+  elo: "Elo ratings", elopts: "Elo ratings, Stableford", elostroke: "Elo ratings, stroke play", elomatch: "Elo ratings, matchplay",
 };
 
 /**
@@ -552,6 +553,24 @@ export function standingsPoster(S, group, T, kind = "stableford") {
     foot = `Every pair of society players who shared a round played a match, hole by hole, each hole going to ${basis}; ` +
       `a hole only one of them returned goes to the other. ${w} points for winning a match, ${d} for halving it. ` +
       `Holes up is the running margin across every match.` + onlyMembers;
+  } else if (kind.startsWith("elo")) {
+    const elo = r => String(Math.round(r.rating));
+    const moved = r => r.last === null ? "–" : (Math.round(r.last) > 0 ? "+" : "") + Math.round(r.last);
+    const lead = rows.length ? elo(rows[0]) : String(ELO.start);
+    const how = { all: "Stableford, net and the match, averaged", points: "Stableford points", net: "net score", match: "a match on net score" }[S.basis];
+    cols = [pos, col("Player", 1.15, 4.1, dName, "left"),
+      num("Days", 4.1, 4.8, r => String(r.played)), num("W", 4.9, 5.4, r => String(r.won)),
+      num("D", 5.5, 6.0, r => String(r.drawn)), num("L", 6.1, 6.6, r => String(r.lost)),
+      num("Peak", 6.7, 7.5, r => String(Math.round(r.peak))), num("Last", 7.6, 8.3, moved),
+      col("Elo", 8.4, 9.95, dVal(elo, 22, (r, T) => T.ACCENT, "display"))];
+    total = ["Elo", elo];
+    pairs = r => [["days", r.played], ["W-D-L", `${r.won}-${r.drawn}-${r.lost}`], ["peak", Math.round(r.peak)], ["last", moved(r)]];
+    right = `Elo rating
+${how}`;
+    tiles = [[rows.length, "players"], [rounds.length, "rounds"], [lead, "the leader", T.ACCENT]];
+    foot = `Everyone starts on ${ELO.start}. Each day every pair of society players on the card played a game, settled on ${how}; `
+      + `beating a higher-rated player gains more than beating a lower one, and a bigger margin moves both further. `
+      + `A day moves a rating by at most about ${ELO.k * 2}, twice that in a player's first ${ELO.provisionalDays}. Missing a day costs nothing.` + onlyMembers;
   } else if (kind === "gp" || kind === "gpstroke") {
     const net = S.basis === "net";
     const maxPts = Math.max(1, ...rows.map(r => r.counted));

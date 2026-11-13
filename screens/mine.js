@@ -1,51 +1,64 @@
 // What is mine: the Stats tab (my numbers, and every round I can see), my bag of club distances, which extras I
-// keep, and the cards that may be mine. Each topic is a page of its own, reached from a short list.
+// keep, and the cards that may be mine. Stats is one row of tabs over the same numbers.
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as Y from "../sync.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, confirmSheet } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, confirmSheet, subtabs } from "../ui.js";
 import { compute, fix, fmtToPar, STAT_SWITCHES } from "../model.js";
 import { myGame, myGameBody } from "./stats.js";
 import { dayBlock, nowCard, formatLabel } from "./home.js";
 
 const TOPICS = [
-  ["scoring", "Scoring", "average, best, par 3s 4s 5s, hard holes and easy ones, form"],
-  ["extras", "Putts, fairways & more", "greens in regulation, up and down, sand saves"],
-  ["sg", "Strokes gained", "against the people you played with"],
-  ["nines", "Courses & nines", "every loop you walked"],
-  ["h2h", "Head to head", "you against your rivals"],
+  ["scoring", "Scoring"],
+  ["extras", "Putts & more"],
+  ["sg", "Strokes gained"],
+  ["nines", "Nines"],
+  ["h2h", "Head to head"],
+  ["rounds", "Rounds"],
 ];
 
-const seg = on => `<div class="filter seg2"><a href="#stats" class="${on === "numbers" ? "on" : ""}">Numbers</a><a href="#stats/rounds" class="${on === "rounds" ? "on" : ""}">Rounds</a></div>`;
+/** One row of tabs for everything under Stats: each topic is a view of the same numbers, not a page of its own. */
+function tabRow(on, anyExtras) {
+  return subtabs(TOPICS.filter(([k]) => k !== "extras" || anyExtras || on === "extras")
+    .map(([k, label]) => `<button data-act="stab" data-t="${k}" class="${k === on ? "on" : ""}">${esc(label)}</button>`).join(""));
+}
 
-export function stats(view, topic) {
-  if (view === "rounds") return roundsList();
-  if (view === "t" && topic) return topicPage(topic);
-  const { p, rounds } = myGame();
+/** The headline numbers, with the form of the last ten rounds drawn the width of the card. */
+function tiles(p) {
   const a = A.account();
   const hi = a && a.hi !== null && a.hi !== undefined ? a.hi : null;
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
-  const recent = p ? p.rounds.slice(-10).map(x => x.pts) : [];
+  const recent = p.rounds.slice(-10).map(x => x.pts);
   const spark = recent.length > 1 ? (() => {
-    const lo = Math.min(...recent), hi2 = Math.max(...recent), w = 120, h = 28, k = (w - 4) / (recent.length - 1);
-    const pts = recent.map((v, i) => `${2 + i * k},${h - 2 - (hi2 === lo ? h / 2 : ((v - lo) / (hi2 - lo)) * (h - 4))}`).join(" ");
-    return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-label="your last ${recent.length} rounds"><polyline points="${pts}"/></svg>`;
+    const lo = Math.min(...recent), hi2 = Math.max(...recent), w = 300, h = 40, k = (w - 8) / (recent.length - 1);
+    const pts = recent.map((v, i) => `${4 + i * k},${h - 4 - (hi2 === lo ? (h - 8) / 2 : ((v - lo) / (hi2 - lo)) * (h - 8))}`).join(" ");
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="points in your last ${recent.length} rounds"><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg><div class="sparkcap muted small">points, last ${recent.length} rounds</div>`;
   })() : "";
-  const anyExtras = p && p.statline.any;
-  page("Stats", `
-    ${seg("numbers")}
-    ${p ? `<div class="mecard"><div class="stats">${hi !== null ? tile(fix(hi), "hcp") : ""}${tile(fix(p.avgPts), "avg pts")}${tile(p.bestPts, "best")}${tile(p.played, plural(p.played, "round").split(" ")[1])}</div>${spark}</div>`
-      : emptyState("chart", "No numbers yet", "Play a round, or scan an old card, and they start here.")}
-    <div class="list topics">${TOPICS.filter(([k]) => k !== "extras" || anyExtras).map(([k, label, sub]) => `<a href="#stats/t/${k}"><div><div class="name">${esc(label)}</div><div class="muted small">${esc(sub)}</div></div><span class="chev">›</span></a>`).join("")}</div>
-    ${!anyExtras && p ? `<p class="muted small center">Want putts and greens in regulation too? <a href="#me/keep">Choose what you keep ›</a></p>` : ""}
-`,
-    { back: "", tabs: "stats" });
+  return `<div class="mecard"><div class="stats">${hi !== null ? tile(fix(hi), "hcp") : ""}${tile(fix(p.avgPts), "avg pts")}${tile(p.bestPts, "best")}${tile(p.played, plural(p.played, "round").split(" ")[1])}</div>${spark}</div>`;
 }
 
-function topicPage(topic) {
-  const t = TOPICS.find(([k]) => k === topic);
-  if (!t) return go("#stats");
-  page(t[1], myGameBody(topic), { back: "#stats", bell: false });
+export function stats(view, topic) {
+  const on = view === "rounds" ? "rounds" : view === "t" && TOPICS.some(([k]) => k === topic) ? topic : "scoring";
+  if (on === "rounds") return roundsList();
+  const { p } = myGame();
+  const anyExtras = p && p.statline.any;
+  page("Stats", `
+    ${tabRow(on, anyExtras)}
+    ${p ? `${tiles(p)}${myGameBody(on)}
+        ${on === "extras" && !anyExtras ? `<p class="muted small center">Nothing kept yet. <a href="#me/keep">Choose what you keep ›</a></p>` : ""}
+        ${on === "scoring" && !anyExtras ? `<p class="muted small center">Want putts and greens in regulation too? <a href="#me/keep">Choose what you keep ›</a></p>` : ""}`
+      : emptyState("chart", "No numbers yet", "Play a round, or scan an old card, and they start here.")}`,
+    { back: "", tabs: "stats", keepScroll: ui.statsTab === on });
+  ui.statsTab = on;
+  bindTabs();
+}
+
+function bindTabs() {
+  bind(ev => {
+    const b = ev.target.closest("[data-act=stab]");
+    if (!b) return;
+    go(b.dataset.t === "rounds" ? "#stats/rounds" : b.dataset.t === "scoring" ? "#stats" : `#stats/t/${b.dataset.t}`);
+  });
 }
 
 // ---------------------------------------------------------------- every round I can see
@@ -73,7 +86,7 @@ function roundsList() {
   };
   const list = shown.filter(hit);
   page("Stats", `
-    ${seg("rounds")}
+    ${tabRow("rounds", (myGame().p || {}).statline?.any)}
     ${open.length ? `<h2>Playing now</h2>${open.map(nowCard).join("")}` : ""}
     <div class="filter mini"><button data-act="rf" data-v="all" class="${f === "all" ? "on" : ""}">All</button><button data-act="rf" data-v="mine" class="${f === "mine" ? "on" : ""}">Mine</button><button data-act="rf" data-v="shared" class="${f === "shared" ? "on" : ""}">Shared</button></div>
     ${finished.length > 6 ? `<input id="q" class="search" placeholder="Search by date, course or player" value="${esc(ui.search || "")}" autocomplete="off">` : ""}
@@ -81,7 +94,12 @@ function roundsList() {
     { back: "", tabs: "stats", actions: `<a class="iconbtn" href="#scan" aria-label="Scan a paper card">${ICONS.camera}</a>` });
   const qEl = document.getElementById("q");
   if (qEl) qEl.addEventListener("input", () => { ui.search = qEl.value; const y = scrollPos(); roundsList(); scrollAt(y); const n = document.getElementById("q"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
-  bind(ev => { const b = ev.target.closest("[data-act=rf]"); if (b) { ui.roundsFilter = b.dataset.v; roundsList(); } });
+  bind(ev => {
+    const b = ev.target.closest("[data-act=rf]");
+    if (b) { ui.roundsFilter = b.dataset.v; return roundsList(); }
+    const t = ev.target.closest("[data-act=stab]");
+    if (t) go(t.dataset.t === "rounds" ? "#stats/rounds" : t.dataset.t === "scoring" ? "#stats" : `#stats/t/${t.dataset.t}`);
+  });
 }
 
 // ---------------------------------------------------------------- my bag

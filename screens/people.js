@@ -7,7 +7,7 @@ import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName,
 import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained } from "../model.js";
 import { statBlock, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
 import { playerRounds, ninesPlayed } from "./stats.js";
-import { leagueResults, standingsFor, standingValue, MATCH_BASIS } from "./formats.js";
+import { leagueResults, standingsFor, standingValue, MATCH_BASIS, ELO_BASIS } from "./formats.js";
 import { myCard, nineLine } from "./review.js";
 import { nineName } from "./play.js";
 import { inviteSheet } from "./league.js";
@@ -146,7 +146,7 @@ export function player(id) {
     const { Ms, members } = leagueResults(g);
     const kind = S.cleanFormats(g.formats)[0];
     const row = standingsFor(g, Ms, members, kind).rows.find(r => r.id === S.identityOf(p.id) || r.id === p.id);
-    return row ? `<a href="#league/${g.id}/p/${esc(row.id)}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${kind in MATCH_BASIS ? plural(row.played, "match") : `${plural(row.played, "round")} counted`}</div></div><span class="pill done">${ordinal(row.place)} · ${standingValue(kind, row)}</span></a>` : "";
+    return row ? `<a href="#league/${g.id}/p/${esc(row.id)}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${kind in MATCH_BASIS ? plural(row.played, "match") : kind in ELO_BASIS ? plural(row.played, "day") : `${plural(row.played, "round")} counted`}</div></div><span class="pill done">${ordinal(row.place)} · ${standingValue(kind, row)}</span></a>` : "";
   }).filter(Boolean).join("");
   const list = rs.map(({ r, M, x }) => {
     const H = halves(M, x);

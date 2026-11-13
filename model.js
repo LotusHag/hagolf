@@ -1199,6 +1199,93 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS, ba
   return { rows: out, rounds: cards, bestN, table, basis };
 }
 
+// Everyone starts at 1500; a day is worth K, doubled for a player's first few days so a newcomer finds their level.
+export const ELO = { start: 1500, k: 32, provisionalDays: 5, provisionalK: 2, scale: 400 };
+export const ELO_BASES = ["points", "net", "match"];
+
+/**
+ * One pair's verdict in one currency: `s` is 1, ½ or 0 for `pa`, `d` the margin in strokes, points or holes
+ * (null when only one of them returned a card, so there is no margin to read). Null when there is no game.
+ */
+function eloGame(pa, pb, basis) {
+  if (basis === "match") {
+    const { up, holes } = matchResult(pa, pb, "net");
+    return holes ? { s: up > 0 ? 1 : up < 0 ? 0 : 0.5, d: up } : null;
+  }
+  if (basis === "points") return { s: pa.pts > pb.pts ? 1 : pa.pts < pb.pts ? 0 : 0.5, d: pa.pts - pb.pts };
+  // one card is one loop, so net strokes compare directly without taking par off either
+  const na = pa.net ?? null, nb = pb.net ?? null;
+  if (na === null && nb === null) return null;
+  if (na === null || nb === null) return { s: na === null ? 0 : 1, d: null };
+  return { s: na < nb ? 1 : na > nb ? 0 : 0.5, d: nb - na };
+}
+
+// A one-shot win counts half a typical one, three is typical, fifteen or more counts double; a draw is as close as one shot.
+export const eloMargin = d => d === null ? 1 : Math.min(2, Math.log(1 + Math.max(Math.abs(d), 1)) / Math.log(4));
+export const eloExpected = (ra, rb) => 1 / (1 + 10 ** ((rb - ra) / ELO.scale));
+
+/**
+ * Elo over a league's days. Every pair of the league's players on a card played a game in each currency of
+ * `basis` ("points", "net", "match", or "all" for the three averaged); winning is what decides the sign and
+ * the margin decides the size, so a winner always gains on the player they beat. A player's day is
+ * K / (opponents) times the sum over opponents, so a field of twenty moves nobody further than a two-ball.
+ * Days run in date order, every card of a day off the ratings from before it; nothing is stored.
+ */
+export function eloStandings(results, memberIds, basis = "all") {
+  const members = new Set(memberIds);
+  const bases = basis === "all" ? ELO_BASES : [basis];
+  const rows = new Map();
+  const row = p => {
+    if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, rating: ELO.start, played: 0, won: 0, drawn: 0, lost: 0,
+      peak: ELO.start, last: null, lastDate: null, history: [] });
+    const r = rows.get(p.id);
+    r.name = p.name;
+    return r;
+  };
+  const cards = leagueCards(results);
+  const days = new Map();
+  for (const M of cards) {
+    const k = M.date || "";
+    if (!days.has(k)) days.set(k, []);
+    days.get(k).push(M);
+  }
+  for (const date of [...days.keys()].sort()) {
+    const delta = new Map();
+    for (const M of days.get(date)) {
+      const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+      for (let i = 0; i < mine.length; i++) {
+        const pa = mine[i], ra = row(pa);
+        const k = ELO.k * (ra.played < ELO.provisionalDays ? ELO.provisionalK : 1);
+        let sum = 0, opp = 0;
+        for (let j = 0; j < mine.length; j++) {
+          const pb = mine[j];
+          if (i === j || pa.id === pb.id) continue;
+          const games = bases.map(b => eloGame(pa, pb, b)).filter(Boolean);
+          if (!games.length) continue;
+          const E = eloExpected(ra.rating, row(pb).rating);
+          sum += games.reduce((s, g) => s + eloMargin(g.d) * (g.s - E), 0) / games.length;
+          opp++;
+          const s = games.reduce((t, g) => t + g.s, 0) / games.length;
+          if (s > 0.5) ra.won++; else if (s < 0.5) ra.lost++; else ra.drawn++;
+        }
+        if (opp) delta.set(pa.id, (delta.get(pa.id) || 0) + k * sum / opp);
+      }
+    }
+    // applied after the whole day, so the second loop of a Sunday is not played against the first loop's ratings
+    for (const [id, d] of delta) {
+      const r = rows.get(id);
+      r.rating += d; r.played++; r.last = d; r.lastDate = date || null;
+      r.peak = Math.max(r.peak, r.rating);
+      r.history.push({ date: date || null, rating: r.rating, delta: d });
+    }
+  }
+  // alone on every card is nobody played, as in the match tables
+  const out = [...rows.values()].filter(r => r.played).map(r => ({ ...r, provisional: r.played < ELO.provisionalDays }));
+  out.sort((a, b) => b.rating - a.rating || b.played - a.played || a.name.localeCompare(b.name));
+  out.forEach((r, i) => { r.place = i + 1; });
+  return { rows: out, rounds: cards, basis };
+}
+
 /**
  * Two players in a league: every attached round they both played, and every way of comparing them --
  * points, net, gross, birdies, the holes, the match, the run of results at the end.

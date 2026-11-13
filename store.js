@@ -786,7 +786,7 @@ export function myMembership(leagueId) {
   return state.leagueMembers.find(m => !m.deleted && m.league_id === leagueId && m.account_id === me) || null;
 }
 
-export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "soccerpts", "gp", "gpstroke"];
+export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "soccerpts", "gp", "gpstroke", "elo", "elopts", "elostroke", "elomatch"];
 export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
