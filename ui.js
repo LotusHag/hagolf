@@ -9,6 +9,7 @@ import * as A from "./auth.js";
 import * as N from "./notify.js";
 import * as E from "./entitlements.js";
 import { loadFonts, makeTheme, phone, setMarked, setMarkText } from "./draw.js";
+import { isNative } from "./native.js";
 
 export const app = document.getElementById("app");
 export const scrollPos = () => app.scrollTop;
@@ -79,13 +80,15 @@ export function installRoute() {
   return "desktop";
 }
 /**
- * The door: app.hagolf.app is where you get Hagolf, not where you use it. Anything that is not already the
- * installed app is shown how to become one, and there is no way past. Two things are never behind it: the
- * screens a link opens, which are meant for people with no app yet, and localhost and file:, which is how
- * this is developed and tested.
+ * Whether installing is worth offering here: a browser that is not already the installed app. It is an offer,
+ * never a wall -- the app runs in any browser. localhost and file: are how this is developed and tested, and
+ * the iOS shell is the installed app, though WebKit does not report it standalone.
  */
-export const atDoor = () => !isStandalone() && location.protocol !== "file:"
+export const atDoor = () => !isStandalone() && !isNative() && location.protocol !== "file:"
   && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+export const inShell = () => isNative();
+/** Wide enough to be a laptop: the organiser's screens spread out, and the tabs become a rail down the side. */
+export const onDesk = () => window.matchMedia("(min-width: 900px)").matches;
 export const appBase = () => `${location.origin}${location.pathname}`;
 
 /** Handicap index as typed: "19,9", "+2.1" (plus handicap), "18". */
@@ -143,10 +146,11 @@ export const ICONS = {
   edit: I(`<path d="M4 20h4l10-10-4-4L4 16z"/><path d="m12 8 4 4"/>`),
   inbox: I(`<path d="M4 4h16v16H4z"/><path d="M4 14h5l1.5 2h3L15 14h5"/>`),
   mail: I(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>`),
-  golf: I(`<circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/>`),
+  golf: I(`<path d="M7 21V4l9 3.5L7 11"/><ellipse cx="12" cy="21" rx="7" ry="1.5"/>`),
+  bag: I(`<path d="M8 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><rect x="5" y="8" width="14" height="13" rx="2"/><path d="M9 3v5M12 3v5M15 3v5"/>`),
   shop: I(`<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`),
 };
-export const TABS = [["home", "#home", "Home", "home"], ["play", "#play", "Rounds", "play"], ["leagues", "#leagues", "Societies", "leagues"], ["people", "#people", "People", "people"], ["shop", "#shop", "Shop", "shop"]];
+export const TABS = [["home", "#home", "Play", "golf"], ["stats", "#stats", "Stats", "chart"], ["leagues", "#leagues", "Societies", "leagues"], ["me", "#me", "Me", "me"]];
 
 // ---------------------------------------------------------------- the page shell
 let toastTimer = null;
@@ -159,9 +163,9 @@ let toastTimer = null;
 export function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false, actions = "", bell = true, wide = false } = {}) {
   const y = keepScroll ? scrollPos() : 0;
   const badge = N.actionable();
-  const nav = tabs ? `<nav class="tabs">${TABS.filter(([k]) => k !== "shop" || Y.enabled()).map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "people" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
+  const nav = tabs ? `<nav class="tabs">${TABS.map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "me" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
   const bellBtn = bell && A.signedIn() ? `<a class="iconbtn ${location.hash === "#updates" ? "on" : ""}" href="#updates" aria-label="Updates">${ICONS.bell}${badge ? `<span class="n">${badge}</span>` : N.unread() ? `<span class="n quiet">${N.unread()}</span>` : ""}</a>` : "";
-  const gearBtn = tabs ? `<a class="iconbtn ${tabs === "me" ? "on" : ""}" href="#me" aria-label="Me and settings">${ICONS.settings}</a>` : "";
+  const gearBtn = "";
   // a top-level screen (a tab, nothing to go back to) carries the masthead: the title centred between the
   // bell and the gear. Everything reached from one keeps the back arrow and a title on the left.
   const head = !back && tabs

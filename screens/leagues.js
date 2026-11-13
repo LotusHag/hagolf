@@ -24,7 +24,7 @@ export function leagues() {
     ${invites.length ? `<h2>Invitations</h2><div class="list">${invites.map(n => `<div><span class="lead">${ICONS.mail}<div><div class="name">${esc(n.league_name)}</div><div class="muted small">${n.actor_name ? `${esc(n.actor_name)} invited you` : "You are invited"}</div></div></span>
       <span class="btnrow" style="margin:0;flex:none"><button class="btn small primary" data-act="accept" data-token="${esc(n.token)}" data-key="${esc(N.keyOf(n))}">Join</button><button class="btn small" data-act="decline" data-token="${esc(n.token)}" data-key="${esc(N.keyOf(n))}">No</button></span></div>`).join("")}</div>` : ""}
     ${rows ? `<h2>Your societies</h2><div class="list">${rows}</div>` : emptyState("trophy", "No societies yet", "A society is a running table over the rounds added to it.")}
-    <div class="btnrow"><button class="btn" data-act="new">${ICONS.plus} New society</button><button class="btn" data-act="join">${ICONS.link} Join with a link</button></div>`, { back: "", tabs: "leagues" });
+    <div class="btnrow"><button class="btn" data-act="new">${ICONS.plus} New society</button></div>`, { back: "", tabs: "leagues" });
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;

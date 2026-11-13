@@ -166,6 +166,12 @@ export async function signInWithGoogle(credential) {
   return session.account;
 }
 
+/** Signs in with an Apple identity token; Apple tells only the client the name, and only the first time. */
+export async function signInWithApple(identityToken, name, nonce) {
+  take(await call("/auth/apple", { identityToken, name: name || null, nonce: nonce || null, deviceId: S.state.settings.deviceId }));
+  return session.account;
+}
+
 // ---------------------------------------------------------------- passkeys
 // The phone's own lock as the second way in, after the first email. The options and the answer travel as
 // base64url, since that is what JSON carries and what the Worker reads.

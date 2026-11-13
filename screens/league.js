@@ -8,7 +8,7 @@ import * as A from "../auth.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
 import { brandField } from "./partner.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn, ICONS, leagueBadge } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
@@ -51,6 +51,11 @@ export async function inviteSheet(g) {
 }
 
 async function boardShare(g) {
+  const v = await sheet({ title: "Share", lead: g.name, body: `<div class="list">
+      <button data-sheet="link"><span class="lead">${ICONS.link}<div><div class="name">Send the board</div><div class="muted small">A link anyone can read, no sign-in</div></div></span><span class="chev">›</span></button>
+      <button data-sheet="images"><span class="lead">${ICONS.image}<div><div class="name">Images…</div><div class="muted small">The standings and the season's sheets, in any look</div></div></span><span class="chev">›</span></button></div>` });
+  if (v === "images") return go(`#leagueimages/${g.id}`);
+  if (v !== "link") return;
   if (!g.token || !g.visibility || g.visibility === "private") {
     const ok = await confirmSheet("Share the board?", "Anyone with the link can read the table, without signing in. Reading is not joining.", { label: "Make it readable by link" });
     if (!ok) return;
@@ -73,11 +78,27 @@ const cardKey = c => encodeURIComponent(c.key ?? c.id);
 const personHash = id => (S.state.players.find(x => x.id === id && !x.deleted) ? `#player/${id}` : `#person/${id}`);
 const dayWhere = c => (c.course && (c.course.loop || c.course.name)) || c.name || "";
 
-/** Invite, share and the menu, as icons in the header, where they cost no page at all. */
-const headActions = () => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share the board") + iconBtn("lgmenu", "menu", "The society");
+/** Invite, share and (for whoever runs it) the settings, as icons in the header. */
+const headActions = runs => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share and images") + (runs ? iconBtn("lgsettings", "settings", "Settings") : "");
 
-function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = false } = {}) {
-  page(title, body, { back, actions: headActions(), bell: false, keepScroll });
+/** Board, Days, Numbers, Members: the four parts of a society, one tap each. */
+const segs = (gid, on) => `<div class="filter lsegs">${[["", "Board"], ["days", "Days"], ["stats", "Numbers"], ["members", "Members"]]
+  .map(([v, l]) => `<a href="#league/${gid}${v ? `/${v}` : ""}" class="${on === v ? "on" : ""}">${l}</a>`).join("")}</div>`;
+
+function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = runsIt(g), seg = null, wide = false } = {}) {
+  page(title, `${seg !== null ? segs(g.id, seg) : ""}${body}`, { back, actions: headActions(runs), bell: false, keepScroll, wide });
+}
+
+/** Today: the society's day card, or the way to start it. One card a day, every group on it. */
+function todayCard(C) {
+  const today = S.today();
+  const day = S.rounds().find(r => r.leagueId === C.gid && r.date === today && r.status !== "done");
+  if (day) {
+    const seated = !!S.mySeat(day), n = day.entries.filter(e => e.role !== "team").length;
+    return `<div class="card todaycard"><div><div class="k caps">Today</div><div class="name">${esc(roundWhere(day))}</div><div class="muted small">${plural(n, "player")} · ${plural(new Set(day.entries.map(e => e.group || 1)).size, "group")}</div></div>
+      ${seated ? `<a class="btn primary" href="${resumeHash(day)}">Open</a>` : `<button class="btn primary" data-act="dayjoin" data-rid="${esc(day.id)}">I'm playing</button>`}</div>`;
+  }
+  return `<button class="card todaycard start" data-act="play-today"><div><div class="k caps">Playing today?</div><div class="name">Start the society's card</div><div class="muted small">Every group on one card, live for everyone</div></div><span class="chev">›</span></button>`;
 }
 
 // ---------------------------------------------------------------- the board
@@ -197,6 +218,7 @@ function boardView(C, keepScroll) {
   const shown = Sx.rows.length > SHOWN + 1 ? Sx.rows.slice(0, SHOWN) : Sx.rows;
   // the table, the last day and you; everything else about the league is one tap away under the menu
   const body = `
+    ${todayCard(C)}
     ${claimBanner(C)}${attachPrompt(C)}
     ${leagueHero(C, Sx, move, nCards)}
     <section class="panel lpanel"><div class="ph">${ICONS.trophy}${pick}${infoBtn(FORMAT_NAMES[C.kind], FORMAT_NOTES[C.kind])}</div>
@@ -206,7 +228,7 @@ function boardView(C, keepScroll) {
       : `<p class="muted center" style="margin:22px 0">${C.kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[C.kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
     ${boardNotes(C, Sx)}</section>
     ${lastDay(C, move, nCards)}`;
-  shell(g, g.name, body, { keepScroll, runs: C.runs });
+  shell(g, g.name, body, { keepScroll, runs: C.runs, seg: "" });
   wireBoard(C, Sx);
 }
 
@@ -282,7 +304,7 @@ function emptyBoard(C) {
     <section class="inplay"><div class="rule"></div>
       <div class="k quiet">Nothing scored yet</div><h1>${esc(g.name)}</h1>
       <p class="where">${esc(C.formats.map(f => FORMAT_NAMES[f]).join(" · "))}${g.bestN ? ` · best ${g.bestN} count` : ""}</p></section>
-    <button class="btn primary plate" data-act="new-in-league">Start a round in this society</button>
+    <button class="btn primary plate" data-act="new-in-league">Start today's card</button>
     ${sect("Or")}
     <div class="rows">
       <a class="hrow" href="#league/${gid}/admin"><span class="t"><b>Add a round you already played</b>
@@ -299,7 +321,7 @@ function wireBoard(C, Sx) {
     const act = b.dataset.act;
     if (act === "board-pick") { const v = await formatSheet(C); if (v) { ui.boardOf[C.gid] = v; league(C.gid); } return; }
     if (act === "board-cols") return columnsSheet(C, Sx);
-    if (act === "new-in-league") { S.setSetting("lastLeague", C.gid); return go("#new"); }
+    if (act === "new-in-league") return playToday(C);
     if (act === "attach-day") {
       const d = b.dataset.date;
       const ids = d ? S.rounds().filter(r => r.status === "done" && r.date === d && S.iPlayed(r) && !S.leagueRoundIds(C.gid).includes(r.id)).map(r => r.id) : [b.dataset.rid];
@@ -348,16 +370,16 @@ function daysView(C) {
         <span>${esc([dayWhere(c), top ? `${firstName(top.name)} ${D.value(top)} ${D.unit}` : "", `${plural(board.length, "player")}`].filter(Boolean).join(" · "))}</span></span>
       ${mine ? `<span class="v num">${esc(D.value(mine))}<small class="u">${esc(D.unit)}</small></span>` : `<span class="chev">›</span>`}</a>`;
   };
-  shell(C.g, "Cards", `
+  shell(C.g, C.g.name, `
     ${tip("<p>A society counts by the day, not by the sheet a group handed in. Every round in this society with the same date on the same loop is one card, so two fourballs round the same nine on a Sunday are one field of eight rather than two fields of four.</p><p>That is what every table here is built on.</p>", "One card is one day")}
     ${cards.length ? `<div class="rows">${cards.map(row).join("")}</div>` : `<p class="muted center" style="margin:30px 0">No cards in this society yet.</p>`}
-    <button class="btn primary big" data-act="new-in-league">Start a round in this society</button>
+    <button class="btn primary big" data-act="new-in-league">Start today's card</button>
     ${C.runs || A.signedIn() ? `<div class="rows" style="margin-top:18px"><a class="hrow" href="#league/${C.gid}/admin"><span class="t"><b>Add a round you played</b><span>Every finished round waiting to go in</span></span><span class="chev">›</span></a></div>` : ""}`,
-    { back: `#league/${C.gid}`, runs: C.runs });
+    { back: "#leagues", runs: C.runs, seg: "days" });
   bind(async ev => {
     if (await common(C, ev)) return;
     const b = ev.target.closest("[data-act]");
-    if (b && b.dataset.act === "new-in-league") { S.setSetting("lastLeague", C.gid); return go("#new"); }
+    if (b && b.dataset.act === "new-in-league") return playToday(C);
   });
 }
 
@@ -527,7 +549,12 @@ function vsView(C, a, b) {
 // ---------------------------------------------------------------- the field's numbers
 function statsView(C, keep = false) {
   ui.statsWho[C.gid] = "";
-  shell(C.g, "The numbers", leagueStatsBody(C.g, C.Ms, C.members), { back: `#league/${C.gid}`, runs: C.runs, keepScroll: keep });
+  const Sx = C.Ms.length ? standingsFor(C.g, C.Ms, C.members, C.kind) : { rows: [] };
+  const vs = h2hPair(C, Sx);
+  const doors = C.Ms.length ? `<div class="list">
+      <a href="#league/${C.gid}/table/${C.kind}"><div><div class="name">The whole table</div><div class="muted small">${esc(FORMAT_NAMES[C.kind])}, every column</div></div><span class="chev">›</span></a>
+      ${vs ? `<a href="${vs.href}"><div><div class="name">Head to head</div><div class="muted small">${esc(vs.sub)}</div></div><span class="chev">›</span></a>` : ""}</div>` : "";
+  shell(C.g, C.g.name, doors + leagueStatsBody(C.g, C.Ms, C.members), { back: "#leagues", runs: C.runs, keepScroll: keep, seg: "stats" });
   bind(async ev => {
     if (await common(C, ev)) return;
     const b = ev.target.closest("[data-act]");
@@ -555,15 +582,16 @@ function adminView(C) {
       <a class="t" href="#review/${r.id}"><b>${esc(shortDate(r.date))} · ${esc(roundClub(r))}</b><span>${esc([roundLoop(r), plural(r.entries.length, "player")].filter(Boolean).join(" · "))}</span></a>
       ${canToggle ? `<button class="btn small ${on ? "" : "primary"}" data-act="toggle-round" data-rid="${r.id}" data-on="${on ? 0 : 1}">${on ? "Out" : "Add"}</button>` : `<span class="chev">›</span>`}</div>`;
   };
-  shell(g, runs ? "Running the society" : "This society", `
+  const preview = C.Ms.length ? (() => { const Sx = standingsFor(g, C.Ms, C.members, C.kind); return `<aside class="deskside"><div class="caps muted">The board, as members see it</div><div class="rows lboard">${Sx.rows.slice(0, 12).map(r => boardRow(C, r, null, Sx)).join("")}</div></aside>`; })() : "";
+  shell(g, runs ? "Settings" : "This society", `<div class="${onDesk() ? "dgrid" : ""}"><div>
     ${open.length ? `${sect("On the go")}<div class="rows">${open.map(r => `<a class="hrow" href="${resumeHash(r)}"><span class="t"><b>${esc(r.name)}</b><span>${esc(roundWhere(r))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>` : ""}
     ${sect("Cards in this society")}
     ${inL.length ? `<div class="rows">${inL.map(r => roundRow(r, true)).join("")}</div>` : `<p class="muted small" style="margin:4px 4px 10px">Nothing yet. Add a finished round below, or start a new one.</p>`}
-    <button class="btn primary big" data-act="new-in-league">Start a round in this society</button>
+    <button class="btn primary big" data-act="new-in-league">Start today's card</button>
     ${sect("Add a round")}
     ${rest.length ? `${rest.length > 6 ? `<input id="rq" class="search" placeholder="Search by date, course or player" autocomplete="off">` : ""}<div class="rows" id="rlist">${rest.map(r => roundRow(r, false)).join("")}</div>`
       : `<p class="muted small" style="margin:4px 4px 10px">Every finished round you played is already in this society.</p>`}
-    ${settingsBody(C, formats)}`, { back: `#league/${gid}`, runs });
+    ${settingsBody(C, formats)}</div>${onDesk() ? preview : ""}</div>`, { back: `#league/${gid}`, runs, wide: onDesk() });
   wireSettings(C);
 }
 
@@ -658,7 +686,7 @@ async function wireSettings(C) {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     const act = b.dataset.act;
-    if (act === "new-in-league") { S.setSetting("lastLeague", gid); return go("#new"); }
+    if (act === "new-in-league") return playToday(C);
     if (act === "icon-clear") { g.icon = null; S.saveLeague(g); toast("Icon removed"); return league(gid, "admin"); }
     if (act === "toggle-round") { S.setLeagueRound(gid, b.dataset.rid, b.dataset.on === "1"); return league(gid, "admin"); }
     if (act === "merge") {
@@ -732,6 +760,9 @@ async function common(C, ev) {
   if (!b) return false;
   const act = b.dataset.act;
   if (act === "invite") { await inviteSheet(C.g); return true; }
+  if (act === "lgsettings") { go(`#league/${C.gid}/admin`); return true; }
+  if (act === "play-today") { playToday(C); return true; }
+  if (act === "dayjoin") { const { joinDay } = await import("./together.js"); joinDay(b.dataset.rid); return true; }
   if (act === "share-board") { await boardShare(C.g); return true; }
   if (act === "lgmenu") {
     const v = await sheet({ title: C.g.name, body: `<div class="list lmenu">${menuItems(C).map(([href, icon, name, sub]) => `<button data-sheet="${esc(href)}">
@@ -755,5 +786,28 @@ export function league(gid, view, a, b, keep = false) {
   if (view === "vs") return vsView(C, a, b);
   if (view === "stats") return statsView(C);
   if (view === "admin") return adminView(C);
+  if (view === "members") return membersView(C);
   return boardView(C, keep);
+}
+
+/** The society's day: its scoring picks the format, then the course; the card id is the same on every phone. */
+function playToday(C) {
+  const f = C.formats[0] === "stroke" || C.formats[0] === "gpstroke" ? "stroke" : "stableford";
+  S.setSetting("lastFormat", f);
+  ui.dayLeague = C.gid;
+  go("#new");
+}
+
+/** Who is in it, claims to confirm, invite links: the people side of a society, on a page of its own. */
+function membersView(C) {
+  const { g, gid, runs } = C;
+  shell(g, g.name, `
+    ${A.signedIn() ? `<div class="card" id="members"><p class="muted small">Loading…</p></div>` : `<p class="muted center">Sign in to see the members.</p>`}
+    <button class="btn wide" data-act="invite">${ICONS.friend} Invite people</button>
+    ${runs && C.members.length > 1 ? `<details class="card fold"><summary>Two spellings of one person?</summary>
+      <p class="muted small">Merge them: every round, score and course handicap moves to the kept name, and the old spelling becomes an alias.</p>
+      <div class="merge"><select id="mkeep">${C.members.map(m => `<option value="${m}">${esc(nameIn(C, m))}</option>`).join("")}</select><span>←</span><select id="mdrop">${C.members.map((m, i) => `<option value="${m}" ${i === 1 ? "selected" : ""}>${esc(nameIn(C, m))}</option>`).join("")}</select></div>
+      <button class="btn small" data-act="merge" style="margin-top:8px">Merge into the first name</button></details>` : ""}
+    ${runs && A.signedIn() ? `${sect("Invite links")}<div class="card" id="invites"><p class="muted small">Loading…</p></div>` : ""}`, { runs, seg: "members" });
+  wireSettings(C);
 }

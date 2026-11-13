@@ -224,7 +224,8 @@ function fieldStats(St, nines = "", gid = "", meId = null) {
     </div>`;
 }
 
-function playerStats(St, p, nines = "", gid = "", cards = []) {
+function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
+  const want = k => !only || only.includes(k);
   const R = p.rest, one = p.played === 1, first = firstName(p.name);
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
   const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span><span class="muted">${value} · ${esc(whereName(r.where))} · ${esc(shortDate(r.date))}</span></a>` : "";
@@ -246,14 +247,15 @@ function playerStats(St, p, nines = "", gid = "", cards = []) {
     <p class="muted small" style="margin:6px 4px 0">${p.vsField === null ? "" : (p.beatOf === 1
         ? `${esc(first)} ${p.beat ? "beat" : "did not beat"} the rest of the field in the one round they have shared.`
         : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}</p>`;
-  return `
+  return `${want("core") ? `
     <div class="mecard"><div class="stats">${tile(p.played, plural(p.played, "round").split(" ")[1])}${tile(fix(p.avgPts), "avg pts")}${one ? "" : tile(p.bestPts, "best")}${p.returns ? tile(fmtToPar(Math.round(p.avgTopar)), "avg to par") : ""}${p.wins ? tile(p.wins, plural(p.wins, "win").split(" ")[1]) : ""}</div></div>
     <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(`Every hole ${esc(first)} has played in this society: ${plural(p.holes, "hole")} over ${plural(p.played, "round")}. ${esc(first)} ${birdies ? `makes ${fix(birdies / p.played)} birdies or better` : "has yet to make a birdie"} and ${fix(per(2))} pars a round.`), "corner")}
       <div class="dwrap">${donut(p.counts, `${pct(parOrBetter(p), p.holes)}%`, "par or better")}${donutKey(p.counts, p.played, "round")}</div>
       <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} · ${fmtSigned(p.vspar, 2)} a hole against par</p></div>
     ${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this society on the right, over the ${plural(p.played, "round")} they played together. The green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixedLengths(p.rounds) ? " This society mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
-    ${vsField}
-    ${rivalsBlock(St, p, gid, cards)}
+    ${vsField}` : ""}
+    ${want("rivals") ? rivalsBlock(St, p, gid, cards) : ""}
+    ${want("core") ? `
     ${one ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left: ${esc(first)}'s points ${mixedLengths(p.rounds) ? "a hole, because this society mixes nines and eighteens" : "in each round"}. The grey column behind a bar is what everyone else in the society scored that day. Tap a bar for that card.`)}${formChart(p.rounds)}`}
     ${one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear once ${esc(first)} has played a second round here.</p>` : `${h2tip("Over more than one round", `<p><b>Consistency</b> is how far a typical round sits either side of their average. <b>Form</b> is the last three rounds against every round. <b>Trend</b> compares the first half of their rounds with the second half. <b>Streak</b> counts the latest rounds in a row where they beat the rest of the field.</p>
       <p><b>Finishing</b> splits a round in two and gives the points a hole in each half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>`)}<div class="card">
@@ -267,28 +269,49 @@ function playerStats(St, p, nines = "", gid = "", cards = []) {
       ${line("Where they finish", `${ordinal(Math.round(p.avgPlace))} on average in this society${p.podiums ? `; ${p.podiums} of their ${plural(p.played, "round")} were in the top three` : ""}`)}
       ${p.penalties ? line("Penalty strokes", String(p.penalties)) : ""}
       ${p.counted10 ? line(`Holes counted ${NO_SCORE}`, String(p.counted10)) : ""}
-    </div>`}
-    ${sgLeague(cards, p.id)}
-    ${p.statline.any ? `${h2tip("Putts, fairways and the rest", `${STATS_TIP}<p>Set against the rest of the society, each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>`)}${extrasCompare(p, first)}` : ""}
-    ${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
+    </div>`}` : ""}
+    ${want("sg") ? sgLeague(cards, p.id, !gid) : ""}
+    ${want("extras") && p.statline.any ? `${h2tip("Putts, fairways and the rest", `${STATS_TIP}<p>Set against the rest of the society, each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>`)}${extrasCompare(p, first)}` : ""}
+    ${want("core") ? `${h2tip("Par 3s, 4s and 5s", parTableTip(esc(first)))}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
-    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${p.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>
-    ${nines}
-    <h2>${esc(first)} in this society</h2>
+    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${p.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>` : ""}
+    ${want("nines") ? nines : ""}
+    ${want("core") ? `<h2>${gid ? `${esc(first)} in this society` : "Records"}</h2>
     <div class="card">
       ${rec("Best round", p.bestRound, p.bestRound ? `${p.bestRound.pts} pts` : "")}
       ${rec("Best against par", p.lowRound, p.lowRound ? `${p.lowRound.gross} (${fmtToPar(p.lowRound.topar)})` : "")}
       ${rec("Most birdies", p.mostBirdies && p.mostBirdies.birdies > 1 ? p.mostBirdies : null, p.mostBirdies ? plural(p.mostBirdies.birdies, "birdie") : "")}
       ${one ? "" : line("Best and worst", `${p.bestPts} points at best, ${p.worstPts} at worst`)}
-    </div>`;
+    </div>` : ""}`;
 }
 
-function sgLeague(cards, pid) {
+// ---------------------------------------------------------------- my own game, across every round I played
+/** Every finished round with my seat on it, computed so my seat answers to my identity. */
+export function myGame() {
+  const meId = S.myAccount() || S.state.settings.meId;
+  const rounds = S.myRounds().filter(r => r.status === "done" && r.format !== "scramble");
+  const Ms = rounds.map(r => safeCompute(compute, r, true)).filter(Boolean);
+  const St = leagueStats(Ms, meId ? [meId] : []);
+  const p = St.players.find(x => x.id === meId) || null;
+  return { meId, rounds, Ms, St, p };
+}
+
+/** One topic of my game: scoring, extras, sg, nines or h2h. */
+export function myGameBody(topic) {
+  const { rounds, Ms, St, p } = myGame();
+  if (!p) return `<p class="muted center" style="margin:30px 0">Finish a round and your numbers start here.</p>`;
+  const parts = { scoring: ["core"], extras: ["extras"], sg: ["sg"], nines: ["nines"], h2h: ["rivals"] }[topic] || ["core"];
+  const nines = topic === "nines" ? ninesPlayerBlock(rounds, p.id, "You") || `<p class="muted center">No loop walked yet.</p>` : "";
+  const body = playerStats(St, p, nines, "", leagueCards(Ms), parts);
+  return `<div class="statsbody">${body.trim() || `<p class="muted center" style="margin:30px 0">Nothing here yet.</p>`}</div>`;
+}
+
+function sgLeague(cards, pid, mine = false) {
   if (!cards.length) return "";
   const sg = strokesGained(cards, pid);
   if (sg.total === null || !sg.holes) return "";
-  return `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sg, "the rest of this society")}`;
+  return `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sg, mine ? "everyone you played with" : "the rest of this society")}`;
 }
 
 function rivalVerdict(r, me, them) {
@@ -453,7 +476,7 @@ export function leagueStatsBody(g, Ms, members) {
   if (!St.rounds.length) return `<p class="muted center" style="margin:30px 0">No finished rounds in this society yet.</p>`;
   const mine = S.me();
   const body = fieldStats(St, ninesFieldBlock(g.id, leagueRounds(g.id), mine), g.id, mine && mine.id);
-  return `<div class="statsbody">${body}<a class="btn" href="#leagueimages/${g.id}" style="margin-top:16px">Make these as images ›</a></div>`;
+  return `<div class="statsbody">${body}</div>`;
 }
 
 /** One player's season in this league, for their own screen. */

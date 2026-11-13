@@ -12,8 +12,12 @@ import { home } from "./screens/home.js";
 const onHome = () => !location.hash || location.hash === "#home";
 
 // a redraw is rude in the middle of typing, scoring, or a sheet full of rendered images
+// the score screen takes another scorer's numbers too, but never under a thumb that is still tapping
+let lastTap = 0;
+document.addEventListener("pointerdown", () => { lastTap = Date.now(); }, true);
 const undisturbed = () => !(document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName))
-  && !(document.querySelector(".thumbs, .progress, .sheet-wrap") || location.hash.startsWith("#score/") || location.hash.startsWith("#join/"));
+  && !(document.querySelector(".thumbs, .progress, .sheet-wrap") || location.hash.startsWith("#join/"))
+  && !(location.hash.startsWith("#score/") && Date.now() - lastTap < 2500);
 
 // other phones' changes: redraw the current screen
 let lastSyncStatus = Y.sync.status;
@@ -42,6 +46,8 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 
 applyBrand();
 A.onChange(applyBrand);
+A.onChange(s => S.takeAccountKeep(s.account));
+S.takeAccountKeep(A.account());
 
 // What is waiting is asked for after every sync; the home screen and the bell redraw when it changes.
 N.onChange(() => { if (onHome() || location.hash === "#updates") route(); else { const b = document.querySelector(".top .iconbtn[href='#updates']"); if (b) route(); } });

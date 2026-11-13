@@ -5,14 +5,15 @@ import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
 import * as Y from "../sync.js";
-import { page, bind, esc, go, toast, plural, firstName, fmtDate, ago, courseBy, courseTitle, ICONS, emptyState } from "../ui.js";
+import { page, bind, esc, go, toast, plural, firstName, fmtDate, ago, courseBy, courseTitle, ICONS, emptyState, resumeHash } from "../ui.js";
 
 const ICON_OF = { round_added: "card", round_shared: "card", card_public: "link", league_invite: "mail", league_joined: "users", league_round: "trophy",
-  claim_pending: "shield", claim_made: "shield", claim_confirmed: "check", friend_request: "friend", friend_accepted: "people" };
+  claim_pending: "shield", claim_made: "shield", claim_confirmed: "check", friend_request: "friend", friend_accepted: "people", round_seated: "golf", seat_proposed: "golf" };
 
 /** Where tapping a line goes. */
 function hrefOf(n) {
   if (["round_added", "round_shared", "card_public"].includes(n.kind)) return S.getRound(n.round_id) ? `#review/${n.round_id}` : null;
+  if (n.kind === "round_seated") return S.getRound(n.round_id) ? resumeHash(S.getRound(n.round_id)) : null;
   if (["league_joined", "league_round", "claim_pending", "claim_made", "claim_confirmed"].includes(n.kind)) return n.league_id ? `#league/${n.league_id}` : null;
   if (["friend_request", "friend_accepted"].includes(n.kind)) return n.account_id ? `#person/${n.account_id}` : null;
   return null;
@@ -35,6 +36,8 @@ function textOf(n) {
     case "claim_confirmed": return `You are now <b>${esc(n.payload.name || "yourself")}</b> in ${esc(n.league_name)}`;
     case "friend_request": return `<b>${esc(n.name || who)}</b> wants to be your friend`;
     case "friend_accepted": return `<b>${esc(n.name || who)}</b> accepted your friend request`;
+    case "round_seated": return `<b>${who}</b> put you on their card: ${where}`;
+    case "seat_proposed": return `<b>${who}</b> thinks you were on their card at ${where}${n.date ? `, ${esc(fmtDate(n.date))}` : ""}`;
     default: return esc(n.kind);
   }
 }
@@ -44,6 +47,7 @@ export function noteLine(n, compact = false) {
   const key = N.keyOf(n);
   const acts = n.kind === "league_invite" ? `<div class="btnrow"><button class="btn small primary" data-act="join" data-token="${esc(n.token)}" data-key="${esc(key)}">Join</button><button class="btn small" data-act="decline-invite" data-token="${esc(n.token)}" data-key="${esc(key)}">No thanks</button></div>`
     : n.kind === "friend_request" ? `<div class="btnrow"><button class="btn small primary" data-act="accept" data-id="${esc(n.account_id)}" data-key="${esc(key)}">Accept</button><button class="btn small" data-act="decline" data-id="${esc(n.account_id)}" data-key="${esc(key)}">No</button></div>`
+    : n.kind === "seat_proposed" ? `<div class="btnrow"><button class="btn small primary" data-act="seat-yes" data-round="${esc(n.round_id)}" data-seat="${esc(n.seat)}" data-key="${esc(key)}">That's me</button><button class="btn small" data-act="seat-no" data-round="${esc(n.round_id)}" data-seat="${esc(n.seat)}" data-key="${esc(key)}">Not me</button></div>`
     : n.kind === "claim_pending" ? `<div class="btnrow"><button class="btn small primary" data-act="confirm" data-league="${esc(n.league_id)}" data-id="${esc(n.claimant)}" data-key="${esc(key)}">Confirm</button><a class="btn small" href="#league/${esc(n.league_id)}">Look</a></div>` : "";
   const href = hrefOf(n);
   return `<${href ? "a" : "div"} class="note ${n.seen ? "" : "unread"}" ${href ? `href="${href}" data-act="open" data-key="${esc(key)}"` : ""}>
@@ -74,6 +78,10 @@ export function updates() {
       if (act === "accept") { await F.accept(b.dataset.id); N.drop(key); toast("You are now friends"); }
       if (act === "decline") { await F.decline(b.dataset.id); N.drop(key); }
       if (act === "confirm") { await F.confirmClaim(b.dataset.league, b.dataset.id); N.drop(key); toast("Confirmed"); await Y.pull(); }
+      if (act === "seat-yes" || act === "seat-no") {
+        await A.api("/account/seats/answer", { round: b.dataset.round, seat: b.dataset.seat, yes: act === "seat-yes" });
+        N.drop(key); toast(act === "seat-yes" ? "On your card now" : "Taken off"); await Y.resync();
+      }
     } catch (e) { toast(e.message, 5000); }
     updates();
   });

@@ -62,11 +62,11 @@ export async function shop(state) {
     toast("Thank you. It is yours, on every phone you sign in on.", 5000);
     return go("#shop");
   }
-  if (!A.account()) return page("Shop", `<div class="banner"><a href="#welcome">Sign in</a> first: what you buy follows your account to every phone.</div>`, { back: "", tabs: "shop" });
-  page("Shop", `<p class="muted center" style="margin-top:30px">Loading…</p>`, { back: "", tabs: "shop" });
+  if (!A.account()) return page("Shop", `<div class="banner"><a href="#welcome">Sign in</a> first: what you buy follows your account to every phone.</div>`, { back: "#me", bell: false });
+  page("Shop", `<p class="muted center" style="margin-top:30px">Loading…</p>`, { back: "#me", bell: false });
   await A.recheck(0);   // opened *because* something may have just become theirs: read the account, not the cache
   let cat;
-  try { cat = await catalogue(true); } catch (e) { return page("Shop", `<div class="banner warn">${esc(e.message)}</div>`, { back: "", tabs: "shop" }); }
+  try { cat = await catalogue(true); } catch (e) { return page("Shop", `<div class="banner warn">${esc(e.message)}</div>`, { back: "#me", bell: false }); }
   const D = previewData();
   const all = cat.skus.some(c => (c.sku === "pass" || c.sku === "themes") && c.owned);
   const item = sku => cat.skus.find(c => c.sku === sku);
@@ -117,7 +117,7 @@ export async function shop(state) {
       <div class="body row"><button class="plain" data-act="peek" data-sku="themes"><div class="name">${esc(bundle.name)}</div><div class="muted small">${esc(bundle.blurb)}</div><div class="peek">See all ${DATA.themes.length} ›</div></button>
         <button class="btn small primary" data-act="buy" data-sku="themes" ${cat.stripe ? "" : "disabled"}>${eur(bundle.price)}</button></div></div>
     ${colls.length ? `<div class="shopthemes colls">${colls.map(collHtml).join("")}</div>` : ""}
-    </div>`}`, { back: "", tabs: "shop", sub: "Bought once, yours on every phone" });
+    </div>`}`, { back: "#me", bell: false, sub: "Bought once, yours on every phone" });
 
   showTab();
   bind(async ev => {
@@ -148,7 +148,7 @@ function everything(cat) {
       <div class="live">Every theme, the full boards and cards, every way of ranking a season, and the mark gone. There is nothing here left to sell you.</div></div>
     <p class="muted small shopintro">The looks are in <a href="#me/look">Appearance</a>; the images screen of any round or society offers the full set.</p>
     ${cat.open ? "" : `<p class="muted small shopline">Nothing is gated on this backend yet in any case.</p>`}`,
-    { back: "", tabs: "shop", sub: "Bought once, yours on every phone" });
+    { back: "#me", bell: false, sub: "Bought once, yours on every phone" });
 }
 
 /** Hides every block that is not on the chosen tab; the All tab shows the lot. The hash follows, so the tab survives a reload. */

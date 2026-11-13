@@ -26,7 +26,7 @@ function load() {
   }
   s = s || {};
   const st = { players: s.players || [], rounds: s.rounds || [], leagues: s.leagues || [], leagueRounds: s.leagueRounds || [],
-    leagueMembers: s.leagueMembers || [], roundShares: s.roundShares || [],
+    leagueMembers: s.leagueMembers || [], roundShares: s.roundShares || [], roundMembers: s.roundMembers || [], bag: s.bag || [],
     courses: s.courses || [], pch: s.pch || [], orphanScores: s.orphanScores || [], orphanStats: s.orphanStats || [], held: s.held || [], quarantine: s.quarantine || [],
     settings: s.settings || {} };
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
@@ -44,7 +44,13 @@ function load() {
       e.statsTs = e.statsTs || e.scores.map(() => null);
       e.trackStats = !!e.trackStats;
       e.updated_at = e.updated_at || r.updated_at;
+      // a seat from before seats existed: its contact is its id, and its account is whoever that contact was linked to
+      if (!e.contactId) e.contactId = e.playerId;
+      if (e.accountId === undefined) { const p = st.players.find(x => x.id === e.contactId); e.accountId = (p && p.linkedAccount) || null; }
+      e.role = e.role || "player";
+      e.members = e.members || [];
     }
+    r.format = r.format || "stableford";
   }
   return st;
 }
@@ -446,8 +452,11 @@ export function rounds() {
   return live(state.rounds).filter(r => !r.stub).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.created || "").localeCompare(a.created || ""));
 }
 
-export function createRound({ course, name, date, defaultTee, allowance, brand = null }) {
-  const r = { id: uid(), owner: myAccount(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup", brand,
+export const ROUND_FORMATS = ["stableford", "stroke", "match", "scramble"];
+
+export function createRound({ course, name, date, defaultTee, allowance, brand = null, format = "stableford", leagueId = null, id = null }) {
+  const r = { id: id || uid(), owner: myAccount(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup", brand,
+    format: ROUND_FORMATS.includes(format) ? format : "stableford", leagueId, live: false,
     hole: 0, entries: [], removed: [], created: now(), deleted: false };
   state.rounds.unshift(r);
   touch("rounds", r);
@@ -508,8 +517,32 @@ export function setTrackStats(r, e, on) {
  */
 export function statsFor(rid) {
   const per = (state.settings.statsRound || {})[rid];
-  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, !!(per && per[k])]));
+  if (per) return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, !!per[k]]));
+  // a card shows the extras this golfer keeps; a guest switched on by a scorer who keeps nothing gets all of them
+  const k = myKeep();
+  return Object.fromEntries(STAT_SWITCH_KEYS.map(x => [x, keepsAny(k) ? !!k[x] : true]));
 }
+
+// ---------------------------------------------------------------- which extras I keep: one setting, on the account
+export const KEEP_PRESETS = {
+  score: {}, putts: { putts: true }, all: { putts: true, fairway: true, bunker: true, penaltyShots: true },
+};
+export const keepsAny = k => !!k && STAT_SWITCH_KEYS.some(x => k[x]);
+export function myKeep() { const k = state.settings.keep; return k && typeof k === "object" ? k : null; }
+export function setMyKeep(k) { state.settings.keep = k || {}; save(); }
+/** Which preset a set of kinds is, or "choose" when it is none of them. */
+export function keepPreset(k) {
+  for (const [name, p] of Object.entries(KEEP_PRESETS)) if (STAT_SWITCH_KEYS.every(x => !!(k || {})[x] === !!p[x])) return name;
+  return "choose";
+}
+/** The account's own answer wins over whatever this phone last had. */
+export function takeAccountKeep(account) {
+  if (account && account.keep && JSON.stringify(account.keep) !== JSON.stringify(state.settings.keep)) { state.settings.keep = account.keep; save(); }
+  if (account && account.units && account.units !== state.settings.units) { state.settings.units = account.units; save(); }
+}
+export const units = () => state.settings.units === "yd" ? "yd" : "m";
+export const lengthIn = m => m === null || m === undefined ? null : units() === "yd" ? Math.round(m / 0.9144) : Math.round(m);
+export const lengthOut = v => v === null || v === undefined || v === "" ? null : units() === "yd" ? Math.round(Number(v) * 0.9144 * 10) / 10 : Number(v);
 
 export function setStatsFor(rid, kinds) {
   state.settings.statsRound = state.settings.statsRound || {};
@@ -565,7 +598,7 @@ export function deleteRound(id) {
 }
 
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */
-export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1, trackStats = null }) {
+export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1, trackStats = null, side = null, accountId = undefined }) {
   const known = findPlayer(name);  // a scan of an old card must not rewrite the index they play off today
   const stale = known && round.date && lastPlayedDate(known.id, round.id) > round.date;
   const p = upsertPlayer(name, stale ? null : hi, gender);
@@ -576,6 +609,10 @@ export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, grou
     stats: ghost ? ghost.stats : new Array(n).fill(null), statsTs: ghost ? ghost.statsTs : new Array(n).fill(null),
     // Whatever the card already does: nothing on a card nobody has asked, and keeping on one that has.
     trackStats: trackStats === null ? (ghost ? !!ghost.trackStats : cardKeepsStats(round)) : !!trackStats,
+    // The account goes on the seat when this contact is that golfer (me, or a friend I added from the list);
+    // the server keeps it only with their consent and otherwise holds it as a proposal.
+    accountId: accountId !== undefined ? accountId : (p.linkedAccount || (ghost && ghost.accountId) || null), proposedAccount: null,
+    contactId: p.id, side, role: "player", members: [],
     penalties: [], updated_at: now() };
   round.entries.push(e);
   mark("round_entries", `${round.id}|${e.playerId}`, e.updated_at);
@@ -591,6 +628,63 @@ export function removeEntry(r, i) {
   r.removed.push(e);
   touch("round_entries", e, `${r.id}|${e.playerId}`);
   save();
+}
+
+/**
+ * A scramble team: a seat that scores, whose members are seats that do not. The team's handicap is worked out
+ * from its members (model.teamHandicap) and kept on the seat as its course handicap.
+ */
+export function addTeam(round, n, { name, members = [], tee, courseHandicap = null, hi = 0, gender = "m", group = 1 }) {
+  const id = "t" + uid().replace(/-/g, "").slice(0, 15);
+  const e = { playerId: id, name, hi, tee, gender, courseHandicap, group, fromHole: 1, scores: new Array(n).fill(null), scoreTs: new Array(n).fill(null),
+    stats: new Array(n).fill(null), statsTs: new Array(n).fill(null), trackStats: false, accountId: null, proposedAccount: null, contactId: null,
+    side: null, role: "team", members: [...members], penalties: [], updated_at: now() };
+  round.entries.push(e);
+  mark("round_entries", `${round.id}|${id}`, e.updated_at);
+  for (const m of round.entries.filter(x => members.includes(x.playerId))) { m.role = "member"; m.side = id; saveEntry(round, m); }
+  save();
+  return e;
+}
+
+/** Puts members into a team (or none), keeping each member seat's side pointing at its team. */
+export function setTeamMembers(round, team, members) {
+  for (const m of round.entries) {
+    if (m.role === "team") continue;
+    const inIt = members.includes(m.playerId);
+    if (inIt && (m.role !== "member" || m.side !== team.playerId)) { m.role = "member"; m.side = team.playerId; saveEntry(round, m); }
+    if (!inIt && m.side === team.playerId) { m.role = "player"; m.side = null; saveEntry(round, m); }
+  }
+  team.members = [...members];
+  saveEntry(round, team);
+}
+
+export function setSide(round, e, side) { e.side = side; saveEntry(round, e); }
+
+/** The golfer a seat is: their account when they hold it, otherwise the contact's identity. */
+export function seatIdentity(e) {
+  return e.accountId || identityOf(e.contactId || e.playerId);
+}
+
+/** Seats that play: a scramble's teams and everyone in a round of any other format; never a team's members. */
+export const scoringSeats = r => r.entries.filter(e => e.role !== "member");
+
+/** Whether this phone's account may score this card: the owner, or a member the server let on. */
+export function isScorer(r) {
+  const me = myAccount();
+  if (!r) return false;
+  if (!me || !r.owner || r.owner === me) return true;
+  return state.roundMembers.some(m => !m.deleted && m.round_id === r.id && m.account_id === me);
+}
+
+/** The seat on this card that is me, if any. */
+export function mySeat(r) {
+  const me = myAccount(), mine = state.settings.meId;
+  return (r.entries || []).find(e => (me && e.accountId === me) || (!e.accountId && mine && e.contactId === mine)) || null;
+}
+
+/** Rounds I played: a seat holds my account. Cards others scored for me count too. */
+export function myRounds() {
+  return rounds().filter(r => !!mySeat(r));
 }
 
 /** What model.compute expects from a stored round. */
@@ -642,14 +736,18 @@ export function toModelRound(round, collapse = false) {
   const seen = new Set();
   const entries = [];
   for (const e of round.entries) {
-    const id = collapse ? identityOf(e.playerId) : e.playerId;
+    if (e.role === "member") continue;                         // a scramble team scores; its members do not
+    if (collapse && e.role === "team") continue;               // and a team is nobody's personal round
+    const id = collapse ? seatIdentity(e) : e.playerId;
     if (seen.has(id)) continue;   // two contacts for one golfer on one card: a data error, and not two players
     seen.add(id);
-    entries.push({ id, name: collapse ? identityName(id, e.name) : e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
-      courseHandicap: e.courseHandicap ?? getPch(e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1,
-      stats: e.stats || [], trackStats: !!e.trackStats });
+    entries.push({ id, name: collapse && !e.accountId ? identityName(id, e.name) : e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
+      courseHandicap: e.courseHandicap ?? getPch(e.contactId || e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1,
+      stats: e.stats || [], trackStats: !!e.trackStats, side: e.side || null, role: e.role || "player",
+      members: (e.members || []).map(m => (round.entries.find(x => x.playerId === m) || {}).name).filter(Boolean) });
   }
   return {
+    format: round.format || "stableford",
     name: round.name, date: round.date, defaultTee: round.defaultTee, allowance: round.allowance,
     final: round.status === "done",
     entries,
@@ -676,10 +774,10 @@ export function sharesOf(roundId) {
 
 /** Whether this phone's account was on a round's card, or created it. What a share sheet and a delete button ask. */
 export function iPlayed(r) {
-  const me = myAccount(), mine = state.settings.meId;
+  const me = myAccount();
   if (!r) return false;
   if (me && r.owner === me) return true;
-  return r.entries.some(e => (mine && e.playerId === mine) || (me && identityOf(e.playerId) === me));
+  return !!mySeat(r) || (!!me && state.roundMembers.some(m => !m.deleted && m.round_id === r.id && m.account_id === me));
 }
 
 /** My membership row in one league, which is what says whether I have claimed a player in it. */
@@ -725,6 +823,41 @@ export function setLeagueRound(leagueId, roundId, attached) {
   else x.deleted = !attached;
   touch("league_rounds", x, `${leagueId}|${roundId}`);
   save();
+}
+
+// ---------------------------------------------------------------- my bag: club distances, in metres, mine alone
+export const STARTER_BAG = ["Driver", "3 wood", "5 wood", "4 hybrid", "5 iron", "6 iron", "7 iron", "8 iron", "9 iron", "PW", "50°", "54°", "58°"];
+
+export function bag() {
+  const me = myAccount() || "";
+  return state.bag.filter(x => !x.deleted && x.account_id === me).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+}
+
+export function saveClub(c) {
+  const me = myAccount() || "";
+  let x = state.bag.find(y => y.account_id === me && y.club_id === c.club_id);
+  if (!x) { x = { account_id: me, club_id: c.club_id || uid().slice(0, 8), deleted: false }; state.bag.push(x); }
+  Object.assign(x, { club: c.club, carry_m: c.carry_m ?? null, total_m: c.total_m ?? null, note: c.note || "", sort: c.sort ?? x.sort ?? bag().length, deleted: false });
+  touch("club_bag", x, `${me}|${x.club_id}`);
+  save();
+  return x;
+}
+
+export function removeClub(clubId) {
+  const me = myAccount() || "";
+  const x = state.bag.find(y => y.account_id === me && y.club_id === clubId);
+  if (!x) return;
+  x.deleted = true;
+  touch("club_bag", x, `${me}|${x.club_id}`);
+  save();
+}
+
+/** The club whose carry is nearest a length, for a par 3. */
+export function nearestClub(metres) {
+  if (!metres) return null;
+  let best = null;
+  for (const c of bag()) if (c.carry_m && (!best || Math.abs(c.carry_m - metres) < Math.abs(best.carry_m - metres))) best = c;
+  return best;
 }
 
 // ---------------------------------------------------------------- backup

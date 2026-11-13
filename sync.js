@@ -55,12 +55,14 @@ const TABLES = {
   rounds: {
     collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, owner_account: r.owner || null, name: r.name, date: r.date || null, course: r.course,
       default_tee: r.defaultTee, allowance: r.allowance || 100, status: r.status, hole: r.hole || 0, created: r.created || null, brand: r.brand || null,
+      format: r.format || "stableford", league_id: r.leagueId || null, live: !!r.live,
       deleted: !!r.deleted, updated_at: r.updated_at, device_id: dev() })),
     apply(r) {
       const mine = roundFor(r.id);
       if (mine.updated_at && !newer(r, mine)) return false;
       Object.assign(mine, { owner: r.owner_account || null, name: r.name, date: r.date, course: r.course, defaultTee: r.default_tee, allowance: r.allowance || 100,
-        status: r.status, hole: r.hole || 0, created: iso(r.created), brand: r.brand || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
+        status: r.status, hole: r.hole || 0, created: iso(r.created), brand: r.brand || null, format: r.format || "stableford", leagueId: r.league_id || null, live: !!r.live,
+        deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
       const n = holesOf(S.courseBy(mine.course));
       for (const e of [...mine.entries, ...mine.removed]) {  // entries that arrived before the header were sized at 18
         if (e.scores.length !== n) { e.scores = Array.from({ length: n }, (_, h) => e.scores[h] ?? null); e.scoreTs = Array.from({ length: n }, (_, h) => e.scoreTs[h] ?? null); }
@@ -74,17 +76,27 @@ const TABLES = {
       for (const r of S.state.rounds) for (const e of [...r.entries, ...r.removed]) {
         if (!keys.has(`${r.id}|${e.playerId}`)) continue;
         rows.push({ round_id: r.id, player_id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", course_handicap: e.courseHandicap ?? null,
-          grp: e.group || 1, from_hole: e.fromHole || 1, penalties: e.penalties || [], track_stats: !!e.trackStats, deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() });
+          grp: e.group || 1, from_hole: e.fromHole || 1, penalties: e.penalties || [], track_stats: !!e.trackStats,
+          account_id: e.accountId || null, proposed_account: e.proposedAccount || null, contact_id: e.contactId || e.playerId, side: e.side || null, role: e.role || "player", members: e.members || [],
+          deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() });
       }
       return rows;
     },
     apply(row) {
       const r = roundFor(row.round_id);
       const { e, i, j } = findEntry(r, row.player_id);
-      if (e && !newer(row, e)) return false;
+      // Who holds a seat is the server's to say (it checks consent), so it is taken even from a row that is not newer.
+      if (e && !newer(row, e)) {
+        const acct = row.account_id || null, prop = row.proposed_account || null;
+        if ((e.accountId || null) === acct && (e.proposedAccount || null) === prop) return false;
+        e.accountId = acct; e.proposedAccount = prop;
+        return true;
+      }
       const n = holesOf(S.courseBy(r.course));
       const rec = { playerId: row.player_id, name: row.name, hi: row.hi === null ? null : Number(row.hi), tee: row.tee, gender: row.gender || "m",
         courseHandicap: row.course_handicap, group: row.grp || 1, fromHole: row.from_hole || 1, penalties: row.penalties || [], trackStats: !!row.track_stats,
+        accountId: row.account_id || null, proposedAccount: row.proposed_account || null, contactId: row.contact_id || row.player_id, side: row.side || null,
+        role: row.role || "player", members: row.members || [],
         deleted: !!row.deleted, updated_at: iso(row.updated_at), dev: row.device_id, scores: e ? e.scores : new Array(n).fill(null), scoreTs: e ? e.scoreTs : new Array(n).fill(null),
         stats: e ? e.stats : new Array(n).fill(null), statsTs: e ? e.statsTs : new Array(n).fill(null) };
       if (i >= 0) r.entries.splice(i, 1);
@@ -171,13 +183,26 @@ const TABLES = {
     apply: r => lww(S.state.roundShares, x => x.round_id === r.round_id && x.account_id === r.account_id,
       { round_id: r.round_id, account_id: r.account_id, shared_by: r.shared_by || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
+  // Who may score a card. Read only: the Worker writes it as seats are taken and invites spent.
+  round_members: {
+    collect: () => [],
+    apply: r => lww(S.state.roundMembers, x => x.round_id === r.round_id && x.account_id === r.account_id,
+      { round_id: r.round_id, account_id: r.account_id, role: r.role, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+  },
+  club_bag: {
+    collect: keys => S.state.bag.filter(x => keys.has(`${x.account_id}|${x.club_id}`)).map(x => ({ account_id: x.account_id, club_id: x.club_id, club: x.club,
+      carry_m: x.carry_m ?? null, total_m: x.total_m ?? null, note: x.note || null, sort: x.sort || 0, deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
+    apply: r => lww(S.state.bag, x => x.account_id === r.account_id && x.club_id === r.club_id, { account_id: r.account_id, club_id: r.club_id, club: r.club,
+      carry_m: r.carry_m === null ? null : Number(r.carry_m), total_m: r.total_m === null ? null : Number(r.total_m), note: r.note || "", sort: r.sort || 0,
+      deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+  },
   player_course_handicap: {
     collect: keys => S.state.pch.filter(x => keys.has(`${x.player_id}|${x.course}|${x.tee}`)).map(x => ({ player_id: x.player_id, course: x.course, tee: x.tee, ch: x.ch ?? 0,
       deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
     apply: r => lww(S.state.pch, x => x.player_id === r.player_id && x.course === r.course && x.tee === r.tee, { player_id: r.player_id, course: r.course, tee: r.tee, ch: r.ch, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
 };
-const CONFLICT = { round_shares: "round_id,account_id", league_members: "league_id,account_id", league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", hole_stats: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
+const CONFLICT = { round_members: "round_id,account_id", club_bag: "account_id,club_id", round_shares: "round_id,account_id", league_members: "league_id,account_id", league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", hole_stats: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
 
 function lww(list, match, rec, row) {
   const i = list.findIndex(match);
@@ -221,6 +246,8 @@ function sweep(seen) {
   prune(S.state.leagueRounds, x => seen.league_rounds.has(`${x.league_id}|${x.round_id}`) || queued("league_rounds", `${x.league_id}|${x.round_id}`));
   prune(S.state.leagueMembers, x => seen.league_members.has(`${x.league_id}|${x.account_id}`));
   prune(S.state.roundShares, x => seen.round_shares.has(`${x.round_id}|${x.account_id}`));
+  prune(S.state.roundMembers, x => seen.round_members.has(`${x.round_id}|${x.account_id}`));
+  prune(S.state.bag, x => seen.club_bag.has(`${x.account_id}|${x.club_id}`) || queued("club_bag", `${x.account_id}|${x.club_id}`));
   prune(S.state.pch, x => seen.player_course_handicap.has(`${x.player_id}|${x.course}|${x.tee}`) || queued("player_course_handicap", `${x.player_id}|${x.course}|${x.tee}`));
   if (dropped) console.info(`sync: dropped ${dropped} rows this account is not sent`);
   return dropped > 0;
@@ -229,7 +256,8 @@ function sweep(seen) {
 function keyOf(table, row) {
   if (table === "league_rounds") return `${row.league_id}|${row.round_id}`;
   if (table === "league_members") return `${row.league_id}|${row.account_id}`;
-  if (table === "round_shares") return `${row.round_id}|${row.account_id}`;
+  if (table === "round_shares" || table === "round_members") return `${row.round_id}|${row.account_id}`;
+  if (table === "club_bag") return `${row.account_id}|${row.club_id}`;
   if (table === "round_entries") return `${row.round_id}|${row.player_id}`;
   if (table === "scores" || table === "hole_stats") return `${row.round_id}|${row.player_id}|${row.hole}`;
   if (table === "courses") return row.slug;
@@ -464,11 +492,14 @@ async function doPull(again = false) {
   return changed;
 }
 
+/** One card, fetched whole now: what a phone needs the moment it is let onto somebody else's card. */
+export async function fetchRound(id) { if (sync.config) await fetchRounds([id]); }
+
 /** Reads named rounds in full -- header, entries, scores, extras -- and applies them like any pull. */
 async function fetchRounds(ids) {
   for (let i = 0; i < ids.length; i += 40) {
     const part = `in.(${ids.slice(i, i + 40).map(encodeURIComponent).join(",")})`;
-    for (const [table, col] of [["rounds", "id"], ["round_entries", "round_id"], ["scores", "round_id"], ["hole_stats", "round_id"]]) {
+    for (const [table, col] of [["rounds", "id"], ["round_entries", "round_id"], ["scores", "round_id"], ["hole_stats", "round_id"], ["round_members", "round_id"]]) {
       let rows;
       try { rows = await rest(`${table}?select=*&${col}=${part}&limit=5000`); } catch (e) { console.warn("sync: fetching shared rounds", e.message); return; }
       for (const row of rows || []) TABLES[table].apply(row);
@@ -500,6 +531,59 @@ export async function resync() {
   return { players: S.players().length, rounds: S.rounds().length, leagues: S.leagues().length };
 }
 
+// ---------------------------------------------------------------- live: one card watched over a socket
+// The socket carries no data, only "it moved"; the phone then reads that one card since its last look. A phone
+// with no socket (offline, or a Worker without live rooms) falls back to pulling every 20 seconds while it watches.
+const live = { id: null, ws: null, ts: "1970", open: false, retry: 0, timer: null };
+sync.live = live;
+
+async function pullRound(id) {
+  if (!sync.config || !A.signedIn()) return false;
+  let out;
+  try { out = await A.api(`/round/${encodeURIComponent(id)}/since?ts=${encodeURIComponent(live.ts)}`); } catch (e) { return false; }
+  let changed = false;
+  const dirty = S.dirty();
+  for (const table of ["rounds", "round_entries", "scores", "hole_stats", "round_members"]) {
+    for (const row of out[table] || []) {
+      if (String(row.server_ts) > live.ts) live.ts = String(row.server_ts);
+      if ((dirty[table] || {})[keyOf(table, row)]) { S.state.held.push({ table, row }); continue; }
+      if (TABLES[table].apply(row)) changed = true;
+    }
+  }
+  if (changed) { S.afterPull(); emit({ status: true, changed: true }); }
+  return changed;
+}
+
+function connect() {
+  clearTimeout(live.timer);
+  if (!live.id || !sync.config || !A.signedIn() || typeof WebSocket === "undefined") return;
+  A.bearer().then(token => {
+    if (!token || !live.id) return;
+    const url = `${sync.config.url.replace(/^http/, "ws")}/round/${encodeURIComponent(live.id)}/live?t=${encodeURIComponent(token)}`;
+    let ws;
+    try { ws = new WebSocket(url); } catch (e) { return; }
+    live.ws = ws;
+    ws.onopen = () => { live.open = true; live.retry = 0; pullRound(live.id); };
+    ws.onmessage = ev => { if (ev.data !== "pong") pullRound(live.id); };
+    ws.onclose = () => {
+      live.open = false;
+      if (live.ws !== ws || !live.id) return;
+      live.retry = Math.min(live.retry + 1, 6);
+      live.timer = setTimeout(connect, 1000 * 2 ** live.retry);
+    };
+  });
+}
+
+/** Watch one card live (the score screen, the round page, a live board), or none. */
+export function watchRound(id) {
+  if (id === live.id) return;
+  if (live.ws) { const ws = live.ws; live.ws = null; try { ws.close(); } catch (e) { /* already */ } }
+  clearTimeout(live.timer);
+  Object.assign(live, { id: id || null, open: false, retry: 0, ts: "1970" });
+  if (id) { pullRound(id); connect(); }
+}
+
+let lastFull = 0;
 export function start() {
   sync.config = config();
   clearInterval(sync.timer);
@@ -511,7 +595,13 @@ export function start() {
   // Read as somebody else, or as nobody on the shared key: read again from the start, and drop what this account is not sent.
   if (localStorage.getItem(ACCOUNT_KEY) !== accountId()) localStorage.removeItem(CURSOR_KEY);
   pushAndPull();
-  sync.timer = setInterval(() => { if (document.visibilityState === "visible") pushAndPull(); }, 20000);
+  lastFull = Date.now();
+  // a full read every two minutes; a watched card with no socket is read on its own every twenty seconds
+  sync.timer = setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    if (Date.now() - lastFull >= 120000) { lastFull = Date.now(); pushAndPull(); }
+    else if (live.id && !live.open) { push(); pullRound(live.id); }
+  }, 20000);
 }
 
 /** Tries connection settings once; throws with the server's answer when they do not work. */
@@ -535,6 +625,12 @@ export async function roundHistory(roundId, limit = 500) {
   if (!sync.config) throw new Error("This phone is not connected to a shared database, so there is no history to read.");
   const rows = await rest(`change_log?round_id=eq.${encodeURIComponent(roundId)}&order=at.desc&limit=${limit}`);
   return (rows || []).filter(r => r.before && Object.keys(r.before).length);
+}
+
+/** Every write on one card, first ones included, oldest first: what the conflict check reads. */
+export async function roundLog(roundId) {
+  if (!sync.config) return [];
+  return (await rest(`change_log?round_id=eq.${encodeURIComponent(roundId)}&order=at.asc&limit=2000`)) || [];
 }
 
 export function joinLink(base, organiser = false) {

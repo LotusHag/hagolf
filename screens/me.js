@@ -10,6 +10,7 @@ import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, s
 import { fmtIndex, STAT_SWITCHES, STAT_SWITCH_KEYS } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
+import { keepPage, seatsPage } from "./mine.js";
 
 const row = (href, icon, title, sub = "") => `<a href="${href}"><span class="lead">${ICONS[icon]}<div><div class="name">${esc(title)}</div>${sub ? `<div class="muted small">${sub}</div>` : ""}</div></span><span class="chev">›</span></a>`;
 
@@ -22,29 +23,38 @@ export async function resyncNow() {
 
 export function me(section) {
   if (section) return SECTIONS[section] ? SECTIONS[section]() : go("#me");
-  const acct = A.account(), mine = S.me();
+  const acct = A.account();
   const st = Y.sync;
   const syncWord = st.status === "off" ? "Not connected" : st.status === "error" ? "Sync problem" : st.status === "signedout" ? "Signed out" : st.status === "syncing" ? "Syncing…" : "Synced";
+  const held = F.held();
+  const keep = S.myKeep();
+  const keepWord = { score: "Score only", putts: "Score and putts", all: "Everything", choose: STAT_SWITCHES.filter(k => (keep || {})[k.key]).map(k => k.short).join(", ") }[S.keepPreset(keep)];
+  const clubs = S.bag().length;
   page("Me", `
     ${acct ? `<div class="person">${avatar(acct.name || "?", "big")}<div class="who"><div class="name">${esc(acct.name || "No name yet")}</div>
       <div class="handle">${[acct.handle ? `@${esc(acct.handle)}` : "", acct.hi !== null && acct.hi !== undefined ? `index ${esc(fmtIndex(Number(acct.hi)))}` : "no index yet"].filter(Boolean).join(" · ")}</div></div><a class="btn small" href="#me/account">Edit</a></div>`
       : `<div class="card"><div class="muted small">Not signed in.</div><a class="btn primary" href="#welcome" style="margin-top:8px">Sign in</a></div>`}
-    ${mine ? `<div class="list">${row(`#player/${mine.id}`, "card", "My rounds", `${plural(S.roundsOf(mine.id).filter(r => r.status === "done").length, "round")} on your cards`)}</div>` : ""}
-    <h2>Settings</h2>
     <div class="list">
-      ${row("#me/updates", "bell", "Updates and notifications", N.pushState() === "granted" && S.state.settings.push ? "Push on" : "Push off")}
-      ${row("#me/privacy", "shield", "Privacy", acct ? `Found by ${acct.discoverable === "everyone" ? "everyone" : acct.discoverable === "nobody" ? "nobody" : "people in your societies"}` : "")}
-      ${row("#me/look", "sun", "Appearance", `${esc(appTheme().name)} theme`)}
-      ${row("#me/scoring", "golf", "Scoring extras", STAT_SWITCH_KEYS.every(k => S.defaultStats()[k]) ? "Everything, once a card asks" : STAT_SWITCH_KEYS.some(k => S.defaultStats()[k]) ? STAT_SWITCHES.filter(k => S.defaultStats()[k.key]).map(k => k.short).join(", ") : "Nothing")}
-      ${row("#me/courses", "flag", "Courses", `${S.courses().length} courses`)}
-      ${row("#me/data", "db", "Data and backup", "Export, import, download or delete")}
+      ${row("#bag", "golf", "My bag", clubs ? `${plural(clubs, "club")} with distances` : "Your club distances, on every hole")}
+      ${acct ? row("#people", "people", "Friends", held.incoming.length ? `${plural(held.incoming.length, "request")} waiting` : `${plural(held.friends.length, "friend")}`) : ""}
+      ${row("#me/keep", "chart", "Stats I keep", esc(keepWord || "Score only"))}
+      ${acct ? row("#me/seats", "check", "Were you on these cards?", "Cards with your name that need a yes or no") : ""}
+      ${Y.enabled() ? row("#shop", "shop", "Shop", "Looks, sheets and the season pass") : ""}
       ${acct ? row("#partners", "users", "Courses and companies", (acct.clubs || []).length ? esc(acct.clubs.map(c => c.name).join(", ")) : "Have a code? Use it here") : ""}
       ${acct && acct.admin ? row("#admin", "settings", "Operator desk", "Gifts, codes, partners and enquiries") : ""}
+    </div>
+    <h2>Settings</h2>
+    <div class="list">
+      ${row("#me/updates", "bell", "Notifications", N.pushState() === "granted" && S.state.settings.push ? "Push on" : "Push off")}
+      ${row("#me/privacy", "shield", "Privacy", acct ? `Found by ${acct.discoverable === "everyone" ? "everyone" : acct.discoverable === "nobody" ? "nobody" : "people in your societies"}` : "")}
+      ${row("#me/look", "sun", "Appearance", `${esc(appTheme().name)} theme`)}
+      ${row("#me/courses", "flag", "Courses", `${S.courses().length} courses`)}
+      ${row("#me/data", "db", "Data and backup", "Export, import, download or delete")}
       ${row("#me/backend", "settings", "Connection", `${syncWord}${st.lastPull ? " · " + st.lastPull.slice(11, 16) : ""}`)}
       ${row("#me/about", "info", "About Hagolf", `v${DATA.version.slice(4, 8)}.${DATA.version.slice(9)}`)}
     </div>
     ${acct ? `<div class="btnrow" style="margin-top:20px"><button class="btn" data-act="signout">${ICONS.logout} Sign out</button></div>` : ""}`,
-    { back: "#home", tabs: "me" });
+    { back: "", tabs: "me" });
   bind(async ev => {
     const b = ev.target.closest("[data-act=signout]");
     if (!b) return;
@@ -249,4 +259,4 @@ function about() {
     <div class="list">${row("#legal/privacy", "shield", "Privacy policy")}${row("#legal/terms", "info", "Terms")}</div>`);
 }
 
-const SECTIONS = { account, updates: updatesSettings, privacy: privacySettings, look, scoring, courses, data, club: () => go("#partners"), backend, about };
+const SECTIONS = { account, updates: updatesSettings, privacy: privacySettings, look, scoring: () => go("#me/keep"), keep: keepPage, seats: seatsPage, courses, data, club: () => go("#partners"), backend, about };

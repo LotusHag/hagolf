@@ -4,10 +4,13 @@ import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import { ui, paint, themeHere, hideToast, rememberIntent, atDoor } from "./ui.js";
-import { welcome, signin, join, add } from "./screens/gate.js";
+import { welcome, signin, join, add, getApp } from "./screens/gate.js";
 import { home } from "./screens/home.js";
 import { play, newRound, loops } from "./screens/play.js";
 import { players } from "./screens/players.js";
+import { stats, bagPage } from "./screens/mine.js";
+import { joinCard } from "./screens/together.js";
+import { liveScreen } from "./screens/live.js";
 import { score } from "./screens/score.js";
 import { review, attach } from "./screens/review.js";
 import { graphics, leagueImages } from "./screens/graphics.js";
@@ -22,11 +25,11 @@ import { privacy, terms } from "./screens/legal.js";
 import { shop } from "./screens/shop.js";
 import { partners, partner, admin, redeem } from "./screens/partner.js";
 
-const screens = { home, welcome, signin, join, add, board, card, shop, play, new: newRound, loops, players, score, review, attach, graphics,
+const screens = { home, welcome, signin, join, add, get: getApp, j: joinCard, live: liveScreen, stats, bag: bagPage, board, card, shop, play, new: newRound, loops, players, score, review, attach, graphics,
   people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan, partners, partner, admin, redeem,
   legal: which => (which === "terms" ? terms() : privacy()) };
 
-const OPEN_SCREENS = ["welcome", "signin", "board", "card", "join", "add", "legal"];
+const OPEN_SCREENS = ["welcome", "signin", "board", "card", "join", "add", "legal", "get", "live"];
 // what a course, a company or the operator runs from a laptop: past the door in any browser, signing in on the page itself
 const WEB_SCREENS = ["partner", "admin", "redeem"];
 export const gated = () => Y.enabled() && !A.signedIn();
@@ -39,7 +42,6 @@ export function route() {
   // keeps its own way through for anyone it cannot actually help. The hash is left alone, so whoever walks
   // through arrives at the screen they asked for.
   if (WEB_SCREENS.includes(name)) { paint(themeHere()); return screens[name](...args.map(decodeURIComponent)); }
-  if (atDoor() && !OPEN_SCREENS.includes(name)) return welcome();
   if (gated() && !OPEN_SCREENS.includes(name)) {
     if (name && name !== "home") rememberIntent(location.hash);   // finish the journey once signed in
     return welcome();
@@ -51,6 +53,8 @@ export function route() {
     return welcome();
   }
   paint(themeHere());
+  // the card on screen is the one watched live; anywhere else nothing is
+  Y.watchRound(["score", "review", "players"].includes(name) && args[0] ? decodeURIComponent(args[0]) : null);
   ui.expanded = name === "review" ? ui.expanded : null;
   if (name !== "review") ui.reviewOrder = {};
   if (name !== "people" && name !== "play") { ui.search = ""; ui.found = null; }

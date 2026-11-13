@@ -7,6 +7,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, isAndroid, ICONS } from "../ui.js";
 import { fmtIndex } from "../model.js";
+import { isNative, plugin } from "../native.js";
 
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
 export function landed() {
@@ -22,7 +23,6 @@ function settle(a) {
 }
 
 export function welcome() {
-  if (atDoor()) return door();
   const acct = A.account();
   if (!Y.config()) return page("Hagolf", `<div class="gate"><div class="gatemark">Hagolf</div><p class="tag">This phone is not connected to a backend.</p><a class="btn" href="#me/backend">Connect</a></div>`, { bare: true });
   if (!acct) return gate();
@@ -49,6 +49,8 @@ const ANDROID_APK = "./hagolf.apk";
  * There is no way past, by design. The screens a link opens never arrive here, so a shared card, a board or an
  * invite still opens for somebody who has no app yet; this is only the front door.
  */
+export function getApp() { return door(); }
+
 function door() {
   // Only an Android is handed the Android package, and it is handed it whatever its browser is: desktop Chrome
   // fires the same install prompt, and a browser inside another app can still take a download.
@@ -60,7 +62,7 @@ function door() {
     "ios-elsewhere": "Open it in Safari first",
     android: "Adds it to your home screen",
     "android-elsewhere": "Open it in Chrome first",
-    desktop: "Hagolf lives on the phone you carry round the course",
+    desktop: "Score on your phone; organise on this screen",
   }[kind];
   const btn = kind === "apk"
     ? `<a class="btn primary wide big" href="${esc(ANDROID_APK)}" download>Download Hagolf</a>`
@@ -74,7 +76,8 @@ function door() {
         ${btn}
         <p class="muted small center under">${under}</p>
       </div>
-      <p class="legal">Versions for the App Store and Google Play are on the way. You sign in once it is open on your phone; only your name is ever shown to other people.</p>
+      <p><a class="btn ghost wide" href="#home">Keep using it here in the browser</a></p>
+      <p class="legal">Versions for the App Store and Google Play are on the way. On a laptop, Hagolf runs your societies and tournament boards on the big screen.</p>
     </div>`, { bare: true });
   bind(ev => { if (ev.target.closest("[data-act=get]")) howTo(kind); });
 }
@@ -116,12 +119,13 @@ function gate() {
   page("Hagolf", `<div class="gate">
       <div class="gatemark">Hagolf</div>
       <p class="tag">Score rounds, keep societies with friends, make the posters.</p>
-      <div class="card"><div id="gbtn"></div>
+      <div class="card"><div id="gbtn"></div><div id="abtn"></div>
         ${ui.authMethods.includes("email") ? `<form id="signinf"><label>Email<input name="email" type="email" inputmode="email" autocapitalize="off" autocomplete="email" placeholder="you@example.com" required></label>
           <button class="btn primary wide" type="submit" style="margin-top:12px">Email me a code</button></form>` : ""}
         ${ui.signinEmail ? `<form id="codef"><p class="muted small">A code went to <b>${esc(ui.signinEmail)}</b>.</p><label>Code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="btn primary wide" type="submit" style="margin-top:12px">Sign in</button></form>` : ""}
         <p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></div>
       <p class="legal">By continuing you agree to the <a href="#legal/terms">terms</a> and the <a href="#legal/privacy">privacy policy</a>. Only your name is ever shown to other people.</p>
+      ${atDoor() ? `<p class="small"><a href="#get">Put Hagolf on this phone ›</a></p>` : ""}
     </div>`, { bare: true });
   googleButton(settle);
   const signinf = document.getElementById("signinf");
@@ -195,7 +199,9 @@ async function googleButton(settleFn, redraw = gate) {
   const m = (cfg.methods || ["google"]).join(",");
   if (m !== ui.authMethods.join(",")) { ui.authMethods = cfg.methods || ["google"]; return redraw(); }
   const none = document.getElementById("gnone");
-  if (!cfg.google) { if (none && ui.authMethods.join(",") === "google") none.hidden = false; return; }
+  const other = otherWays(cfg, settleFn);
+  // Google refuses to sign in inside an embedded web view, so the iOS app offers Apple and passkeys instead
+  if (!cfg.google || isNative()) { if (none && !other && ui.authMethods.join(",") === "google") none.hidden = false; return; }
   try { await loadGis(); } catch (e) { if (none) { none.hidden = false; none.textContent = "Google's sign-in could not be loaded. Check the connection and try again."; } return; }
   if (!document.getElementById("gbtn")) return;
   window.google.accounts.id.initialize({
@@ -207,6 +213,74 @@ async function googleButton(settleFn, redraw = gate) {
     },
   });
   window.google.accounts.id.renderButton(slot, { theme: "outline", size: "large", width: 300, text: "continue_with", shape: "pill" });
+}
+
+// Sign in with Apple, which App Store guideline 4.8 asks for beside Google: the native sheet inside the iOS app,
+// Apple's own script on the web. Offered only when /auth/config says this backend has it.
+const APPLE_JS = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
+const APPLE_LOGO = `<svg viewBox="0 0 24 24" aria-hidden="true" style="fill:currentColor;stroke:none"><path d="M16.37 1.43c0 1.14-.5 2.27-1.18 3.08-.74.9-1.99 1.57-2.99 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.57-2.27 1.2-2.98.81-.94 2.15-1.64 3.25-1.68.03.13.06.28.06.43zm4.56 15.71c-.03.07-.46 1.58-1.52 3.12-.94 1.34-1.94 2.71-3.43 2.71-1.52 0-1.9-.88-3.63-.88-1.7 0-2.3.91-3.67.91-1.38 0-2.33-1.26-3.43-2.8C4 18.38 2.96 15.57 2.96 12.92c0-4.28 2.8-6.55 5.55-6.55 1.45 0 2.68.95 3.6.95.87 0 2.22-1.01 3.9-1.01.62 0 2.89.06 4.38 2.19-.13.09-2.38 1.37-2.38 4.19 0 3.26 2.85 4.42 2.95 4.45z"/></svg>`;
+let ajsLoading = null;
+function loadAppleJs() {
+  if (window.AppleID && window.AppleID.auth) return Promise.resolve();
+  if (!ajsLoading) {
+    ajsLoading = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = APPLE_JS; s.async = true; s.onload = res; s.onerror = () => rej(new Error("Apple's sign-in script could not be loaded"));
+      document.head.appendChild(s);
+    }).catch(e => { ajsLoading = null; throw e; });
+  }
+  return ajsLoading;
+}
+const randomHex = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, "0")).join("");
+const cancelled = e => /popup_closed|user_cancel|cancel|1001/i.test(String((e && (e.error || e.message || e.code)) || e));
+const nameOf = (first, last) => [first, last].filter(Boolean).join(" ").trim() || null;
+
+// On the web the popup must open inside the tap itself, so the script is loaded and primed before the tap.
+let webAttempt = null;
+function primeAppleWeb(cfg) {
+  webAttempt = { nonce: randomHex(), state: randomHex() };
+  window.AppleID.auth.init({ clientId: cfg.apple.web, scope: "name email", redirectURI: `${location.origin}/`, usePopup: true, ...webAttempt });
+}
+
+async function appleSignIn(cfg) {
+  if (isNative()) {
+    const nonce = randomHex();
+    const { response: r } = await plugin("SignInWithApple").authorize({ clientId: cfg.apple.web || "", redirectURI: `${location.origin}/`,
+      scopes: "email name", state: randomHex(), nonce });
+    return A.signInWithApple(r.identityToken, nameOf(r.givenName, r.familyName), nonce);
+  }
+  if (!webAttempt) throw new Error("Apple's sign-in is still loading; try again in a moment.");
+  const { nonce, state } = webAttempt;
+  let r;
+  try { r = await window.AppleID.auth.signIn(); } finally { primeAppleWeb(cfg); }
+  if (r.authorization.state && r.authorization.state !== state) throw new Error("That sign-in was not started here.");
+  const n = r.user && r.user.name;
+  return A.signInWithApple(r.authorization.id_token, n ? nameOf(n.firstName, n.lastName) : null, nonce);
+}
+
+/** The ways in beside Google's button: Apple where this backend offers it, and passkeys inside the iOS app. */
+function otherWays(cfg, settleFn) {
+  const slot = document.getElementById("abtn");
+  if (!slot) return false;
+  const native = isNative();
+  const apple = !!cfg.apple && (native ? !!plugin("SignInWithApple") : !!cfg.apple.web);
+  const passkey = native && (cfg.methods || []).includes("passkey") && A.passkeysAvailable();
+  if (native) document.getElementById("gbtn").style.display = "none";
+  // Apple's rules: a black button on light ground, a white one on dark, and every look here is one or the other
+  const [r, g, b] = (getComputedStyle(slot).color.match(/\d+/g) || [0, 0, 0]).map(Number);
+  const [bg, fg] = r * 0.299 + g * 0.587 + b * 0.114 > 140 ? ["#fff", "#000"] : ["#000", "#fff"];
+  slot.innerHTML = (apple ? `<button class="btn wide" data-act="apple" style="background:${bg};color:${fg};border-color:${bg};border-radius:999px;margin-top:10px">${APPLE_LOGO}Sign in with Apple</button>` : "")
+    + (passkey ? `<button class="btn wide" data-act="passkey" style="border-radius:999px;margin-top:10px">Sign in with a passkey</button>` : "");
+  if (apple && !native) loadAppleJs().then(() => primeAppleWeb(cfg)).catch(() => { const b = slot.querySelector("[data-act=apple]"); if (b) b.remove(); });
+  slot.onclick = async ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    let a;
+    try { a = b.dataset.act === "apple" ? await appleSignIn(cfg) : await A.signInWithPasskey(); }
+    catch (e) { if (!cancelled(e)) toast((e && (e.message || e.error)) || "Could not sign in", 6000); return; }
+    settleFn(a);
+  };
+  return apple || passkey;
 }
 
 /** The emailed link, tapped on this phone: `#signin/<token>`. */
@@ -225,8 +299,8 @@ export async function signin(token) {
 export function previewPage(title, body, intent) {
   const draw = () => {
     page(title, `<div class="gate"><div class="gatemark">Hagolf</div><div class="card preview">${body}</div>
-      <div class="card"><div id="gbtn"></div><p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></div>
-      <p class="legal">You only need a Google account and a name. <a href="#legal/privacy">Privacy</a></p></div>`, { bare: true });
+      <div class="card"><div id="gbtn"></div><div id="abtn"></div><p id="gnone" class="muted small" hidden>Signing in is not set up on this backend yet.</p></div>
+      <p class="legal">You only need ${isNative() ? "your Apple ID" : "a Google account"} and a name. <a href="#legal/privacy">Privacy</a></p></div>`, { bare: true });
     googleButton(a => {
       if (!a || !a.name) return welcome();
       S.linkMe(a);

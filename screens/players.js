@@ -1,10 +1,16 @@
-// Who is playing: the card's rows, each with the two things that change from round to round, and the people to
-// add -- friends first (their row is theirs at once), then everybody typed in before, then someone new.
+// Who's playing? The last screen before the first tee. One row a player: the name, the index they play off
+// today and the tee they stand on, both filled in from their last card. Everything rare is behind a tap on the
+// row; everything about the round itself is one line at the top. Match play splits the rows into two sides;
+// a scramble puts them into teams.
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, andList, firstName, courseTitle, courseBy, noCourse, h2tip, tip, parseHI, hiOk, confirmSheet, promptSheet, avatar, sheet, teeColor, ui } from "../ui.js";
-import { handicapFor, fmtHcp, fmtIndex, STAT_SWITCHES } from "../model.js";
+import * as Y from "../sync.js";
+import * as Mo from "../model.js";
+import { page, bind, esc, go, toast, plural, firstName, courseTitle, courseBy, noCourse, parseHI, hiOk, confirmSheet, promptSheet, sheet, teeColor, shareLink, qrHtml, fmtDate, avatar } from "../ui.js";
+import { handicapFor, fmtHcp, fmtIndex } from "../model.js";
+import { brandField } from "./partner.js";
+import { ROUND_FORMATS, formatLabel } from "./home.js";
 
 /** Giving up on a round: it is thrown away everywhere. A finished one is deleted by whoever was on it. */
 export function dropBtn(r) {
@@ -14,279 +20,339 @@ export function dropBtn(r) {
 
 export async function dropRound(rid) {
   const r = S.getRound(rid);
-  if (!r) return go("#play");
+  if (!r) return go("#home");
   const scored = r.entries.reduce((n, e) => n + e.scores.filter(v => v !== null).length, 0);
   const yes = await confirmSheet(r.status === "done" ? "Delete this round?" : "Discard this round?",
     `${r.name} goes from every phone${scored ? `, with ${plural(scored, "score")} in it` : ""}. This cannot be undone.`, { label: r.status === "done" ? "Delete" : "Discard", danger: true });
   if (!yes) return;
   S.deleteRound(r.id);
   toast(`${r.name} deleted`);
-  go("#play");
+  go("#home");
 }
 
+const pchOf = (r, e) => e.courseHandicap ?? S.getPch(e.contactId || e.playerId, r.course, e.tee);
+export function seatInfo(r, c, e) {
+  try { return handicapFor(c, { ...e, courseHandicap: pchOf(r, e) }, r.defaultTee, r.allowance); } catch (err) { return { error: err.message }; }
+}
+
+/** A team's handicap from its members, the WHS way; recomputed whenever the team changes. */
+function refreshTeam(r, c, team) {
+  const chs = r.entries.filter(m => team.members.includes(m.playerId)).map(m => seatInfo(r, c, m).ch).filter(x => x !== undefined && x !== null);
+  const first = r.entries.find(m => team.members.includes(m.playerId));
+  const ch = Mo.teamHandicap ? Mo.teamHandicap(chs) : Math.round(chs.reduce((a, b) => a + b, 0) / Math.max(1, chs.length * 2));
+  team.courseHandicap = chs.length ? ch : null;
+  team.tee = first ? first.tee : r.defaultTee;
+  team.name = team.members.length ? r.entries.filter(m => team.members.includes(m.playerId)).map(m => firstName(m.name)).join(" & ") : team.name;
+  S.saveEntry(r, team);
+}
+
+/** Who gets which strokes in a match, in words, worked out by the model. */
+function matchLine(r, c) {
+  if (!Mo.matchPlay) return "";
+  try {
+    const M = Mo.matchPlay(c, { ...S.toModelRound(r), final: false });
+    const by = r.entries;
+    const bits = Object.entries(M.strokes).map(([id, st]) => {
+      const e = by.find(x => x.playerId === id);
+      const holes = st.map((k, h) => k ? c.first_hole + h : null).filter(Boolean);
+      return e && holes.length ? `${esc(firstName(e.name))} gets ${holes.length}: ${holes.length > 8 ? `${holes.slice(0, 8).join(", ")}…` : holes.join(", ")}` : null;
+    }).filter(Boolean);
+    return `<p class="muted small strokesline">${M.kind === "fourball" ? "Better ball, 90% of handicaps. " : ""}${bits.length ? bits.join(" · ") : "Level: nobody gets a stroke."}</p>`;
+  } catch (e) { return `<p class="muted small strokesline">${esc(e.message)}</p>`; }
+}
+
+// ---------------------------------------------------------------- the screen
 export function players(rid, keep = false) {
   const r = S.getRound(rid);
-  if (!r) return go("#play");
+  if (!r) return go("#home");
   const c = courseBy(r.course);
   if (!c) return noCourse(r);
+  if (!S.isScorer(r)) return go(`#review/${rid}`);
   const tees = Object.keys(c.tees);
-  const inRound = new Set(r.entries.map(e => e.playerId));
-  const me = S.me();
-  const friends = F.held().friends;
-  const linkedIds = new Set(S.players().map(p => p.linkedAccount).filter(Boolean));
-  const inRoundAccounts = new Set(r.entries.map(e => S.identityOf(e.playerId)));
-  // friends who are not yet a contact of mine, or whose contact is not on the card
-  const friendChips = friends.filter(f => !inRoundAccounts.has(f.id) && f.id !== A.account()?.id);
-  const roster = S.players().filter(p => !inRound.has(p.id) && !friends.some(f => f.id === p.linkedAccount && !inRoundAccounts.has(f.id))).sort((a, b) => a.name.localeCompare(b.name));
-  const showGroups = r.entries.length > 4 || r.entries.some(e => (e.group || 1) > 1);
-  const kinds = S.statsFor(rid), statsOn = S.anyStatsOn(rid);
-  // every row the same shape: one tile a field, each with its label over a control of the same height, so a
-  // card reads down a column instead of across a line of boxes that are all a different size
-  const field = (label, control, wide = false) => `<div class="efield${wide ? " wide" : ""}"><span class="flab">${label}</span>${control}</div>`;
-  const rows = r.entries.map((e, i) => {
-    let hc = "", missing = false;
-    const ov = e.courseHandicap ?? S.getPch(e.playerId, r.course, e.tee);
-    const hasOv = ov !== null && ov !== undefined;
-    try { const h = handicapFor(c, { ...e, courseHandicap: ov }, r.defaultTee, r.allowance); hc = `course hcp ${fmtHcp(h.ch)}`; }
-    catch (err) { hc = `<span class="warn">${esc(err.message)}</span>`; missing = true; }
-    const isMe = me && e.playerId === me.id;
-    // the handicap pair, then the tee, then the rest; an odd one left over takes the whole line rather than
-    // sitting beside a hole in the grid
-    const hcp = [
-      ["Index", `<input class="efv hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="Handicap index">`],
-      ...(missing || hasOv ? [["Course hcp", `<input class="efv" data-act="pch" data-i="${i}" inputmode="numeric" value="${hasOv ? ov : ""}" placeholder="club table" aria-label="Course handicap from the club table">`]] : []),
-    ];
-    const rest = [
-      ["Starts at", `<select class="efv" data-act="from" data-i="${i}" aria-label="Starts at hole">${c.par.map((_, k) => `<option value="${k + 1}" ${(e.fromHole || 1) === k + 1 ? "selected" : ""}>Hole ${c.first_hole + k}</option>`).join("")}</select>`],
-      ...(showGroups ? [["Group", `<div class="eseg">${[1, 2, 3, 4].map(g => `<button data-act="grp" data-i="${i}" data-g="${g}" class="${(e.group || 1) === g ? "on" : ""}">${g}</button>`).join("")}</div>`]] : []),
-      ...(statsOn ? [["Extras", `<div class="eseg"><button data-act="trk" data-i="${i}" class="${e.trackStats ? "on" : ""}">${e.trackStats ? "keeping" : "not kept"}</button></div>`]] : []),
-    ];
-    const pair = fs => fs.map(([l, ctl], k) => field(l, ctl, fs.length % 2 === 1 && k === fs.length - 1)).join("");
-    // the tee is a colour on the ground, so it is picked as that colour and not read off a list of words
-    const teePick = field(`Tee · ${esc(e.tee)}`, `<div class="tees">${tees.map(t => `<button class="tee ${t === e.tee ? "on" : ""}" style="--c:${teeColor(t)}" data-act="tee" data-i="${i}" data-t="${esc(t)}" aria-label="${esc(t)} tee" aria-pressed="${t === e.tee}"><i></i></button>`).join("")}</div>`, true);
-    // an unlisted course has one neutral tee for everybody, so there is nothing to pick
-    const fields = pair(hcp) + (c.unlisted ? "" : teePick) + pair(rest);
-    return `<div class="card entry"><div class="row"><div><div class="name">${esc(e.name)}${isMe ? ` <span class="pill done">you</span>` : ""}</div><div class="muted small">${c.unlisted ? "" : `${e.gender === "f" ? "women's" : "men's"} rating · `}${hc}${hasOv ? " (club table)" : ""}</div></div>
-        <button class="x" data-act="remove-entry" data-i="${i}" aria-label="Remove">×</button></div>
-      <div class="efields">${fields}</div></div>`;
-  }).join("");
-  const chip = (act, id, name, sub, on = false) => `<button class="pchip ${on ? "on" : ""}" data-act="${act}" data-id="${esc(id)}"><span><span class="plus">+</span>${esc(name)}</span><small>${esc(sub)}</small></button>`;
-  const body = `
-    <h2>Before you start</h2>
-    ${statsPicker(rid, kinds, r)}
-    ${h2tip(`${plural(r.entries.length, "player")} on this card`, `<p>Each player's handicap index is turned into a course handicap for the tee they are standing on: the index is stretched by this course's slope and shifted by its rating, so the same index gives more strokes off a harder tee.</p>
-      <p>Index and tee are asked again every round, filled in with what that player last used, because both change. Type over either one and the course handicap follows.</p>
-      <p>If the club's own table gives a different number, put it in the course handicap box and that is what counts; it is remembered for this course and tee.</p>`)}
-    ${rows || `<p class="muted small">Nobody yet. Tap names below to add them.</p>`}
-    ${me && !inRound.has(me.id) ? `<h2>You</h2><div class="chips-wrap">${chip("add-roster", me.id, me.name, S.currentIndex(me) !== null && S.currentIndex(me) !== undefined ? `index ${fmtIndex(Number(S.currentIndex(me)))}` : "add your index", true)}</div>` : ""}
-    ${friendChips.length ? `<h2>Friends</h2><div class="chips-wrap">${friendChips.map(f => chip("add-friend", f.id, f.name, f.hi !== null && f.hi !== undefined ? `index ${fmtIndex(Number(f.hi))}` : "no index yet")).join("")}</div>` : ""}
-    ${roster.filter(p => !me || p.id !== me.id).length ? `<h2>Played with before</h2><div class="chips-wrap">${roster.filter(p => !me || p.id !== me.id).map(p => chip("add-roster", p.id, p.name, p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))}` : "no index yet")).join("")}</div>` : ""}
-    <form id="addf" class="card form ${roster.length || r.entries.length || friendChips.length ? "" : "open"}">
-      <h2>Someone new</h2>
-      <label>Name<input id="pname" autocomplete="off" autocapitalize="words" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
-      <div class="two">
-        <label>Handicap index<input id="phi" inputmode="decimal" placeholder="18,4 or +2.1" required></label>
-        <label ${c.unlisted ? "hidden" : ""}>Tee<select id="ptee">${tees.map(t => `<option ${t === r.defaultTee ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label></div>
-      <div class="two" ${c.unlisted ? "hidden" : ""}>
-        <label>Rating<select id="pgender"><option value="m">Men's</option><option value="f">Women's</option></select></label>
-        <label>Course hcp <span class="muted">(optional)</span><input id="pch" inputmode="numeric" placeholder="from club table"></label></div>
-      <button class="btn primary" type="submit">Add player</button>
-    </form>
-    <button class="btn addbtn ${roster.length || r.entries.length || friendChips.length ? "" : "hidden"}" data-act="toggle-add"><span class="plus">+</span> Someone new</button>
-    ${dropBtn(r)}`;
-  const bar = !r.entries.length ? `<button class="btn" disabled>Add players to start</button>`
-    : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
-    : `<button class="btn primary" data-act="start-scoring" data-rid="${rid}">${r.status === "setup" ? "Start scoring ›" : "Back to scoring ›"}</button>`;
-  page("Who is playing?", body, { back: r.status === "done" ? `#review/${rid}` : "#play", bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep });
+  const fmt = r.format || "stableford";
+  const lg = S.leaguesOfRound(rid);
+  const me = S.myAccount();
+  const people = r.entries.filter(e => e.role !== "team");
+  const showGroups = people.length > 4 || people.some(e => (e.group || 1) > 1);
 
-  /** An index for somebody the app does not know one for, asked once. */
-  const askIndex = async name => {
-    const v = await promptSheet(`${firstName(name)}'s handicap index`, "For example 18,4 or +2.1.", { placeholder: "18,4", inputmode: "decimal", label: "Add" });
-    if (v === null) return null;
-    const hi = parseHI(v);
-    if (!hiOk(hi)) { toast("Handicap index between +10 and 54, e.g. 18,4"); return null; }
-    return hi;
+  const row = e => {
+    const i = r.entries.indexOf(e);
+    const info = seatInfo(r, c, e);
+    const sub = [e.accountId && e.accountId === me ? "you" : e.accountId ? "" : e.proposedAccount ? "asked" : "guest",
+      info.error ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", e.trackStats ? "keeping extras" : ""].filter(Boolean).join(" · ");
+    const side = fmt === "match" ? `<div class="eseg sides">${["A", "B"].map(sd => `<button data-act="side" data-i="${i}" data-s="${sd}" class="${e.side === sd ? "on" : ""}">${sd}</button>`).join("")}</div>` : "";
+    return `<div class="card who" data-i="${i}">
+      <div class="whotop"><button class="wname" data-act="psheet" data-i="${i}"><b>${esc(e.name)}</b><small>${esc(sub)}${info.error ? ` <span class="warn">${esc(info.error)}</span>` : ""}</small></button>
+        ${side}
+        <label class="hiin"><span class="flab">Index</span><input class="efv hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="${esc(e.name)}'s handicap index"></label></div>
+      ${c.unlisted || e.role === "member" && fmt === "scramble" && false ? "" : `<div class="tees">${tees.map(t => `<button class="tee ${t === e.tee ? "on" : ""}" style="--c:${teeColor(t)}" data-act="tee" data-i="${i}" data-t="${esc(t)}" aria-label="${esc(t)} tee" aria-pressed="${t === e.tee}"><i></i></button>`).join("")}</div>`}
+    </div>`;
   };
+
+  let rows;
+  if (fmt === "match") {
+    const a = people.filter(e => e.side === "A"), b = people.filter(e => e.side === "B"), none = people.filter(e => e.side !== "A" && e.side !== "B");
+    rows = `${none.length ? none.map(row).join("") : ""}
+      <h2>Side A</h2>${a.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
+      <h2>Side B</h2>${b.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
+      ${a.length && b.length ? matchLine(r, c) : ""}`;
+  } else if (fmt === "scramble") {
+    const teams = r.entries.filter(e => e.role === "team");
+    const free = people.filter(e => e.role !== "member");
+    rows = `${people.map(row).join("")}
+      <h2>Teams</h2>
+      ${teams.map(t => `<div class="card team"><div class="whotop"><div class="wname"><b>${esc(t.name)}</b><small>team handicap ${t.courseHandicap ?? "–"}</small></div>
+          <label class="hiin"><span class="flab">Team hcp</span><input class="efv" data-act="teamch" data-tid="${esc(t.playerId)}" inputmode="numeric" value="${t.courseHandicap ?? ""}"></label></div>
+        <div class="chips-wrap">${r.entries.filter(m => t.members.includes(m.playerId)).map(m => `<button class="pchip on" data-act="unteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span>${esc(m.name)}</span><small>tap to take out</small></button>`).join("")}
+          ${free.map(m => `<button class="pchip" data-act="toteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span><span class="plus">+</span>${esc(m.name)}</span></button>`).join("")}</div></div>`).join("")}
+      <div class="btnrow"><button class="btn" data-act="newteam">+ Team</button>${people.length >= 2 ? `<button class="btn" data-act="autoteams">Make teams for me</button>` : ""}</div>
+      ${teams.length ? `<p class="muted small">Team handicaps follow the World Handicap System: 35% and 15% for two, 30/20/10 for three, 25/20/15/10 for four.</p>` : ""}`;
+  } else rows = people.map(row).join("");
+
+  const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 ? `${r.allowance}%` : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
+  const ready = fmt === "match" ? people.some(e => e.side === "A") && people.some(e => e.side === "B")
+    : fmt === "scramble" ? r.entries.some(e => e.role === "team" && e.members.length) : people.length > 0;
+  const bar = !people.length ? `<button class="btn" disabled>Add players to start</button>`
+    : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
+    : `<button class="btn primary big" data-act="tee-off" ${ready ? "" : "disabled"}>${r.status === "setup" ? "Tee off" : "Back to scoring ›"}</button>`;
+  page("Who's playing?", `
+    <button class="optline" data-act="options"><span>${esc(opts)}</span><span class="chev">›</span></button>
+    ${rows || `<p class="muted center small">Nobody yet.</p>`}
+    <div class="btnrow"><button class="btn" data-act="add">+ Add player</button><button class="btn" data-act="invite">Invite to this card</button></div>
+    ${dropBtn(r)}`,
+  { back: r.status === "done" ? `#review/${rid}` : "#home", bar, keepScroll: keep, bell: false });
+
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     const act = b.dataset.act;
-    if (act === "toggle-add") { const f = document.getElementById("addf"); f.classList.add("open"); b.classList.add("hidden"); document.getElementById("pname").focus(); f.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
-    if (act === "start-scoring") return go(`#score/${r.id}/${S.holeOf(r)}`);
+    const e = b.dataset.i !== undefined ? r.entries[Number(b.dataset.i)] : null;
+    if (act === "tee-off") { if (r.status === "setup") { r.status = "scoring"; S.saveRound(r); } return go(`#score/${r.id}/${S.holeOf(r)}`); }
     if (act === "drop-round") return dropRound(rid);
-    if (act === "remove-entry") {
-      const i = Number(b.dataset.i), e = r.entries[i];
-      if (e.scores.every(s => s === null) || await confirmSheet(`Remove ${e.name}?`, "Their scores on this card go too.", { label: "Remove", danger: true })) { S.removeEntry(r, i); players(rid); }
-      return;
-    }
-    if (act === "add-roster") {
-      const p = S.players().find(x => x.id === b.dataset.id);
-      let hi = S.currentIndex(p);
-      if (hi === null || hi === undefined) {
-        hi = await askIndex(p.name);
-        if (hi === null) return;
-        if (me && p.id === me.id && A.signedIn()) { try { await A.update({ hi }); } catch (e) { /* the entry still carries it */ } }
-      }
-      S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
-      return players(rid);
-    }
-    if (act === "add-friend") {
-      // a friend's row is linked to their account from the start, so the round is theirs to see and correct
-      const f = F.friendById(b.dataset.id);
-      if (!f) return;
-      let hi = f.hi;
-      if (hi === null || hi === undefined) { hi = await askIndex(f.name); if (hi === null) return; }
-      const p = S.upsertPlayer(f.name, hi, "m");
-      if (p.linkedAccount !== f.id) { p.linkedAccount = f.id; S.touch("players", p); S.save(); }
-      S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null });
-      return players(rid);
-    }
-    if (act === "grp") { const e = r.entries[Number(b.dataset.i)]; e.group = Number(b.dataset.g); S.saveEntry(r, e); return players(rid, true); }
-    if (act === "tee") { const e = r.entries[Number(b.dataset.i)]; e.tee = b.dataset.t; S.saveEntry(r, e); return players(rid, true); }
-    if (act === "trk") { const e = r.entries[Number(b.dataset.i)]; S.setTrackStats(r, e, !e.trackStats); return players(rid, true); }
-    // the panel itself: the tick turns all of them on or all of them off, the chevron only folds the detail away
-    if (act === "x-all") { S.unlockStats(r, !(Object.values(S.statsFor(rid)).some(Boolean) && S.cardKeepsStats(r))); ui.extrasOpen = true; return players(rid, true); }
-    if (act === "x-fold") { ui.extrasOpen = !ui.extrasOpen; return players(rid, true); }
-    if (act === "x-kind") {
-      const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
-      S.setStatsFor(rid, next);
-      if (Object.values(next).some(Boolean) && !S.cardKeepsStats(r)) {
-        const m = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
-        if (m) S.setTrackStats(r, m, true);
-      }
+    if (act === "options") { await optionsSheet(r, c); return players(rid, true); }
+    if (act === "add") { await addSheet(r, c); return players(rid, true); }
+    if (act === "invite") return inviteSheet(r);
+    if (act === "psheet") { await playerSheet(r, c, e); return players(rid, true); }
+    if (act === "tee") { e.tee = b.dataset.t; S.saveEntry(r, e); teamsChanged(r, c); return players(rid, true); }
+    if (act === "side") { S.setSide(r, e, b.dataset.s); return players(rid, true); }
+    if (act === "newteam") { S.addTeam(r, c.n, { name: `Team ${r.entries.filter(x => x.role === "team").length + 1}`, members: [], tee: r.defaultTee }); return players(rid, true); }
+    if (act === "toteam" || act === "unteam") {
+      const t = r.entries.find(x => x.playerId === b.dataset.tid);
+      const next = act === "toteam" ? [...t.members, b.dataset.pid] : t.members.filter(x => x !== b.dataset.pid);
+      S.setTeamMembers(r, t, next);
+      if (!next.length && act === "unteam") { const k = r.entries.indexOf(t); S.removeEntry(r, k); }
+      else refreshTeam(r, c, t);
       return players(rid, true);
     }
-    if (act === "x-who") {
-      const all = b.dataset.who === "all";
-      const m = r.entries.find(e => e.playerId === S.state.settings.meId);
-      for (const e of r.entries) S.setTrackStats(r, e, all || e === m);
-      return players(rid, true);
-    }
+    if (act === "autoteams") { await autoTeams(r, c); return players(rid, true); }
   });
   document.querySelector("main").addEventListener("change", ev => {
     const el = ev.target.closest("[data-act]");
     if (!el) return;
-    const e = r.entries[Number(el.dataset.i)];
-    if (el.dataset.act === "from") { e.fromHole = Number(el.value); S.saveEntry(r, e); players(rid, true); }
     if (el.dataset.act === "hi") {
-      const hi = parseHI(el.value);
+      const e = r.entries[Number(el.dataset.i)], hi = parseHI(el.value);
       if (!hiOk(hi)) { el.value = fmtIndex(Number(e.hi)); return toast("Handicap index between +10 and 54, e.g. 18,4"); }
-      S.setEntryHi(r, e, hi); players(rid, true);
+      S.setEntryHi(r, e, hi); teamsChanged(r, c); players(rid, true);
     }
-    if (el.dataset.act === "pch") {
-      const raw = el.value.trim(), v = Number(raw);
-      if (raw !== "" && !Number.isInteger(v)) return toast("Course handicap must be a whole number");
-      e.courseHandicap = null;
-      S.saveEntry(r, e);
-      S.setPch(e.playerId, r.course, e.tee, raw === "" ? null : v);
-      players(rid, true);
+    if (el.dataset.act === "teamch") {
+      const t = r.entries.find(x => x.playerId === el.dataset.tid), v = el.value.trim();
+      if (v !== "" && !Number.isInteger(Number(v))) return toast("A whole number");
+      t.courseHandicap = v === "" ? null : Number(v); S.saveEntry(r, t); players(rid, true);
     }
   });
-  const f = document.getElementById("addf"), nameEl = document.getElementById("pname");
-  f.addEventListener("submit", ev => {
-    ev.preventDefault();
-    const name = nameEl.value.trim();
-    const hi = parseHI(document.getElementById("phi").value);
-    const tee = document.getElementById("ptee").value, gender = document.getElementById("pgender").value;
-    const chRaw = document.getElementById("pch").value.trim();
-    const courseHandicap = chRaw === "" ? null : Number(chRaw);
-    if (!name) return toast("Give the player a name");
-    if (!hiOk(hi)) return toast("Handicap index between +10 and 54, e.g. 18,4");
-    if (chRaw !== "" && !Number.isInteger(courseHandicap)) return toast("Course handicap must be a whole number");
-    if (r.entries.some(e => S.nameKey(e.name) === S.nameKey(name))) return toast(`${name} is already on this card`);
-    const known = S.findPlayer(name);
-    if (known) toast(`${known.name} was already known; added with today's index`, 3500);
-    S.addEntry(r, c.n, { name: known ? known.name : name, hi, tee, gender, courseHandicap });
-    players(rid);
-  });
-  if (f.classList.contains("open")) nameEl.focus();
 }
 
-/**
- * The extras, in one sheet that stays open while you work it. Turning them on turns on *all* of them, because
- * that is the answer nine times in ten; switching one back off is one tap, and the sheet does not shut under
- * you when you do, so turning two off costs two taps rather than two round trips.
- */
-export async function extrasSheet(rid) {
-  const r = S.getRound(rid);
-  if (!r) return;
-  const draw = el => {
-    const kinds = S.statsFor(rid);
-    const on = Object.values(kinds).some(Boolean) && S.cardKeepsStats(r);
-    const who = r.entries.filter(e => e.trackStats);
-    const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
-    // what each one is lives behind the i, so the sheet stays a set of switches rather than a page of prose
-    el.querySelector("#xbody").innerHTML = `
-      <button class="xmaster ${on ? "on" : ""}" data-act="x-all"><b>${on ? "Keeping them" : "Not kept"}</b>
-        <small>${on ? "Tap to stop keeping anything" : "Tap to keep putts, fairways, bunker shots and penalties"}</small></button>
-      ${on ? `<p class="pickline" style="margin:14px 0 0">Keeping</p>
-        <div class="statpick">${STAT_SWITCHES.map(k =>
-          `<button data-act="x-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
-        ${tip(STAT_SWITCHES.map(k => `<p><b>${esc(k.label)}</b> — ${esc(k.blurb)}</p>`).join(""), "What each one is")}
-        <p class="pickline">Keep them for</p>
-        <div class="statpick">
-          <button data-act="x-who" data-who="me" class="${who.length === 1 && mine && who[0] === mine ? "on" : ""}">Just me</button>
-          <button data-act="x-who" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
-        </div>` : ""}`;
-  };
-  await sheet({
-    title: "Putts, fairways and the rest",
-    lead: "Kept beside the score on every hole. Switch off anything you do not want; this stays open.",
-    body: `<div id="xbody"></div>`,
-    actions: [{ label: "Done", value: "no", kind: "primary" }],
+const teamsChanged = (r, c) => { for (const t of r.entries.filter(e => e.role === "team")) refreshTeam(r, c, t); };
+
+/** Teams of two, three or four, drawn so each has a spread of handicaps: a snake down the list. */
+async function autoTeams(r, c) {
+  const people = r.entries.filter(e => e.role !== "team");
+  const v = await sheet({ title: "Make teams", lead: `${plural(people.length, "player")}. How many in a team?`,
+    actions: [2, 3, 4].filter(n => n <= people.length).map(n => ({ label: `Teams of ${n}`, value: String(n), kind: n === 2 ? "primary" : "" })) });
+  if (!v) return;
+  const size = Number(v), k = Math.max(1, Math.round(people.length / size));
+  for (const t of r.entries.filter(e => e.role === "team")) S.removeEntry(r, r.entries.indexOf(t));
+  const sorted = [...people].sort((a, b) => (Number(a.hi) || 0) - (Number(b.hi) || 0));
+  const groups = Array.from({ length: k }, () => []);
+  sorted.forEach((e, i) => { const round = Math.floor(i / k), pos = i % k; groups[round % 2 ? k - 1 - pos : pos].push(e.playerId); });
+  groups.forEach((g, i) => { const t = S.addTeam(r, c.n, { name: `Team ${i + 1}`, members: g, tee: r.defaultTee }); refreshTeam(r, c, t); });
+}
+
+// ---------------------------------------------------------------- the round's own options, in one sheet
+async function optionsSheet(r, c) {
+  const gs = S.leagues();
+  const on = new Set(S.leaguesOfRound(r.id).map(g => g.id));
+  const v = await sheet({ title: "This round", body: `<form id="optf">
+      <p class="pickline">How you're playing</p>
+      <div class="fmtgrid small">${ROUND_FORMATS.map(f => `<label class="fmttile ${r.format === f.key ? "on" : ""}"><input type="radio" name="fmt" value="${f.key}" ${r.format === f.key ? "checked" : ""} hidden><b>${esc(f.label)}</b><small>${esc(f.blurb)}</small></label>`).join("")}</div>
+      <label>Name<input name="name" value="${esc(r.name)}"></label>
+      <div class="two"><label>Date<input name="date" type="date" value="${esc(r.date || "")}"></label>
+      <label>Allowance<select name="allow">${[100, 95, 90, 85, 75].map(a => `<option value="${a}" ${Number(r.allowance) === a ? "selected" : ""}>${a}%</option>`).join("")}</select></label></div>
+      ${brandField("rbrand", r.brand || null)}
+      ${gs.length && !r.leagueId ? `<p class="pickline">Counts for</p><div class="checks">${gs.map(g => `<label><input type="checkbox" name="lg" value="${g.id}" ${on.has(g.id) ? "checked" : ""}> ${esc(g.name)}</label>`).join("")}</div>` : ""}
+    </form>`,
+    actions: [{ label: "Done", value: "ok", kind: "primary" }],
     onOpen: el => {
-      draw(el);
-      // these carry no `data-sheet-act`, so the sheet's own handler ignores them and the popout stays put
-      el.addEventListener("click", ev => {
-        const b = ev.target.closest("[data-act]");
-        if (!b) return;
-        const act = b.dataset.act;
-        if (act === "x-all") S.unlockStats(r, !(Object.values(S.statsFor(rid)).some(Boolean) && S.cardKeepsStats(r)));
-        else if (act === "x-kind") {
-          const k = b.dataset.k, next = { ...S.statsFor(rid), [k]: !S.statsFor(rid)[k] };
-          S.setStatsFor(rid, next);
-          if (Object.values(next).some(Boolean) && !S.cardKeepsStats(r)) {
-            const m = r.entries.find(e => e.playerId === S.state.settings.meId) || r.entries[0];
-            if (m) S.setTrackStats(r, m, true);
-          }
-        } else if (act === "x-who") {
-          const all = b.dataset.who === "all";
-          const m = r.entries.find(e => e.playerId === S.state.settings.meId);
-          for (const e of r.entries) S.setTrackStats(r, e, all || e === m);
-        } else return;
-        draw(el);
-      });
-    },
-  });
+      el.querySelectorAll(".fmttile input").forEach(i => i.addEventListener("change", () => el.querySelectorAll(".fmttile").forEach(t => t.classList.toggle("on", t.querySelector("input").checked))));
+      el.addEventListener("change", () => { window.__opt = new FormData(el.querySelector("#optf")); });
+      window.__opt = new FormData(el.querySelector("#optf"));
+    } });
+  const f = window.__opt;
+  window.__opt = null;
+  if (v !== "ok" || !f) return;
+  r.format = f.get("fmt") || r.format;
+  r.name = String(f.get("name") || "").trim() || r.name;
+  r.date = f.get("date") || r.date;
+  r.allowance = Number(f.get("allow")) || 100;
+  if (f.get("rbrand") !== null) r.brand = f.get("rbrand") || null;
+  S.state.settings.lastFormat = r.format;
+  S.saveRound(r);
+  if (gs.length && !r.leagueId) {
+    const want = new Set(f.getAll("lg"));
+    for (const g of gs) if (want.has(g.id) !== on.has(g.id)) S.setLeagueRound(g.id, r.id, want.has(g.id));
+  }
+  if (r.format === "match") {
+    const people = r.entries.filter(e => e.role !== "team");
+    people.forEach((e, k) => { if (e.side !== "A" && e.side !== "B") S.setSide(r, e, k % 2 ? "B" : "A"); });
+  }
 }
 
-/**
- * Before you start: one checkbox. Ticked, it folds out into what is kept and who it is kept for, and the fold
- * shuts again without switching anything off -- so narrowing it is taps on the page, not a trip to a sheet.
- */
-function statsPicker(rid, kinds, r) {
-  const on = Object.values(kinds).some(Boolean) && S.cardKeepsStats(r);
-  const open = on && ui.extrasOpen;
-  const mine = r.entries.find(e => e.playerId === S.state.settings.meId) || null;
-  const who = r.entries.filter(e => e.trackStats);
-  const justMe = who.length === 1 && mine && who[0] === mine;
-  const kept = STAT_SWITCHES.filter(k => kinds[k.key]);
-  const line = !on ? "Just the score on every hole"
-    : `${andList(kept.map(k => k.short.toLowerCase()))}${who.length ? ` · ${justMe ? "just me" : who.length === r.entries.length ? "everyone here" : andList(who.map(e => firstName(e.name)))}` : " · for nobody yet"}`;
-  return `<div class="card xpanel" id="statpick">
-    <div class="xhead">
-      <button class="xcheck" data-act="x-all" role="switch" aria-checked="${on}">
-        <span class="tick ${on ? "on" : ""}">${on ? "✓" : ""}</span>
-        <span class="xcw"><b>Keep putts, fairways and the rest</b><small>${esc(line)}</small></span></button>
-      ${on ? `<button class="xfold ${open ? "open" : ""}" data-act="x-fold" aria-expanded="${open}" aria-label="What is kept">▾</button>` : ""}
+// ---------------------------------------------------------------- adding people
+async function askIndex(name) {
+  const v = await promptSheet(`${firstName(name)}'s handicap index`, "For example 18,4 or +2.1.", { placeholder: "18,4", inputmode: "decimal", label: "Add" });
+  if (v === null) return null;
+  const hi = parseHI(v);
+  if (!hiOk(hi)) { toast("Handicap index between +10 and 54, e.g. 18,4"); return null; }
+  return hi;
+}
+
+function seat(r, c, p, hi, accountId) {
+  const tees = Object.keys(c.tees);
+  const people = r.entries.filter(e => e.role !== "team");
+  const e = S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null,
+    accountId, trackStats: accountId && accountId === S.myAccount() ? S.keepsAny(S.myKeep()) : false });
+  if (r.format === "match") S.setSide(r, e, people.filter(x => x.side === "A").length <= people.filter(x => x.side === "B").length ? "A" : "B");
+  return e;
+}
+
+async function addSheet(r, c) {
+  const onCard = new Set(r.entries.map(e => e.contactId || e.playerId));
+  const onCardAccounts = new Set(r.entries.map(e => e.accountId).filter(Boolean));
+  const me = S.me();
+  const friends = F.held().friends.filter(f => !onCardAccounts.has(f.id) && f.id !== S.myAccount());
+  const roster = S.players().filter(p => !onCard.has(p.id) && !(p.linkedAccount && onCardAccounts.has(p.linkedAccount)) && !friends.some(f => f.id === p.linkedAccount)).sort((a, b) => a.name.localeCompare(b.name));
+  const line = (kind, id, name, sub) => `<button class="addrow" data-sheet="${kind}:${esc(id)}" data-q="${esc(name.toLowerCase())}">${avatar(name)}<span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="plus">+</span></button>`;
+  const hiSub = hi => hi !== null && hi !== undefined ? `index ${fmtIndex(Number(hi))}` : "no index yet";
+  const v = await sheet({ title: "Add a player", body: `
+    <input id="aq" class="search" placeholder="Search, or type a new name" autocomplete="off">
+    <div id="alist">
+      ${me && !onCard.has(me.id) ? line("roster", me.id, me.name, "you") : ""}
+      ${friends.length ? `<p class="pickline">Friends</p>${friends.map(f => line("friend", f.id, f.name, hiSub(f.hi))).join("")}` : ""}
+      ${roster.filter(p => !me || p.id !== me.id).length ? `<p class="pickline">Played with</p>${roster.filter(p => !me || p.id !== me.id).map(p => line("roster", p.id, p.name, hiSub(S.currentIndex(p)))).join("")}` : ""}
     </div>
-    ${open ? `<div class="xmore">
-      <p class="pickline">Keeping</p>
-      <div class="statpick">${STAT_SWITCHES.map(k => `<button data-act="x-kind" data-k="${k.key}" class="${kinds[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
-      ${tip(STAT_SWITCHES.map(k => `<p><b>${esc(k.label)}</b> — ${esc(k.blurb)}</p>`).join(""), "What each one is")}
-      <p class="pickline">Keep them for</p>
-      <div class="statpick">
-        <button data-act="x-who" data-who="me" class="${justMe ? "on" : ""}">Just me</button>
-        <button data-act="x-who" data-who="all" class="${who.length === r.entries.length && r.entries.length ? "on" : ""}">Everyone here</button>
-      </div></div>` : ""}</div>`;
+    <button class="addrow new" id="anew" data-sheet="new:" hidden><span class="plus">+</span><span><b id="anewname"></b><small>someone new</small></span></button>`,
+    onOpen: el => {
+      const q = el.querySelector("#aq");
+      q.addEventListener("input", () => {
+        const t = q.value.trim().toLowerCase();
+        el.querySelectorAll("#alist .addrow").forEach(b => { b.hidden = !!t && !b.dataset.q.includes(t); });
+        const nw = el.querySelector("#anew");
+        nw.hidden = !t;
+        el.querySelector("#anewname").textContent = q.value.trim();
+        nw.dataset.sheet = `new:${q.value.trim()}`;
+      });
+      q.focus();
+    } });
+  if (!v) return;
+  const [kind, ...rest] = v.split(":");
+  const id = rest.join(":");
+  if (kind === "friend") {
+    const f = F.friendById(id);
+    if (!f) return;
+    let hi = f.hi;
+    if (hi === null || hi === undefined) { hi = await askIndex(f.name); if (hi === null) return; }
+    const p = S.upsertPlayer(f.name, hi, "m");
+    if (p.linkedAccount !== f.id) { p.linkedAccount = f.id; S.touch("players", p); S.save(); }
+    seat(r, c, p, hi, f.id);
+  } else if (kind === "roster") {
+    const p = S.players().find(x => x.id === id);
+    if (!p) return;
+    let hi = S.currentIndex(p);
+    if (hi === null || hi === undefined) {
+      hi = await askIndex(p.name);
+      if (hi === null) return;
+      if (me && p.id === me.id && A.signedIn()) { try { await A.update({ hi }); } catch (e) { /* the seat still carries it */ } }
+    }
+    seat(r, c, p, hi, p.linkedAccount || null);
+  } else if (kind === "new") {
+    const name = id.trim();
+    if (!name) return;
+    if (r.entries.some(e => S.nameKey(e.name) === S.nameKey(name))) {
+      if (!await confirmSheet(`Another ${firstName(name)}?`, `Someone called ${name} is already on this card. Add a second one?`, { label: "Add" })) return;
+    }
+    const hi = await askIndex(name);
+    if (hi === null) return;
+    const p = S.findPlayer(name) || S.upsertPlayer(name, hi, "m");
+    seat(r, c, p, hi, p.linkedAccount || null);
+  }
+}
+
+// ---------------------------------------------------------------- one player, the rare things
+async function playerSheet(r, c, e) {
+  const tees = Object.keys(c.tees);
+  const info = seatInfo(r, c, e);
+  const ov = pchOf(r, e);
+  const showGroups = r.entries.length > 4 || r.entries.some(x => (x.group || 1) > 1);
+  const v = await sheet({ title: e.name, lead: info.error ? info.error : `Course handicap ${fmtHcp(info.ch)} · plays off ${fmtHcp(info.ph)}`, body: `<form id="psf">
+      <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}"></label>
+        <label>Course hcp <span class="muted">(club table)</span><input name="pch" inputmode="numeric" value="${ov ?? ""}" placeholder="worked out"></label></div>
+      ${c.unlisted ? "" : `<p class="pickline">Tee</p><div class="tees">${tees.map(t => `<label class="tee ${t === e.tee ? "on" : ""}" style="--c:${teeColor(t)}"><input type="radio" name="tee" value="${esc(t)}" ${t === e.tee ? "checked" : ""} hidden><i></i></label>`).join("")}</div>`}
+      <div class="two"><label>Starts at<select name="from">${c.par.map((_, k) => `<option value="${k + 1}" ${(e.fromHole || 1) === k + 1 ? "selected" : ""}>Hole ${c.first_hole + k}</option>`).join("")}</select></label>
+        <label>Rating<select name="gender"><option value="m" ${e.gender !== "f" ? "selected" : ""}>Men's</option><option value="f" ${e.gender === "f" ? "selected" : ""}>Women's</option></select></label></div>
+      ${showGroups ? `<label>Group<input name="grp" inputmode="numeric" value="${e.group || 1}"></label>` : ""}
+      <label class="switchrow"><input type="checkbox" name="track" ${e.trackStats ? "checked" : ""}> Keep putts, fairways and the rest for ${esc(firstName(e.name))}</label>
+    </form>`,
+    actions: [{ label: "Done", value: "ok", kind: "primary" }, { label: `Take ${firstName(e.name)} off the card`, value: "remove", kind: "danger" }],
+    onOpen: el => {
+      el.querySelectorAll(".tees input").forEach(i => i.addEventListener("change", () => el.querySelectorAll(".tees .tee").forEach(t => t.classList.toggle("on", t.querySelector("input").checked))));
+      const keep = () => { window.__ps = new FormData(el.querySelector("#psf")); };
+      el.addEventListener("change", keep); el.addEventListener("input", keep); keep();
+    } });
+  const f = window.__ps;
+  window.__ps = null;
+  if (v === "remove") {
+    const i = r.entries.indexOf(e);
+    if (e.scores.every(s => s === null) || await confirmSheet(`Take ${e.name} off?`, "Their scores on this card go too.", { label: "Take off", danger: true })) {
+      for (const t of r.entries.filter(x => x.role === "team" && x.members.includes(e.playerId))) S.setTeamMembers(r, t, t.members.filter(m => m !== e.playerId));
+      S.removeEntry(r, i);
+    }
+    return;
+  }
+  if (v !== "ok" || !f) return;
+  const hi = parseHI(f.get("hi"));
+  if (hiOk(hi) && hi !== Number(e.hi)) S.setEntryHi(r, e, hi);
+  if (f.get("tee")) e.tee = f.get("tee");
+  e.fromHole = Number(f.get("from")) || 1;
+  e.gender = f.get("gender") === "f" ? "f" : "m";
+  if (f.get("grp") !== null) e.group = Math.max(1, Math.floor(Number(f.get("grp")) || 1));
+  e.trackStats = f.get("track") === "on";
+  const raw = String(f.get("pch") || "").trim();
+  if (raw === "" || Number.isInteger(Number(raw))) {
+    e.courseHandicap = null;
+    S.setPch(e.contactId || e.playerId, r.course, e.tee, raw === "" ? null : Number(raw));
+  }
+  S.saveEntry(r, e);
+  teamsChanged(r, c);
+}
+
+// ---------------------------------------------------------------- inviting onto the card
+export async function inviteSheet(r) {
+  if (!A.signedIn()) return toast("Sign in to invite people");
+  try {
+    await Y.push();
+    const res = await A.api(`/round/${r.id}/invite`, {});
+    await sheet({ title: "Invite to this card", lead: "Whoever opens this can take their seat and score with you, until the round is saved.",
+      body: `${qrHtml(res.url)}<div class="linkbox">${esc(res.url)}</div><p class="center">Or tell them the code <b class="num">${esc(res.code)}</b></p>`,
+      actions: [{ label: "Send the link", value: "share", kind: "primary" }, { label: "Done", value: "no" }] }).then(v => v === "share" && shareLink(res.url, `Score with me on Hagolf`, `${r.name}: take your seat on my card`));
+  } catch (e) { toast(e.message, 5000); }
 }

@@ -36,7 +36,7 @@ export function people() {
       : acct ? emptyState("people", "No friends yet", "Search by name above, or share your link so they can add you.") : ""}
     ${acct ? `<div class="btnrow"><button class="btn" data-act="mylink">${ICONS.link} Share my link</button><button class="btn" data-act="myqr">${ICONS.qr} My QR code</button></div>` : ""}
     ${contacts.length ? `<h2>Played with</h2><p class="muted small" style="margin:-4px 4px 8px">Names typed onto your cards. Tap one to see their rounds, or to fix a name or an index.</p><div class="list">${contacts.map(p => personRow(p, `${p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))} · ` : ""}${plural(S.roundsOf(p.id).filter(r => r.status === "done").length, "round")}`, `#player/${p.id}`)).join("")}</div>` : ""}`,
-    { back: "", tabs: "people" });
+    { back: "#me", bell: false });
   const qEl = document.getElementById("q");
   if (qEl) qEl.addEventListener("input", () => {
     ui.search = qEl.value;
