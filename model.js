@@ -1231,9 +1231,9 @@ export const eloExpected = (ra, rb) => 1 / (1 + 10 ** ((rb - ra) / ELO.scale));
  * K / (opponents) times the sum over opponents, so a field of twenty moves nobody further than a two-ball.
  * Days run in date order, every card of a day off the ratings from before it; nothing is stored.
  *
- * What a player sees is `score`: it starts at 0, takes the same change as the rating, and never goes below 0,
- * so at 0 a loss costs nothing and a win counts at once. That makes it how far the rating is above its lowest
- * point so far. The rating stays underneath to set what each pair was expected to do.
+ * What a player sees is `score`: it starts at 0, takes the same change as the rating in whole points (at least
+ * one for any day that gained), and never goes below 0, so at 0 a loss costs nothing and a win counts at once,
+ * however low the rating underneath is. The rating only sets what each pair was expected to do.
  */
 export function eloStandings(results, memberIds, basis = "all") {
   const members = new Set(memberIds);
@@ -1279,7 +1279,9 @@ export function eloStandings(results, memberIds, basis = "all") {
     for (const [id, d] of delta) {
       const r = rows.get(id);
       const was = r.score;
-      r.rating += d; r.score = Math.max(0, r.score + d); r.played++; r.last = r.score - was; r.lastDate = date || null;
+      // whole points, and a day that gained anything shows at least one, so a win is never rounded away to nothing
+      const step = d > 0 ? Math.max(1, Math.round(d)) : -Math.round(-d);
+      r.rating += d; r.score = Math.max(0, r.score + step); r.played++; r.last = r.score - was; r.lastDate = date || null;
       r.peak = Math.max(r.peak, r.score);
       r.history.push({ date: date || null, rating: r.rating, score: r.score, delta: d });
     }
