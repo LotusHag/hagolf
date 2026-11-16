@@ -167,19 +167,18 @@ function extrasTable(St) {
       <tbody>${rows.map(r => `<tr><td class="l">${esc(r.name)}</td>${cols.map(c => `<td>${cell(r.by[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
-const birdiePct = x => pct(x.counts[0] + x.counts[1], x.holes);
 const holeRow = (label, x) => x && x.holes ? { label, v: x.pts, big: fix(x.pts, 2),
-  sub: `${plural(x.holes, "hole")} · ${fix(x.avg, 2)} a hole (${fmtSigned(x.vspar, 2)}) · ${birdiePct(x)}% birdies` } : null;
-const parTableTip = who => `<p>How ${who} plays each kind of hole. Each bar is the Stableford points a hole of that kind is worth on average; under it, how many have been played, the average score and how far that is over or under par, and how often one was birdied or better.</p>
-  <p>The mark on every bar is two points, a hole played exactly to the handicap. A bar past it is drawn green.</p>`;
+  sub: `${fmtSigned(x.vspar, 2)} a hole · ${plural(x.holes, "hole")}` } : null;
+const parTableTip = who => `<p>How ${who} plays each kind of hole. Each bar is the Stableford points a hole of that kind is worth on average; under it, how far the average score is over or under par, and how many have been played.</p>
+  <p>The mark is net par: two points, a hole played exactly to the handicap. A bar past it is drawn green.</p>`;
 // two points is a hole played to the handicap, so every bar on these cards is read against it
-const NET_PAR_KEY = markKey("two points, a hole played to the handicap");
+const NET_PAR_KEY = markKey("net par");
 /** Par 3s, 4s and 5s, then the card split into thirds by stroke index: points a hole, as bars. */
 function holeKinds(x, who) {
   const pars = Object.keys(x.byPar).sort().map(k => holeRow(`Par ${k}s`, x.byPar[k])).filter(Boolean);
   const bands = x.bands.map((b, i) => holeRow(BANDS[i], b)).filter(Boolean);
   return `${h2tip("Par 3s, 4s and 5s", parTableTip(who))}
-    <div class="card">${leads([lead(fix(x.pts, 2), "points a hole", `every hole · ${fmtSigned(x.vspar, 2)} against par · ${birdiePct(x)}% birdie or better`)])}
+    <div class="card">${leads([lead(fix(x.pts, 2), "points a hole", "every hole")])}
       <div class="sgap"></div>${barRows(pars, { top: 3, mark: 2 })}${NET_PAR_KEY}</div>
     ${bands.length ? `${h2tip("Easy holes and hard ones", BANDS_TIP)}<div class="card">${barRows(bands, { top: 3, mark: 2 })}${NET_PAR_KEY}</div>` : ""}`;
 }
@@ -472,10 +471,10 @@ function ninesFieldBlock(gid, rounds, me) {
 export function ninesPlayerBlock(rounds, pid, first) {
   const nines = ninesPlayed(rounds, pid);
   if (!nines.length) return "";
-  return `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether ${esc(first)} walked it alone or as half of an 18, so the loops can be compared with each other.`)}
+  return `${h2tip("Nines walked", `<p>Each loop is scored on its own stroke index and course rating, whether ${esc(first)} walked it alone or as half of an 18, so the loops can be compared with each other.</p><p>Each bar is the average Stableford points on that loop. The mark is net par, eighteen points: a nine played exactly to the handicap.</p>`)}
     <div class="card">${barRows(nines.map(x => ({ label: nineName(x.slug), v: x.avgPts, big: fix(x.avgPts),
-      sub: [`walked ${plural(x.played, "time")}`, x.bestGross === null ? "" : `best ${x.bestGross}`, x.avgGross === null ? "" : `${fix(x.avgGross)} strokes on average`].filter(Boolean).join(" · ") })), { top: 27, mark: 18 })}
-      ${markKey("eighteen points, a nine played to the handicap")}</div>`;
+      sub: [`${x.played} walked`, x.bestGross === null ? "" : `best ${x.bestGross}`, x.avgGross === null ? "" : `avg ${fix(x.avgGross)}`].filter(Boolean).join(" · ") })), { top: 27, mark: 18 })}
+      ${markKey("net par")}</div>`;
 }
 export function ninesForPoster(rounds, members) {
   const ids = new Set(members);

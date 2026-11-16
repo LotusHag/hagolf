@@ -72,17 +72,17 @@ function chart(m) {
   return `<svg class="tchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(`${m.label}: from ${m.fmt(m.then)} to ${m.fmt(m.now)}`)}">
     <line class="tbase" x1="${L}" x2="${W - R}" y1="${y(m.then).toFixed(1)}" y2="${y(m.then).toFixed(1)}"></line>${dots}
     <path class="tline ${toneOf(m)}" d="${line}"></path><circle class="tlast ${toneOf(m)}" cx="${x(last).toFixed(1)}" cy="${y(m.rolling[last]).toFixed(1)}" r="4.5"></circle></svg>
-    <div class="tdates muted"><span>${esc(shortDate(m.s[0].date))}</span><span>${esc(plural(m.s.length, "round"))}</span><span>${esc(shortDate(m.s[m.s.length - 1].date))}</span></div>`;
+    <div class="tdates muted"><span>${esc(shortDate(m.s[0].date))}</span><span>${esc(shortDate(m.s[m.s.length - 1].date))}</span></div>`;
 }
 
-const trendRow = m => `<div class="trow"><div class="trhead"><span>${esc(m.label)}<small>last ${m.k} rounds, against the first ${m.k}</small></span>
+const trendRow = m => `<div class="trow"><div class="trhead"><span>${esc(m.label)}</span>
     <b class="num">${esc(m.fmt(m.now))}</b><em class="${toneOf(m)}">${m.moved ? esc(deltaText(m)) : "steady"}</em></div>${chart(m)}</div>`;
 
 /** The biggest movers either way, ranked by how far each moved against its own round-to-round wobble. */
 function movers(ms) {
   const moved = ms.filter(m => m.moved).sort((a, b) => b.z - a.z);
   const up = moved.filter(m => m.better).slice(0, 2), down = moved.filter(m => !m.better).slice(0, 2);
-  if (!up.length && !down.length) return `<div class="card"><p class="muted small" style="margin:0">Nothing has moved much yet: every reading is within a round's normal wobble of where it started.</p></div>`;
+  if (!up.length && !down.length) return `<div class="card"><p class="muted small" style="margin:0">Nothing has moved much yet.</p></div>`;
   const fig = m => `<div><b class="num ${toneOf(m)}">${esc(deltaText(m))}</b><small>${esc(m.label)}</small><i>${esc(`${m.fmt(m.then)} → ${m.fmt(m.now)}`)}</i></div>`;
   return `<div class="card">${up.length ? `<div class="subhead" style="margin-top:0">Getting better</div><div class="sleads grid">${up.map(fig).join("")}</div>` : ""}
     ${down.length ? `<div class="subhead"${up.length ? "" : ` style="margin-top:0"`}>Slipping</div><div class="sleads grid">${down.map(fig).join("")}</div>` : ""}</div>`;

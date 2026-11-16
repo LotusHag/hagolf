@@ -207,6 +207,13 @@ export const ICONS = {
   // a stand bag, tilted on its leg, three clubs out of the top
   bag: I(`<g transform="rotate(-16 12 12)"><path d="M7.5 8.5h8V20a1.8 1.8 0 0 1-1.8 1.8H9.3A1.8 1.8 0 0 1 7.5 20z"/><path d="M7.5 11.5h8"/><path d="M9.6 8.5V3.8l-2.2-.8"/><path d="M11.5 8.5V2.3h2.3"/><path d="M13.4 8.5V4.3l2.1-.8"/></g><path d="M16.2 12.6 19.3 21.2"/>`),
   shop: I(`<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`),
+  // the Shots tab follows the ball: a shot gaining ground, the tee, the approach, the bunker, the putt.
+  // A dotted flight is a dash of length zero every 3.2, which only shows with round caps.
+  gained: I(`<circle cx="6" cy="17.5" r="2.5"/><path d="M8.5 15.5C11 10 14.5 7 20 5"/><path d="M15.5 4.5 20 5l-1.6 4.3"/>`),
+  tee: I(`<circle cx="12" cy="5.5" r="3.5"/><path d="M8 10.5h8l-2.5 2.5v6l-1.5 2.5-1.5-2.5v-6z"/><path d="M3 15.5h4.5"/><path d="M16.5 15.5H21"/>`),
+  approach: I(`<path d="M15 18V3l5 2.2L15 7.4"/><ellipse cx="14" cy="18.5" rx="7.5" ry="2.5"/><path d="M2.5 16C4 10 7.5 7.5 11 7.5" stroke-dasharray="0 3.2"/>`),
+  bunker: I(`<path d="M2.5 15h4c1.2 3 3.2 4.5 5.5 4.5s4.3-1.5 5.5-4.5h4"/><path d="M11.5 15.5C12 10 14.5 6.5 18 5.5" stroke-dasharray="0 3.2"/><circle cx="20" cy="5" r="1.8"/>`),
+  putt: I(`<path d="M4 3.5 8 15.2"/><path d="M6 15.8l4-1.3"/><circle cx="13" cy="17.6" r="1.9"/><ellipse cx="19.3" cy="19.2" rx="2.4" ry="1"/>`),
 };
 export const TABS = [["home", "#home", "Play", "golf"], ["stats", "#stats", "Stats", "chart"], ["leagues", "#leagues", "Societies", "leagues"], ["me", "#me", "Me", "me"]];
 
@@ -421,7 +428,7 @@ export function viewer(items, start = 0) {
 // ---------------------------------------------------------------- explanations behind an "i", tab rows
 // The words ride in a <template> beside the button, built where the numbers are built, and open in a sheet.
 export const infoBtn = (title, text, cls = "") => `<button type="button" class="ibtn${cls ? ` ${cls}` : ""}" data-tip="${esc(title)}" aria-label="How this works${title ? `: ${esc(title)}` : ""}"><i aria-hidden="true">i</i></button><template>${text}</template>`;
-export const h2tip = (title, text) => `<div class="tiphead"><h2>${esc(title)}</h2>${infoBtn(title, text)}</div>`;
+export const h2tip = (title, text, icon = "") => `<div class="tiphead"><h2>${icon ? ICONS[icon] : ""}${esc(title)}</h2>${infoBtn(title, text)}</div>`;
 export const tip = (text, label = "How this works") => `<div class="tiphead solo"><span>${esc(label)}</span>${infoBtn(label, text)}</div>`;
 /** A section label with the hairline running off it, and an optional link or control at the far end. */
 export const sect = (label, end = "") => `<div class="sect"><span class="caps">${esc(label)}</span><span class="fill"></span>${end}</div>`;

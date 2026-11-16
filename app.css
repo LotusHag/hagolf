@@ -31,6 +31,7 @@ h1 { font-family: "Oswald", sans-serif; font-size: 20px; margin: 0; font-weight:
 h2 { display: flex; align-items: center; gap: 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 2.2px; color: var(--ink3); margin: 28px 0 6px; font-weight: 700; }
 h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 h2:first-child { margin-top: 6px; }
+h2 > svg { flex: none; width: 16px; height: 16px; margin-right: -4px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 h3 { font-size: 17px; margin: 0 0 4px; font-weight: 700; }
 p { margin: 8px 0; }
 .muted { color: var(--ink3); } .small { font-size: 13px; } .tiny { font-size: 11px; } .center { text-align: center; }
@@ -648,8 +649,7 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .sleads > a i { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trows { display: grid; gap: 26px; }
 .trhead { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 10px; }
-.trhead span { font-size: 14px; color: var(--ink); line-height: 1.25; }
-.trhead span small { display: block; font-size: 11px; color: var(--ink3); margin-top: 2px; }
+.trhead span { font-size: 14px; color: var(--ink); line-height: 1.25; text-wrap: pretty; }
 .trhead b { font-size: 24px; font-weight: 600; color: var(--ink); }
 .trhead em { font-style: normal; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink3); min-width: 44px; text-align: right; }
 .trhead em.up { color: var(--under); } .trhead em.down { color: var(--bogey); }

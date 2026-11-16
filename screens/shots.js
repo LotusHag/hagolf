@@ -48,14 +48,14 @@ function sgSection(sg, who) {
     { label: "Tee to green", v: per.teeToGreen },
     { label: "Putting", v: per.putting },
   ]) : "";
+  const note = per ? "" : sg.split ? `Putting splits off after 9 holes with putts on both cards; ${sg.split.holes} so far.` : "";
   // the split is measured only against players who kept putts too, a different baseline from the total's
-  const note = !per ? (sg.split ? `Putting splits off once nine holes have putts on both cards; so far ${plural(sg.split.holes, "hole")}.` : "No putting split yet: nobody you played with kept putts.")
-    : sg.split.holes < sg.holes || Math.abs(per.total - sg.per18) >= 0.05
-      ? `Tee to green and putting are measured against the players who kept putts as well, over ${plural(sg.split.holes, "hole")}. Against them you gained ${fmtSigned(per.total, 2)} a round, which is what the two add up to.` : "";
-  return `${h2tip("Strokes gained", SG_TIP + `<p><b>By the kind of hole</b> is the same total split between par 3s, 4s and 5s, so the three add back up to it.</p>`)}
+  const splitTip = per && (sg.split.holes < sg.holes || Math.abs(per.total - sg.per18) >= 0.05)
+    ? `<p>Here tee to green and putting are measured only against the players who kept putts as well, over ${plural(sg.split.holes, "hole")}. Against them you gained ${fmtSigned(per.total, 2)} a round, which is what the two add up to.</p>` : "";
+  return `${h2tip("Strokes gained", SG_TIP + `<p><b>By the kind of hole</b> is the same total split between par 3s, 4s and 5s, so the three add back up to it.</p>${splitTip}`, "gained")}
     <div class="card sgcard">
       <div class="sgtop"><b class="num ${signClass(sg.per18)}">${fmtSigned(sg.per18, 2)}</b>
-        <span>strokes a round against ${esc(who)}<small>${plural(sg.holes, "hole")}${sg.rounds > 1 ? ` over ${plural(sg.rounds, "round")}` : ""}</small></span></div>
+        <span>a round against ${esc(who)}<small>${plural(sg.holes, "hole")}${sg.rounds > 1 ? ` over ${plural(sg.rounds, "round")}` : ""}</small></span></div>
       ${split}
       ${note ? `<p class="muted small" style="margin:10px 0 0">${esc(note)}</p>` : ""}
       ${pars.length > 1 ? `<div class="subhead">By the kind of hole</div>${divRows(pars.map(k => ({ label: `Par ${k}s`, sub: `${fmtSigned(sg.byPar[k].perHole, 2)} a hole`, v: sg.byPar[k].per18 })))}` : ""}
@@ -79,7 +79,8 @@ function teeFan(hit, left, right) {
   const svg = arms.map(([k, n, a0, a1]) => {
     // the area of an arm, not its length, is what the eye reads, so the length goes with the square root
     const r = n ? r0 + (R - r0) * Math.sqrt(n / top) : r0 * 0.4;
-    const [lx, ly] = pt((a0 + a1) / 2, r + 8);
+    // every label sits just past the grey wedge, off the arms, so a short arm never has its number drawn across it
+    const [lx, ly] = pt((a0 + a1) / 2, R + 14);
     return `<path class="fanbg" d="${wedge(a0, a1, R)}"></path><path class="fan ${k}" d="${wedge(a0, a1, r)}"><title>${esc(`${words[k]}: ${n} of ${total}`)}</title></path>
       <text class="fanv" x="${lx.toFixed(1)}" y="${(ly - 12).toFixed(1)}">${pctOf(n, total)}%</text><text class="fanl" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}">${words[k]}</text>`;
   }).join("");
@@ -90,15 +91,15 @@ function teeSection(x) {
   const f = x.fairway;
   if (!f || f.holes < 4) return "";
   const L = f.misses.left, R = f.misses.right, sideless = f.holes - f.hit - L - R;
-  const bias = L + R < 4 ? "" : Math.abs(L - R) <= Math.max(1, (L + R) * 0.15) ? "Missed both ways about evenly."
-    : `${L > R ? "Left" : "Right"} is the miss: ${Math.max(L, R)} of the ${L + R} that went either side.`;
+  const bias = L + R < 4 ? "" : Math.abs(L - R) <= Math.max(1, (L + R) * 0.15) ? "Misses go both ways."
+    : `Misses go ${L > R ? "left" : "right"}: ${Math.max(L, R)} of ${L + R}.`;
   const ff = x.fromFairway;
   return `${h2tip("Off the tee", `<p>Every par 4 and par 5 where the tee shot was kept: on the fairway, or missed left or right. A par 3 has no fairway, so it is never asked.</p>
-      <p><b>From the fairway</b> and <b>from the rough</b> are how often the green was then hit in regulation, which is what finding the fairway is worth to you.</p>`)}
+      <p><b>From the fairway</b> and <b>from the rough</b> are how often the green was then hit in regulation, which is what finding the fairway is worth to you.</p>${sideless > 0 ? `<p>${plural(sideless, "miss", "misses")} kept without a side ${sideless === 1 ? "is" : "are"} left out of the fan.</p>` : ""}`, "tee")}
     <div class="card">
       ${leads([lead(fmtPct(f.pct), "fairways hit", `${f.hit} of ${f.holes}`)])}
       ${teeFan(f.hit, L, R)}
-      ${bias || sideless > 0 ? `<p class="muted small center" style="margin:4px 0 0">${esc(bias)}${sideless > 0 ? ` ${plural(sideless, "miss", "misses")} without a side ${sideless === 1 ? "is" : "are"} left out of the fan.` : ""}</p>` : ""}
+      ${bias ? `<p class="muted small center" style="margin:4px 0 0">${esc(bias)}</p>` : ""}
       ${ff ? `<div class="subhead">Greens hit after it</div>${meter("From the fairway", ff.hit.gir, ff.hit.holes, "up")}${meter("From the rough", ff.miss.gir, ff.miss.holes)}` : ""}
     </div>`;
 }
@@ -112,7 +113,7 @@ function approachSection(x) {
   if (x.birdies && x.birdies.holes >= 6) extra.push(lead(fmtPct(x.birdies.pct), "greens turned into birdies", `${x.birdies.made} of ${x.birdies.holes}`));
   if (x.fromGir) extra.push(lead(fix(x.fromGir.edge, 2), "strokes a green saves", `${fmtSigned(x.fromGir.hit.topar, 2)} on, ${fmtSigned(x.fromGir.miss.topar, 2)} off`));
   return `${h2tip("Into the green", `<p><b>Greens in regulation</b>: on the green with two strokes still left for par. Worked out from your strokes and your putts, never asked for.</p>
-      <p><b>Greens turned into birdies</b> is how often a green in regulation became a birdie or better. <b>Strokes a green saves</b> is how much better against par you play a hole where you hit the green than one where you missed it.</p>`)}
+      <p><b>Greens turned into birdies</b> is how often a green in regulation became a birdie or better. <b>Strokes a green saves</b> is how much better against par you play a hole where you hit the green than one where you missed it.</p>`, "approach")}
     <div class="card">
       ${leads([lead(fmtPct(g.pct), "greens in regulation", `${g.hit} of ${g.holes}`), lead(fix((g.hit / g.holes) * 18, 1), "greens a round")])}
       ${pars.length > 1 ? `<div class="subhead">By the kind of hole</div>${pars.map(k => meter(`Par ${k}s`, x.girByPar[k].hit, x.girByPar[k].holes, "up")).join("")}` : ""}
@@ -128,7 +129,7 @@ function shortSection(x) {
   const pen = x.penalty && x.penalty.holes >= 9 ? x.penalty : null;
   if (!rows.length && !pen) return "";
   return `${h2tip("Around the green", `<p><b>Up and down</b>: the green missed in regulation and par or better made anyway. <b>Sand saves</b> ask the same of a greenside bunker. Neither is asked for; both come from your score.</p>
-      <p><b>Penalty shots</b> are counted a round of 18, over the holes where you kept them.</p>`)}
+      <p><b>Penalty shots</b> are counted a round of 18, over the holes where you kept them.</p>`, "bunker")}
     <div class="card">${rows.join("")}
       ${pen ? `${rows.length ? `<div class="sgap"></div>` : ""}${leads([lead(fix((pen.total / pen.holes) * 18, 1), "penalty shots a round", `${pen.total} over ${plural(pen.holes, "hole")}`)])}` : ""}</div>`;
 }
@@ -152,7 +153,7 @@ function puttSection(x) {
   if (p.onGir !== null && p.onGirHoles >= 5) heads.push(lead(fix(p.onGir, 2), "putts a green hit", plural(p.onGirHoles, "green")));
   heads.push(lead(fix((p.three / p.holes) * 18, 1), "three-putts a round"));
   return `${h2tip("On the green", `<p>Every hole where putts were kept. <b>Putts a round</b> is the average scaled to 18 holes. <b>Putts a green hit</b> counts only the greens reached in regulation, where the first putt is usually the long one, so it is the fairer measure of the putter.</p>
-      <p>The columns are how many putts each hole took, as a share of the holes. A hole chipped in or holed from off the green took none.</p>`)}
+      <p>The columns are how many putts each hole took, as a share of the holes. A hole chipped in or holed from off the green took none.</p>`, "putt")}
     <div class="card">${leads(heads)}${puttColumns(p)}</div>`;
 }
 
