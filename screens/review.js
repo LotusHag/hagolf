@@ -8,7 +8,8 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, saveFiles, slugFile, ICONS, makeTheme, loadFonts, sizedLooks, sizedName, themeForRound } from "../ui.js";
 import { DATA } from "../data.js";
-import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat, onPoints } from "../model.js";
+import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat, onPoints, matchWith } from "../model.js";
+import { runsCard } from "./event.js";
 import { formatLabel } from "./home.js";
 import { renderCards } from "../cards.js";
 import { statTap, statStep, statLine, seedStats } from "./extras.js";
@@ -168,9 +169,14 @@ export function review(rid, keep = false) {
   try { M = compute(c, S.toModelRound(r)); R = roundRanking(c, { ...S.toModelRound(r), final: r.status === "done" }); } catch (err) {
     return page("Card", `<div class="banner warn">${esc(err.message)}</div><a class="btn" href="#players/${rid}">Fix the players</a>`, { back: `#score/${rid}/${S.holeOf(r)}` });
   }
-  const scorer = S.isScorer(r), done = r.status === "done";
+  const scorer = S.isScorer(r);
+  if (scorer) S.settleDay(r);
+  const done = r.status === "done";
   const fmt = r.format || "stableford";
   const unfinished = S.scoringSeats(r).filter(e => M.unfinished.includes(e.name));
+  // on a card of several groups, each hands in its own: mine is the one I am in, or the one I was looking at
+  const groups = S.manyGroups(r), myGroup = groups ? S.groupOf(S.mySeat(r) || { group: ui.groupFilter[rid] || 1 }) : 0;
+  const mineOut = groups ? unfinished.filter(e => S.groupOf(e) === myGroup) : unfinished;
   const kinds = S.statsFor(rid);
   const byId = id => r.entries.find(e => e.playerId === id);
   const chips = e => c.par.map((par, i) => {
@@ -187,8 +193,8 @@ export function review(rid, keep = false) {
   };
   const oldPens = e => (e.penalties || []).length ? `<div class="pens">${e.penalties.map((p, k) => `<span class="pen">+${p.strokes} on hole ${p.hole}${p.reason ? ` (${esc(p.reason)})` : ""}${scorer ? ` <button data-act="del-pen" data-pid="${e.playerId}" data-k="${k}" aria-label="remove">×</button>` : ""}</span>`).join("")}</div>` : "";
   // a match card counts holes; its strokes and points are not a round anyone played for
-  const match = isMatchFormat(fmt) && R.match;
-  const holesWon = p => { const e = byId(p.id), k = e && e.side; return k ? R.match.holes.filter(h => h.counted && h.winner === k).length : "–"; };
+  const match = isMatchFormat(fmt) && R.matches.length > 0;
+  const holesWon = p => { const e = byId(p.id), k = e && e.side, m = matchWith(R.matches, p.id); return k && m ? m.holes.filter(h => h.counted && h.winner === k).length : "–"; };
   const detail = p => {
     const e = byId(p.id);
     if (!e) return "";
@@ -221,7 +227,12 @@ export function review(rid, keep = false) {
     ${ranking ? `<div class="ranking">${ranking}</div>` : `<p class="muted center">No complete scorecards yet.</p>`}
     ${order.length ? `<h2>Cards</h2>${scorer ? `<p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score.</p>` : ""}${order.map(detail).join("")}` : ""}
     ${partnerRow(rid) ? `<div class="list" style="margin-top:16px">${partnerRow(rid)}</div>` : ""}`;
-  const bar = done ? "" : scorer ? `<a class="btn" href="#score/${rid}/${c.n - 1}">‹ Scoring</a><button class="btn primary" data-act="save-round" ${M.field && !noPar.length && !conflicts.length ? "" : "disabled"}>Save round</button>` : "";
+  const canSave = M.field && !noPar.length && !conflicts.length;
+  const handIn = !groups ? `<button class="btn primary" data-act="save-round" ${canSave ? "" : "disabled"}>Save round</button>`
+    : S.mySeat(r) && !S.groupIn(r, myGroup) ? `<button class="btn primary" data-act="sign-group" ${canSave ? "" : "disabled"}>Group ${myGroup}: we're in</button>`
+    : runsCard(r) ? `<button class="btn primary" data-act="close-day">Close the day</button>`
+    : `<button class="btn" disabled>Waiting for ${plural(new Set(r.entries.filter(x => !x.signed).map(S.groupOf)).size, "group")}</button>`;
+  const bar = done ? "" : scorer ? `<a class="btn" href="#score/${rid}/${c.n - 1}">‹ Scoring</a>${handIn}` : "";
   page(done ? "Card" : "Check the card", body, { back: done ? "#stats/rounds" : `#score/${rid}/${S.holeOf(r)}`, bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep, bell: false,
     actions: `${iconBtn("share", "share", "Share")}${iconBtn("menu", "more", "More")}` });
   if (scorer && !done && Y.enabled() && !(ui.conflictsChecked || {})[rid]) checkConflicts(r).then(n => { if (n && location.hash.startsWith(`#review/${rid}`)) review(rid, true); });
@@ -248,10 +259,17 @@ export function review(rid, keep = false) {
     if (act === "x-inc" || act === "x-dec") { statStep(r, e, ui.selHole, b.dataset.k, act === "x-inc" ? 1 : -1, c, kinds); return review(rid, true); }
     if (act === "st-fw") { statTap(r, e, ui.selHole, act, b); return review(rid, true); }
     if (act === "del-pen") { e.penalties.splice(Number(b.dataset.k), 1); S.saveEntry(r, e); return review(rid, true); }
-    if (act === "save-round") {
-      if (unfinished.length && !await confirmSheet("Holes with no score", `${plural(unfinished.length, "player")} ${unfinished.length === 1 ? "has" : "have"} holes with no score, which count ${NO_SCORE} strokes each.`, { label: "Save anyway" })) return;
+    if (act === "save-round" || act === "sign-group") {
+      if (mineOut.length && !await confirmSheet("Holes with no score", `${plural(mineOut.length, "player")} ${mineOut.length === 1 ? "has" : "have"} holes with no score, which count ${NO_SCORE} strokes each.`, { label: act === "sign-group" ? "Hand it in anyway" : "Save anyway" })) return;
+      if (act === "sign-group") S.signGroup(r, myGroup); else { r.status = "done"; S.saveRound(r); }
+      toast(r.status === "done" ? "Saved. ⤴ to share it" : `Group ${myGroup} is in. The day ends when every group is.`, 3500);
+      return review(rid);
+    }
+    if (act === "close-day") {
+      const out = [...new Set(r.entries.filter(x => !x.signed).map(S.groupOf))];
+      if (out.length && !await confirmSheet("Close the day?", `${out.length === 1 ? `Group ${out[0]} has` : `Groups ${out.join(", ")} have`} not handed in. Their cards count as they stand.`, { label: "Close the day" })) return;
       r.status = "done"; S.saveRound(r);
-      toast("Saved. ⤴ to share it", 3500);
+      toast("The day is closed. ⤴ to share it", 3500);
       return review(rid);
     }
   });

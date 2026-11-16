@@ -24,9 +24,10 @@ import { board, card } from "./screens/public.js";
 import { privacy, terms } from "./screens/legal.js";
 import { shop } from "./screens/shop.js";
 import { partners, partner, admin, redeem } from "./screens/partner.js";
+import { event, newEvent } from "./screens/event.js";
 
 const screens = { home, welcome, signin, join, add, get: getApp, j: joinCard, live: liveScreen, stats, bag: bagPage, board, card, shop, play, new: newRound, loops, players, score, review, attach, graphics,
-  people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan, partners, partner, admin, redeem,
+  people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan, partners, partner, admin, redeem, event, newevent: newEvent,
   legal: which => (which === "terms" ? terms() : privacy()) };
 
 const OPEN_SCREENS = ["welcome", "signin", "board", "card", "join", "add", "legal", "get", "live"];
@@ -54,7 +55,7 @@ export function route() {
   }
   paint(themeHere());
   // the card on screen is the one watched live; anywhere else nothing is
-  Y.watchRound(["score", "review", "players"].includes(name) && args[0] ? decodeURIComponent(args[0]) : null);
+  Y.watchRound(["score", "review", "players", "event"].includes(name) && args[0] ? decodeURIComponent(args[0]) : null);
   ui.expanded = name === "review" ? ui.expanded : null;
   if (name !== "review") ui.reviewOrder = {};
   if (name !== "people" && name !== "play") { ui.search = ""; ui.found = null; }

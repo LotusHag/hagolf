@@ -55,13 +55,13 @@ const TABLES = {
   rounds: {
     collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, owner_account: r.owner || null, name: r.name, date: r.date || null, course: r.course,
       default_tee: r.defaultTee, allowance: r.allowance || 100, status: r.status, hole: r.hole || 0, created: r.created || null, brand: r.brand || null,
-      format: r.format || "stableford", league_id: r.leagueId || null, live: !!r.live,
+      format: r.format || "stableford", league_id: r.leagueId || null, live: !!r.live, event: r.event || null,
       deleted: !!r.deleted, updated_at: r.updated_at, device_id: dev() })),
     apply(r) {
       const mine = roundFor(r.id);
       if (mine.updated_at && !newer(r, mine)) return false;
       Object.assign(mine, { owner: r.owner_account || null, name: r.name, date: r.date, course: r.course, defaultTee: r.default_tee, allowance: r.allowance || 100,
-        status: r.status, hole: r.hole || 0, created: iso(r.created), brand: r.brand || null, format: r.format || "stableford", leagueId: r.league_id || null, live: !!r.live,
+        status: r.status, hole: r.hole || 0, created: iso(r.created), brand: r.brand || null, format: r.format || "stableford", leagueId: r.league_id || null, live: !!r.live, event: r.event || null,
         deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
       const n = holesOf(S.courseBy(mine.course));
       for (const e of [...mine.entries, ...mine.removed]) {  // entries that arrived before the header were sized at 18
@@ -77,7 +77,7 @@ const TABLES = {
         if (!keys.has(`${r.id}|${e.playerId}`)) continue;
         rows.push({ round_id: r.id, player_id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", course_handicap: e.courseHandicap ?? null,
           grp: e.group || 1, from_hole: e.fromHole || 1, penalties: e.penalties || [], track_stats: !!e.trackStats,
-          account_id: e.accountId || null, proposed_account: e.proposedAccount || null, contact_id: e.contactId || e.playerId, side: e.side || null, role: e.role || "player", members: e.members || [],
+          account_id: e.accountId || null, proposed_account: e.proposedAccount || null, contact_id: e.contactId || e.playerId, side: e.side || null, role: e.role || "player", members: e.members || [], squad: e.squad || 0, signed: !!e.signed,
           deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() });
       }
       return rows;
@@ -96,7 +96,7 @@ const TABLES = {
       const rec = { playerId: row.player_id, name: row.name, hi: row.hi === null ? null : Number(row.hi), tee: row.tee, gender: row.gender || "m",
         courseHandicap: row.course_handicap, group: row.grp || 1, fromHole: row.from_hole || 1, penalties: row.penalties || [], trackStats: !!row.track_stats,
         accountId: row.account_id || null, proposedAccount: row.proposed_account || null, contactId: row.contact_id || row.player_id, side: row.side || null,
-        role: row.role || "player", members: row.members || [],
+        role: row.role || "player", members: row.members || [], squad: row.squad || 0, signed: !!row.signed,
         deleted: !!row.deleted, updated_at: iso(row.updated_at), dev: row.device_id, scores: e ? e.scores : new Array(n).fill(null), scoreTs: e ? e.scoreTs : new Array(n).fill(null),
         stats: e ? e.stats : new Array(n).fill(null), statsTs: e ? e.statsTs : new Array(n).fill(null) };
       if (i >= 0) r.entries.splice(i, 1);

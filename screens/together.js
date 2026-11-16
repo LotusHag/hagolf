@@ -5,6 +5,7 @@ import * as A from "../auth.js";
 import * as Y from "../sync.js";
 import { page, bind, esc, go, toast, courseBy, courseTitle, fmtDate, sheet, rememberIntent, resumeHash, plural, shareLink } from "../ui.js";
 import { formatLabel } from "./home.js";
+import { seatOnEvent } from "./event.js";
 
 /** A society's day on one loop is one card, whichever phone starts it first and however offline it is. */
 export function dayCardId(leagueId, date, slug) {
@@ -15,7 +16,7 @@ export function dayCardId(leagueId, date, slug) {
 }
 
 /** My seat on a card, made from my own contact and account, prefilled the way every card is. */
-function seatMe(r, group = 1) {
+export function seatMe(r, group = 1) {
   const c = courseBy(r.course), me = S.me(), a = A.account();
   if (!c || !me) return null;
   const tees = Object.keys(c.tees);
@@ -93,8 +94,8 @@ export async function joinCard(code) {
       await Y.fetchRound(r.id);
       const local = S.getRound(r.id);
       if (!local) return toast("The card didn't arrive; try again in a moment");
-      if (b.dataset.act === "addme" && !S.mySeat(local)) seatMe(local, 1);
-      go(`#score/${r.id}/${S.holeOf(local)}`);
+      if (b.dataset.act === "addme" && !S.mySeat(local)) { const e = seatMe(local); if (e && local.event) seatOnEvent(local, courseBy(local.course), e); }
+      go(local.event ? `#event/${r.id}` : `#score/${r.id}/${S.holeOf(local)}`);
     } catch (e) { toast(e.message, 5000); }
   });
 }

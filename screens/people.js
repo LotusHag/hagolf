@@ -88,7 +88,8 @@ export async function person(id) {
     const them = M ? M.players.find(p => p.id === id || contacts.some(c => c.id === p.id)) : null;
     const us = M && mine ? M.players.find(p => p.id === mine.id) : null;
     const loop = roundLoop(r);
-    const score = M && M.match ? ` · ${esc(M.match.result || M.match.status)}`
+    const mm = M && (M.match || (M.matches || []).find(m => [...m.players.A, ...m.players.B].some(x => x.id === id || contacts.some(c => c.id === x.id))));
+    const score = mm ? ` · ${esc(mm.result || mm.status)}`
       : `${them ? ` · ${esc(firstName(name))} ${them.pts} pts` : ""}${us ? ` · you ${us.pts} pts` : ""}`;
     return `<a href="#review/${r.id}"><div><div class="name">${esc(roundClub(r))}</div><div class="muted small">${loop ? `${esc(loop)} · ` : ""}${esc(fmtDate(r.date))}${score}</div></div><span class="chev">›</span></a>`;
   };
@@ -155,7 +156,7 @@ export function player(id) {
   }).filter(Boolean).join("");
   const list = rs.map(({ r, M, x }) => {
     const seat = r.entries.find(e => e.playerId === p.id);
-    const won = M.match && seat ? matchFor(M.match, seat, r) : null;
+    const won = seat ? matchFor(M, seat, r) : null;
     if (won) return `<div class="rround card"><a href="#review/${r.id}" style="display:block"><div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(roundClub(r))}</div>
         ${roundLoop(r) ? `<div class="loop">${esc(roundLoop(r))}</div>` : ""}
         <div class="res"><span class="big num">${esc(won.margin)}<small>${won.word.toLowerCase()}</small></span><span class="muted">${esc([won.against, "match play"].join(" · "))}</span></div></a></div>`;

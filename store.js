@@ -660,6 +660,26 @@ export function setTeamMembers(round, team, members) {
 
 export function setSide(round, e, side) { e.side = side; saveEntry(round, e); }
 
+// ---------------------------------------------------------------- a card of several groups, and events
+export const groupOf = e => e.group || 1;
+export const manyGroups = r => new Set(r.entries.map(groupOf)).size > 1;
+/** Whether a group has handed its card in. */
+export const groupIn = (r, g) => r.entries.some(e => groupOf(e) === g) && r.entries.filter(e => groupOf(e) === g).every(e => e.signed);
+
+/** One group hands its card in. The day ends with the last group, so the first one in does not end it for everyone. */
+export function signGroup(r, g) {
+  for (const e of r.entries.filter(e => groupOf(e) === g && !e.signed)) { e.signed = true; saveEntry(r, e); }
+  settleDay(r);
+}
+
+/** Two groups signing at once each see the other still out; whoever next sees every group in ends the day. */
+export function settleDay(r) {
+  if (r.status === "done" || !r.entries.length || !r.entries.every(e => e.signed)) return false;
+  r.status = "done";
+  saveRound(r);
+  return true;
+}
+
 /** The golfer a seat is: their account when they hold it, otherwise the contact's identity. */
 export function seatIdentity(e) {
   return e.accountId || identityOf(e.contactId || e.playerId);
@@ -744,7 +764,7 @@ export function toModelRound(round, collapse = false) {
     seen.add(id);
     entries.push({ id, name: collapse && !e.accountId ? identityName(id, e.name) : e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
       courseHandicap: e.courseHandicap ?? getPch(e.contactId || e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1,
-      stats: e.stats || [], trackStats: !!e.trackStats, side: e.side || null, role: e.role || "player",
+      stats: e.stats || [], trackStats: !!e.trackStats, side: e.side || null, role: e.role || "player", squad: e.squad || 0,
       members: (e.members || []).map(m => (round.entries.find(x => x.playerId === m) || {}).name).filter(Boolean),
       memberIds: collapse ? (e.members || []).map(m => round.entries.find(x => x.playerId === m)).filter(Boolean).map(seatIdentity) : null });
   }

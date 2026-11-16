@@ -6,6 +6,7 @@ import * as Mo from "../model.js";
 import { page, bind, esc, go, ui, plural, fmtDate, courseTitle, firstName } from "../ui.js";
 import { courseOf } from "./public.js";
 import { liveBoard, formatLabel } from "./home.js";
+import { teeSheet, teamTable } from "./event.js";
 
 let sock = null, sockFor = null;
 
@@ -25,12 +26,12 @@ function listen(token, redraw) {
 /** The day in the shape the app's own live board reads. */
 function asRound(P, course) {
   const n = course.n || course.par.length;
-  const r = { id: "live", format: P.round.format, course: P.round.course, defaultTee: P.round.defaultTee, allowance: P.round.allowance || 100, entries: [] };
+  const r = { id: "live", format: P.round.format, course: P.round.course, date: P.round.date, defaultTee: P.round.defaultTee, allowance: P.round.allowance || 100, event: P.round.event || null, entries: [] };
   for (const e of P.entries) {
     const scores = new Array(n).fill(null);
     for (const s of P.scores) if (s.id === e.id && s.hole < n) scores[s.hole] = s.strokes;
     r.entries.push({ playerId: e.id, contactId: null, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", courseHandicap: e.courseHandicap, group: e.group || 1,
-      fromHole: e.fromHole || 1, scores, penalties: e.penalties || [], role: e.role || "player", side: e.side || null, members: e.members || [] });
+      fromHole: e.fromHole || 1, scores, penalties: e.penalties || [], role: e.role || "player", side: e.side || null, members: e.members || [], squad: e.squad || 0, signed: !!e.signed });
   }
   return r;
 }
@@ -51,11 +52,17 @@ export async function liveScreen(token, mode) {
   if (!course) return page("Live", `<div class="banner warn">The course of this day did not come with it.</div>`, { back: "#home", bell: false });
   const r = asRound(P, course);
   let body;
-  if (Mo.isMatchFormat(r.format) && Mo.matchPlay) {
-    let M = null;
-    try { M = Mo.matchPlay(course, { format: r.format, name: P.round.name, defaultTee: r.defaultTee, allowance: r.allowance, final: false,
-      entries: r.entries.filter(e => e.role !== "member").map(e => ({ id: e.playerId, role: e.role, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, courseHandicap: e.courseHandicap, scores: e.scores, side: e.side, fromHole: e.fromHole, penalties: e.penalties })) }); } catch (e) { M = null; }
-    body = M ? `<div class="livematch"><div class="side">${esc(M.sides.A.join(" & "))}</div><div class="state num">${esc(M.result || M.status)}</div><div class="side">${esc(M.sides.B.join(" & "))}</div></div>
+  const match = Mo.isMatchFormat(r.format);
+  let ms = [];
+  if (match) try { ms = Mo.matchesOf(course, { format: r.format, name: P.round.name, defaultTee: r.defaultTee, allowance: r.allowance, final: false,
+    entries: r.entries.filter(e => e.role !== "member").map(e => ({ id: e.playerId, role: e.role, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, courseHandicap: e.courseHandicap, scores: e.scores, side: e.side, fromHole: e.fromHole, penalties: e.penalties, group: e.group, squad: e.squad })) }); } catch (e) { ms = []; }
+  const plan = r.event, scored = r.entries.some(e => e.scores.some(v => v !== null));
+  const teams = plan && plan.teams && plan.teams.length && match ? teamTable(Mo.teamPoints(ms, plan.teams)) : "";
+  const M = ms.length === 1 ? ms[0] : null;
+  if (plan && (!scored || (match && ms.length > 1))) {
+    body = `${teams}${teeSheet(r, course, { matches: ms })}`;
+  } else if (match) {
+    body = M ? `${teams}<div class="livematch"><div class="side">${esc(M.sides.A.join(" & "))}</div><div class="state num">${esc(M.result || M.status)}</div><div class="side">${esc(M.sides.B.join(" & "))}</div></div>
       <div class="holeline">${M.holes.map(h => `<span class="${h.winner === "A" ? "a" : h.winner === "B" ? "b" : h.winner === "halved" ? "h" : ""}">${course.first_hole + h.hole - 1}</span>`).join("")}</div>`
       : `<p class="muted center">The match has not started.</p>`;
   } else {

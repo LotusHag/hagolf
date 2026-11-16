@@ -7,7 +7,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
-import { page, bind, esc, go, toast, plural, firstName, courseTitle, courseBy, noCourse, parseHI, hiOk, confirmSheet, promptSheet, sheet, teeColor, shareLink, qrHtml, fmtDate, avatar } from "../ui.js";
+import { page, bind, esc, go, ui, toast, plural, firstName, courseTitle, courseBy, noCourse, parseHI, hiOk, confirmSheet, promptSheet, sheet, teeColor, shareLink, qrHtml, fmtDate, avatar } from "../ui.js";
 import { handicapFor, scratchFor, fmtHcp, fmtIndex } from "../model.js";
 import { brandField } from "./partner.js";
 import { formatLabel } from "./home.js";
@@ -42,7 +42,7 @@ export function seatInfo(r, c, e) {
 }
 
 /** A team's handicap from its members, the WHS way; recomputed whenever the team changes. */
-function refreshTeam(r, c, team) {
+export function refreshTeam(r, c, team) {
   const chs = r.entries.filter(m => team.members.includes(m.playerId)).map(m => seatInfo(r, c, m).ch).filter(x => x !== undefined && x !== null);
   const first = r.entries.find(m => team.members.includes(m.playerId));
   const ch = Mo.teamHandicap ? Mo.teamHandicap(chs) : Math.round(chs.reduce((a, b) => a + b, 0) / Math.max(1, chs.length * 2));
@@ -65,9 +65,12 @@ function twoSides(r, c) {
 }
 
 /** How the match is settled, in words: nobody gets a shot in match play. */
-function matchLine(r, c) {
+function matchLine(r, c, g = 0) {
+  if (!g && S.manyGroups(r)) return "";
   try {
-    const M = Mo.matchPlay(c, { ...S.toModelRound(r), final: false });
+    const m = { ...S.toModelRound(r), final: false };
+    if (g) m.entries = m.entries.filter(e => (e.group || 1) === g);
+    const M = Mo.matchPlay(c, m);
     const ball = M.kind === "fourball" ? "Better ball. " : "";
     return `<p class="muted small strokesline">${ball}No handicaps: each hole goes to the ${M.basis === "points" ? "most Stableford points against par" : "fewest strokes"}.</p>`;
   } catch (e) { return `<p class="muted small strokesline">${esc(e.message)}</p>`; }
@@ -102,7 +105,7 @@ function countsPick(r) {
 }
 
 // ---------------------------------------------------------------- the screen
-export function players(rid, keep = false) {
+export function players(rid, only = 0, keep = false) {
   const r = S.getRound(rid);
   if (!r) return go("#home");
   const c = courseBy(r.course);
@@ -110,10 +113,12 @@ export function players(rid, keep = false) {
   if (!S.isScorer(r)) return go(`#review/${rid}`);
   const tees = Object.keys(c.tees);
   const fmt = r.format || "stableford";
-  if (scrambleMatch(fmt)) twoSides(r, c);
+  // an event's group checks in on its own before it tees off: only its players, and its teams come from the draw
+  const g = Number(only) || 0, inG = e => !g || S.groupOf(e) === g;
+  if (scrambleMatch(fmt) && !r.event) twoSides(r, c);
   const lg = S.leaguesOfRound(rid);
   const me = S.myAccount();
-  const people = r.entries.filter(e => e.role !== "team");
+  const people = r.entries.filter(e => e.role !== "team" && inG(e));
   const showGroups = people.length > 4 || people.some(e => (e.group || 1) > 1);
   const match = Mo.isMatchFormat(fmt);
 
@@ -134,13 +139,13 @@ export function players(rid, keep = false) {
   let rows;
   if (sidedMatch(fmt)) {
     const a = people.filter(e => e.side === "A"), b = people.filter(e => e.side === "B"), none = people.filter(e => e.side !== "A" && e.side !== "B");
-    rows = `${variantPick(fmt)}${countsPick(r)}
+    rows = `${g ? "" : variantPick(fmt) + countsPick(r)}
       ${none.length ? none.map(row).join("") : ""}
       <h2>Side A</h2>${a.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
       <h2>Side B</h2>${b.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
-      ${a.length && b.length ? matchLine(r, c) : ""}`;
+      ${a.length && b.length ? matchLine(r, c, g) : ""}`;
   } else if (Mo.isTeamFormat(fmt)) {
-    const teams = r.entries.filter(e => e.role === "team");
+    const teams = r.entries.filter(e => e.role === "team" && inG(e));
     const free = people.filter(e => e.role !== "member");
     const vs = scrambleMatch(fmt);
     const card = t => `<div class="card team"><div class="whotop"><div class="wname"><b>${esc(t.name)}</b>${vs ? "" : `<small>team handicap ${t.courseHandicap ?? "–"}</small>`}</div>
@@ -149,42 +154,49 @@ export function players(rid, keep = false) {
           ${free.map(m => `<button class="pchip" data-act="toteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span><span class="plus">+</span>${esc(m.name)}</span></button>`).join("")}</div></div>`;
     const sided = ["A", "B"].map(sd => `<h2>Side ${sd}</h2>${teams.filter(t => t.side === sd).map(card).join("")}`).join("");
     const stray = teams.filter(t => t.side !== "A" && t.side !== "B");
-    rows = `${variantPick(fmt)}${countsPick(r)}${people.map(row).join("")}
+    rows = `${g ? "" : variantPick(fmt) + countsPick(r)}${people.map(row).join("")}
       ${vs ? `${sided}${stray.length ? `<h2>Not in the match</h2>${stray.map(card).join("")}` : ""}` : `<h2>Teams</h2>${teams.map(card).join("")}`}
-      <div class="btnrow">${vs ? "" : `<button class="btn" data-act="newteam">+ Team</button>`}${people.length >= 2 ? `<button class="btn" data-act="autoteams">Make teams for me</button>` : ""}</div>
-      ${vs && teams.some(t => t.members.length) ? matchLine(r, c) : ""}
+      ${g ? "" : `<div class="btnrow">${vs ? "" : `<button class="btn" data-act="newteam">+ Team</button>`}${people.length >= 2 ? `<button class="btn" data-act="autoteams">Make teams for me</button>` : ""}</div>`}
+      ${vs && teams.some(t => t.members.length) ? matchLine(r, c, g) : ""}
       ${teams.length && !vs ? `<p class="muted small">Team handicaps follow the World Handicap System: 35% and 15% for two, 30/20/10 for three, 25/20/15/10 for four.</p>` : ""}`;
   } else rows = people.map(row).join("");
 
   const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 && !match ? `${r.allowance}%` : "", S.cardKeepsStats(r) ? "advanced stats" : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
   const ready = sidedMatch(fmt) ? people.some(e => e.side === "A") && people.some(e => e.side === "B")
-    : Mo.isTeamFormat(fmt) && !scrambleMatch(fmt) ? r.entries.some(e => e.role === "team" && e.members.length)
-    : scrambleMatch(fmt) ? ["A", "B"].every(sd => r.entries.some(e => e.role === "team" && e.side === sd && e.members.length)) && !r.entries.some(e => e.role === "team" && e.side !== "A" && e.side !== "B" && e.members.length)
+    : Mo.isTeamFormat(fmt) && !scrambleMatch(fmt) ? r.entries.some(e => e.role === "team" && inG(e) && e.members.length)
+    : scrambleMatch(fmt) ? ["A", "B"].every(sd => r.entries.some(e => e.role === "team" && inG(e) && e.side === sd && e.members.length)) && !r.entries.some(e => e.role === "team" && inG(e) && e.side !== "A" && e.side !== "B" && e.members.length)
     : people.length > 0;
   const bar = !people.length ? `<button class="btn" disabled>Add players to start</button>`
     : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
     : `<button class="btn primary big" data-act="tee-off" ${ready ? "" : "disabled"}>${r.status === "setup" ? "Tee off" : "Back to scoring ›"}</button>`;
-  page("Who's playing?", `
+  page(g ? `Group ${g}` : "Who's playing?", g ? `
+    <p class="muted small">Check everyone's index and tee, then tee off.</p>
+    ${rows || `<p class="muted center small">Nobody in this group.</p>`}`
+    : `
     <button class="optline" data-act="options"><span>${esc(opts)}</span><span class="chev">›</span></button>
     ${rows || `<p class="muted center small">Nobody yet.</p>`}
     <div class="btnrow"><button class="btn" data-act="add">+ Add player</button><button class="btn" data-act="invite">Invite to this card</button></div>
     ${dropBtn(r)}`,
-  { back: r.status === "done" ? `#review/${rid}` : "#home", bar, keepScroll: keep, bell: false });
+  { back: r.status === "done" ? `#review/${rid}` : r.event ? `#event/${rid}` : "#home", bar, keepScroll: keep, bell: false });
 
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     const act = b.dataset.act;
     const e = b.dataset.i !== undefined ? r.entries[Number(b.dataset.i)] : null;
-    if (act === "tee-off") { if (r.status === "setup") { r.status = "scoring"; S.saveRound(r); } return go(`#score/${r.id}/${S.holeOf(r)}`); }
+    if (act === "tee-off") {
+      if (r.status === "setup") { r.status = "scoring"; S.saveRound(r); }
+      if (g) { ui.groupFilter[rid] = g; const h = (people[0] || {}).fromHole || 1; if (people.every(e => e.scores.every(v => v === null))) S.setHole(r, h - 1); }
+      return go(`#score/${r.id}/${S.holeOf(r)}`);
+    }
     if (act === "drop-round") return dropRound(rid);
-    if (act === "options") { await optionsSheet(r, c); return players(rid, true); }
-    if (act === "add") { await addSheet(r, c); return players(rid, true); }
+    if (act === "options") { await optionsSheet(r, c); return players(rid, only, true); }
+    if (act === "add") { await addSheet(r, c); return players(rid, only, true); }
     if (act === "invite") return inviteSheet(r);
-    if (act === "psheet") { await playerSheet(r, c, e); return players(rid, true); }
-    if (act === "tee") { e.tee = b.dataset.t; S.saveEntry(r, e); teamsChanged(r, c); return players(rid, true); }
-    if (act === "side") { S.setSide(r, e, b.dataset.s); return players(rid, true); }
-    if (act === "newteam") { S.addTeam(r, c.n, { name: `Team ${r.entries.filter(x => x.role === "team").length + 1}`, members: [], tee: r.defaultTee }); return players(rid, true); }
+    if (act === "psheet") { await playerSheet(r, c, e); return players(rid, only, true); }
+    if (act === "tee") { e.tee = b.dataset.t; S.saveEntry(r, e); teamsChanged(r, c); return players(rid, only, true); }
+    if (act === "side") { S.setSide(r, e, b.dataset.s); return players(rid, only, true); }
+    if (act === "newteam") { S.addTeam(r, c.n, { name: `Team ${r.entries.filter(x => x.role === "team").length + 1}`, members: [], tee: r.defaultTee }); return players(rid, only, true); }
     if (act === "toteam" || act === "unteam") {
       const t = r.entries.find(x => x.playerId === b.dataset.tid);
       const next = act === "toteam" ? [...t.members, b.dataset.pid] : t.members.filter(x => x !== b.dataset.pid);
@@ -192,24 +204,24 @@ export function players(rid, keep = false) {
       // an emptied team goes, except a scramble match's own two sides
       if (!next.length && act === "unteam" && !(scrambleMatch(r.format) && (t.side === "A" || t.side === "B"))) { const k = r.entries.indexOf(t); S.removeEntry(r, k); }
       else refreshTeam(r, c, t);
-      return players(rid, true);
+      return players(rid, only, true);
     }
-    if (act === "autoteams") { await autoTeams(r, c); return players(rid, true); }
+    if (act === "autoteams") { await autoTeams(r, c); return players(rid, only, true); }
   });
   document.querySelector("main").addEventListener("change", ev => {
     const el = ev.target.closest("[data-act]");
     if (!el) return;
-    if (el.dataset.act === "variant") { r.format = el.value; S.state.settings.lastFormat = r.format; S.saveRound(r); return players(rid, true); }
-    if (el.dataset.act === "counts") { S.setLeagueRound(el.dataset.g, r.id, el.checked); return players(rid, true); }
+    if (el.dataset.act === "variant") { r.format = el.value; S.state.settings.lastFormat = r.format; S.saveRound(r); return players(rid, only, true); }
+    if (el.dataset.act === "counts") { S.setLeagueRound(el.dataset.g, r.id, el.checked); return players(rid, only, true); }
     if (el.dataset.act === "hi") {
       const e = r.entries[Number(el.dataset.i)], hi = parseHI(el.value);
       if (!hiOk(hi)) { el.value = fmtIndex(Number(e.hi)); return toast("Handicap index between +10 and 54, e.g. 18,4"); }
-      S.setEntryHi(r, e, hi); teamsChanged(r, c); players(rid, true);
+      S.setEntryHi(r, e, hi); teamsChanged(r, c); players(rid, only, true);
     }
     if (el.dataset.act === "teamch") {
       const t = r.entries.find(x => x.playerId === el.dataset.tid), v = el.value.trim();
       if (v !== "" && !Number.isInteger(Number(v))) return toast("A whole number");
-      t.courseHandicap = v === "" ? null : Number(v); S.saveEntry(r, t); players(rid, true);
+      t.courseHandicap = v === "" ? null : Number(v); S.saveEntry(r, t); players(rid, only, true);
     }
   });
 }
@@ -301,7 +313,7 @@ function seat(r, c, p, hi, accountId) {
   return e;
 }
 
-async function addSheet(r, c) {
+export async function addSheet(r, c) {
   // nobody plays off a handicap in a match, so nobody is asked for one
   const match = Mo.isMatchFormat(r.format);
   const onCard = new Set(r.entries.map(e => e.contactId || e.playerId));

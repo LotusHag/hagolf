@@ -4,19 +4,22 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, go, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS, fmtDate } from "../ui.js";
-import { handicapFor, stableford, fmtIndex, FORMATS_ROUND, PLAY_GROUPS, PLAY_KINDS, kindOf, isMatchFormat, matchPlay } from "../model.js";
+import { page, bind, esc, go, ui, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS, fmtDate } from "../ui.js";
+import { handicapFor, stableford, fmtIndex, FORMATS_ROUND, PLAY_GROUPS, PLAY_KINDS, kindOf, isMatchFormat, matchesOf } from "../model.js";
 import { leagueResults, standingsFor } from "./formats.js";
 import { noteLine } from "./updates.js";
+import { comingUp, eventRow, newEvent } from "./event.js";
 
-// the four a new card offers; stroke stays only for society stroke days and older cards
+// the kinds a new card offers; stroke stays only for society stroke days and older cards
 export const ROUND_FORMATS = PLAY_KINDS;
 export const formatLabel = k => (FORMATS_ROUND.find(f => f.key === k) || FORMATS_ROUND[0]).label;
-/** The format a casual card starts in: the last one picked, if it is still on offer. */
-export const offeredFormat = k => FORMATS_ROUND.some(f => f.key === k) ? k : "stableford";
+/** The format a casual card starts in: the last one picked, if it is still on offer. A society's stroke day is not. */
+export const offeredFormat = k => k !== "stroke" && FORMATS_ROUND.some(f => f.key === k) ? k : "stableford";
+/** This phone hides Stableford points while scoring; a match settled on points always shows them. */
+export const pointsHidden = r => !!S.state.settings.hidePoints && !isMatchFormat(r.format);
 
 /** The board while a round is in play: points, or net to par, over the holes each card has played. */
-export function liveBoard(r, course = null) {
+export function liveBoard(r, course = null, { net = false } = {}) {
   const c = course || courseBy(r.course);
   if (!c) return null;
   const rows = [];
@@ -29,7 +32,7 @@ export function liveBoard(r, course = null) {
     through = Math.max(through, holes);
     rows.push({ id: e.playerId, name: e.name, group: e.group || 1, pts, holes, gross, toPar: gross - par, netToPar: gross - par - strokes });
   }
-  const byNet = r.format === "stroke" || r.format === "scramble";
+  const byNet = net || r.format === "stroke" || r.format === "scramble";
   rows.sort((a, b) => (byNet ? a.netToPar - b.netToPar : b.pts - a.pts) || b.holes - a.holes);
   const fmtTo = v => v === 0 ? "E" : v > 0 ? `+${v}` : `${v}`;
   rows.forEach((x, i) => { x.place = x.holes ? i + 1 : null; x.main = byNet ? `${fmtTo(x.netToPar)} net` : `${x.pts} pts`; x.sub = x.holes ? `thru ${x.holes}` : "not started"; });
@@ -40,9 +43,13 @@ export function liveLine(r) {
   if (r.status !== "scoring") return "";
   if (isMatchFormat(r.format)) {
     const c = courseBy(r.course);
-    try { const m = c && matchPlay(c, { ...S.toModelRound(r), final: false }); return m && m.thru ? `<div class="live">${esc(m.result || m.status)}</div>` : ""; } catch (e) { return ""; }
+    try {
+      const seat = S.mySeat(r), ms = c ? matchesOf(c, { ...S.toModelRound(r), final: false }) : [];
+      const m = ms.length === 1 ? ms[0] : seat ? ms.find(x => x.group === S.groupOf(seat)) : null;
+      return m && m.thru ? `<div class="live">${esc(m.result || m.status)}</div>` : "";
+    } catch (e) { return ""; }
   }
-  const L = liveBoard(r);
+  const L = liveBoard(r, null, { net: pointsHidden(r) });
   const v = x => x.main.replace(/ (pts|net)$/, "");
   return L && L.rows.length && L.through ? `<div class="live">through ${L.through} · ${L.rows.slice(0, 3).map((x, i) => `${i + 1}. ${esc(firstName(x.name))} <b>${v(x)}</b>`).join(" · ")}</div>` : "";
 }
@@ -87,8 +94,11 @@ const asks = () => N.held().filter(n => !n.seen && ["round_seated", "seat_propos
 
 export function home() {
   const rounds = S.rounds();
-  const open = rounds.filter(r => r.status !== "done" && (S.iPlayed(r) || S.isScorer(r)));
-  const days = societyDays().filter(r => !open.includes(r));
+  // an event is on the go for me once my group has a score; until then it waits under Coming up
+  const myGroupOff = r => { const s = S.mySeat(r); return !!s && r.entries.some(e => S.groupOf(e) === S.groupOf(s) && e.scores.some(v => v !== null)); };
+  const open = rounds.filter(r => r.status !== "done" && (S.iPlayed(r) || S.isScorer(r)) && (!r.event || myGroupOff(r)));
+  const events = comingUp().filter(r => !open.includes(r));
+  const days = societyDays().filter(r => !open.includes(r) && !r.event);
   const banners = [];
   if (Y.sync.status === "error") banners.push(`<button class="banner warn" data-act="retry">Couldn't sync: ${esc(Y.sync.error || "")}. Tap to retry.</button>`);
   if (Y.sync.status === "signedout") banners.push(`<a class="banner warn" href="#welcome">Signed out. Everything is kept on this phone; sign in to keep syncing.</a>`);
@@ -104,6 +114,7 @@ export function home() {
   page("Hagolf", `
     ${banners.join("")}
     <section class="playhero">${hero}${glance()}</section>
+    ${panel("flag", "Coming up", `<div class="rows">${events.map(eventRow).join("")}<button class="hrow more" data-act="new-event"><span class="t"><b>New event</b><span>A day for a group: the field, tee times, the draw and a live board</span></span></button></div>`)}
     ${others.length ? panel("play", "Also on the go", `<div class="rows">${others.map(r => `<a class="hrow" href="${resumeHash(r)}"><span class="t"><b>${esc(r.name)}</b><span>${esc(formatLabel(r.format))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>`) : ""}
     ${ask.length ? panel("friend", "Asked to join", `<div class="rows">${ask.map(n => noteLine(n)).join("")}</div>`) : ""}
     ${days.length ? panel("leagues", "Today in your society", `<div class="rows">${days.map(r => {
@@ -122,6 +133,7 @@ export function home() {
     if (act === "update") { if (window.__updateWorker) window.__updateWorker.postMessage("skipWaiting"); return; }
     if (act === "moved-ok") { S.setSetting("movedSeen", 1); return home(); }
     if (act === "have-link") return haveLink();
+    if (act === "new-event") return newEvent();
     if (act === "dayjoin") { const { joinDay } = await import("./together.js"); return joinDay(b.dataset.rid); }
   });
 }
@@ -151,6 +163,7 @@ export async function formatSheet() {
   if (v === "scan") return go("#scan");
   // the same kind again keeps strokes or points as it was last played
   S.setSetting("lastFormat", kindOf(last) === v ? last : v);
+  ui.eventFor = null;
   go(`#new`);
 }
 

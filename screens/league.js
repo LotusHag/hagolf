@@ -13,6 +13,7 @@ import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from ".
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
 import { claimSheet } from "./gate.js";
+import { comingUp, eventRow, newEvent } from "./event.js";
 
 /** Whether this phone's account runs the league. */
 export function runsIt(g) {
@@ -93,6 +94,7 @@ function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = r
 function todayCard(C) {
   const today = S.today();
   const day = S.rounds().find(r => r.leagueId === C.gid && r.date === today && r.status !== "done");
+  if (day && day.event) return `<div class="rows">${eventRow(day)}</div>`;
   if (day) {
     const seated = !!S.mySeat(day), n = day.entries.filter(e => e.role !== "team").length;
     return `<div class="card todaycard"><div><div class="k caps">Today</div><div class="name">${esc(roundWhere(day))}</div><div class="muted small">${plural(n, "player")} · ${plural(new Set(day.entries.map(e => e.group || 1)).size, "group")}</div></div>
@@ -470,6 +472,7 @@ const columnsSheet = (C, Sx) => sheet({ title: FORMAT_NAMES[C.kind],
 // ---------------------------------------------------------------- the days
 function daysView(C) {
   const cards = leagueCards(C.Ms).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const upcoming = comingUp().filter(r => r.leagueId === C.gid);
   const row = c => {
     const D = dayBoard(C.kind, c);
     const board = D.rows.filter(p => p.id === null || C.members.includes(p.id));
@@ -483,6 +486,7 @@ function daysView(C) {
   };
   shell(C.g, C.g.name, `
     ${tip("<p>A society counts by the day, not by the sheet a group handed in. Every round in this society with the same date on the same loop is one card, so two fourballs round the same nine on a Sunday are one field of eight rather than two fields of four.</p><p>That is what every table here is built on.</p>", "One card is one day")}
+    ${upcoming.length || C.runs ? `<h2>Coming up</h2><div class="rows">${upcoming.map(eventRow).join("")}${C.runs ? `<button class="hrow more" data-act="new-event"><span class="t"><b>New event</b><span>A date, a loop, the field, tee times and the draw</span></span></button>` : ""}</div><h2>Played</h2>` : ""}
     ${cards.length ? `<div class="rows">${cards.map(row).join("")}</div>` : `<p class="muted center" style="margin:30px 0">No cards in this society yet.</p>`}
     <button class="btn primary big" data-act="new-in-league">Start today's card</button>
     ${C.runs || A.signedIn() ? `<div class="rows" style="margin-top:18px"><a class="hrow" href="#league/${C.gid}/admin"><span class="t"><b>Add a round you played</b><span>Every finished round waiting to go in</span></span><span class="chev">›</span></a></div>` : ""}`,
@@ -491,6 +495,7 @@ function daysView(C) {
     if (await common(C, ev)) return;
     const b = ev.target.closest("[data-act]");
     if (b && b.dataset.act === "new-in-league") return playToday(C);
+    if (b && b.dataset.act === "new-event") return newEvent(C.gid);
   });
 }
 
@@ -909,6 +914,7 @@ function playToday(C) {
   const f = ["stroke", "gpstroke", "elostroke"].includes(C.formats[0]) ? "stroke" : "stableford";
   S.setSetting("lastFormat", f);
   ui.dayLeague = C.gid;
+  ui.eventFor = null;
   go("#new");
 }
 

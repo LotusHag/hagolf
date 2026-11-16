@@ -607,6 +607,63 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .morestats { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
 .morestats > summary { color: var(--ink3); cursor: pointer; }
 .morestats .statgrid { margin-top: 8px; }
+/* the Shots tab and the figures grid: numbers that lead, grouped by spacing, no boxes inside the card */
+.sleads { display: flex; flex-wrap: wrap; gap: 14px 26px; }
+.sleads.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 16px 18px; }
+.sleads > div { display: flex; flex-direction: column; min-width: 0; }
+.sleads b { font-size: 30px; font-weight: 600; line-height: 1.05; color: var(--ink); }
+.sleads.grid b { font-size: 24px; }
+.sleads b .to { color: var(--ink3); font-size: .7em; margin: 0 4px; }
+.sleads small { font-size: 12px; color: var(--ink2); margin-top: 3px; }
+.sleads i { font-style: normal; font-size: 11px; color: var(--ink3); margin-top: 1px; }
+.sleads b.up, .sgtop b.up, .dvrow b.up { color: var(--under); }
+.sleads b.down, .sgtop b.down, .dvrow b.down { color: var(--bogey); }
+.subhead { margin: 18px 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--ink3); }
+.sgap { height: 18px; }
+.sgtop { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.sgtop b { font-size: 46px; font-weight: 600; line-height: 1; flex: none; }
+.sgtop span { font-size: 14px; color: var(--ink2); line-height: 1.3; text-wrap: pretty; }
+.sgtop small { display: block; font-size: 12px; color: var(--ink3); margin-top: 2px; }
+.dvrows { display: grid; gap: 10px; }
+.dvrow { display: grid; grid-template-columns: 92px 1fr 52px; align-items: center; gap: 10px; }
+.dvrow > span { font-size: 13px; color: var(--ink2); line-height: 1.2; }
+.dvrow > span small { display: block; font-size: 11px; color: var(--ink3); }
+.dvrow > b { font-size: 17px; font-weight: 600; text-align: right; color: var(--ink2); }
+.dvtrack { position: relative; height: 12px; border-radius: var(--r-xs); background: var(--card2); }
+.dvtrack::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line2); }
+.dvtrack i { position: absolute; top: 0; bottom: 0; border-radius: var(--r-xs); background: var(--ink3); }
+.dvtrack i.up { background: var(--under); } .dvtrack i.down { background: var(--bogey); }
+.sgcols { display: flex; align-items: stretch; gap: 4px; margin-top: 18px; }
+.sgcol { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink3); }
+.sgplot { position: relative; width: 100%; height: 96px; }
+.sgplot::after { content: ""; position: absolute; left: -2px; right: -2px; top: 50%; height: 1px; background: var(--line2); }
+.sgplot i { position: absolute; left: 18%; right: 18%; background: var(--ink3); }
+.sgplot i.up { background: var(--under); border-radius: 3px 3px 0 0; }
+.sgplot i.down { background: var(--bogey); border-radius: 0 0 3px 3px; }
+.sgdates { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 11px; }
+.mrow { display: grid; grid-template-columns: 112px 1fr 44px; align-items: center; gap: 10px; padding: 5px 0; }
+.mrow > span { font-size: 13px; color: var(--ink2); line-height: 1.2; }
+.mrow > span small { display: block; font-size: 11px; color: var(--ink3); }
+.mrow > b { font-size: 17px; font-weight: 600; text-align: right; }
+.mtrack { height: 10px; border-radius: var(--r-xs); background: var(--card2); overflow: hidden; }
+.mtrack i { display: block; height: 100%; background: var(--ink3); border-radius: var(--r-xs); }
+.mtrack i.up { background: var(--under); }
+.teefan { display: block; width: 100%; max-width: 340px; margin: 12px auto 0; }
+.teefan .fanbg { fill: var(--card2); }
+.teefan .fan { fill: var(--sc-bogey); opacity: .9; }
+.teefan .fan.hit { fill: var(--under); opacity: 1; }
+.teefan .fantee { fill: var(--ink); }
+.teefan .fanv { fill: var(--ink); font-family: "Oswald", sans-serif; font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; text-anchor: middle; }
+.teefan .fanl { fill: var(--ink3); font-size: 10px; text-anchor: middle; text-transform: uppercase; letter-spacing: .6px; }
+.pcols { display: flex; gap: 12px; margin-top: 18px; }
+.pcol { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pcol > b { font-size: 17px; font-weight: 600; }
+.pplot { position: relative; width: 100%; max-width: 64px; height: 92px; background: var(--card2); border-radius: var(--r-xs); overflow: hidden; }
+.pplot i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--sc-par); }
+.pplot i.chip, .pplot i.one { background: var(--sc-birdie); }
+.pplot i.three { background: var(--sc-double); }
+.pcol small { font-size: 11px; color: var(--ink2); text-align: center; line-height: 1.2; }
+.pcol small i { display: block; font-style: normal; color: var(--ink3); }
 .pen { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--pick); color: var(--pick); border-radius: 2px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin: 4px 4px 0 0; }
 .pen button { border: 0; background: transparent; color: inherit; font-size: 16px; padding: 0; }
 .pens { margin-top: 8px; } .pens summary { cursor: pointer; margin-top: 6px; } .pens .btn { margin-top: 10px; }
@@ -1264,6 +1321,17 @@ main.wide { max-width: 1120px; }
 .todaycard { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .todaycard.start { cursor: pointer; border-style: dashed; }
 .todaycard .k { color: var(--green); font-size: 10px; letter-spacing: 2px; font-weight: 700; }
+/* ---- events: the tee sheet, one row a group, its time over its hole ---- */
+.dblock.tblock { width: 58px; border-top: 0; border-bottom: 0; border-left: 0; background: none; color: var(--ink); font: inherit; padding: 0 12px 0 0; }
+button.dblock.tblock { cursor: pointer; }
+.dblock.tblock b { font-size: 18px; }
+.evrow .t .evnames { display: block; font-size: 16px; line-height: 1.35; text-wrap: pretty; }
+.evrow .t .evnames .linkish { display: inline; width: auto; margin: 0; font: inherit; color: var(--ink); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+.evrow .vsmark { font-style: normal; color: var(--ink3); padding: 0 2px; }
+.evrow .v.ok { color: var(--green); }
+.evgrid .hrow:disabled, .rows .hrow:disabled { opacity: .45; pointer-events: none; }
+.evgrid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 32px; align-items: start; }
+.evgrid > div:last-child { position: sticky; top: 80px; }
 .deskside { position: sticky; top: 80px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
 .deskside .caps { font-size: 10px; letter-spacing: 2px; margin-bottom: 8px; }
 

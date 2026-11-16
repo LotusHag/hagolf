@@ -10,9 +10,11 @@ import { handicapFor, scratchFor, stableford, NO_SCORE } from "../model.js";
 import { scoreStepper, extrasRows, ptsSoFar, mark } from "../pad.js";
 import { statTap, statStep, seedStats } from "./extras.js";
 import { dropRound, inviteSheet } from "./players.js";
-import { formatLabel, liveBoard } from "./home.js";
+import { formatLabel, liveBoard, pointsHidden } from "./home.js";
 
 const groupOf = rid => ui.groupFilter[rid] || 0;
+/** The card as the model reads it, one group of it when `g` is given: on a card of several groups each plays its own match. */
+const groupRound = (r, g) => { const m = { ...S.toModelRound(r), final: false }; if (g) m.entries = m.entries.filter(e => (e.group || 1) === g); return m; };
 const infoFor = (r, c, e) => {
   try {
     if (Mo.isMatchFormat(r.format)) return scratchFor(c, e, r.defaultTee);
@@ -35,10 +37,13 @@ function block(r, c, e, i, h, kinds) {
   const played = e.scores.map((x, k) => [x, k]).filter(([x]) => x !== null);
   const gross = played.reduce((t, [x]) => t + (x || NO_SCORE), 0);
   const toPar = info ? gross - played.reduce((t, [, k]) => t + info.par[k], 0) : null;
+  // with points hidden, the second number is net to par, the way stroke play is counted
+  const net = scored && pointsHidden(r), byPts = scored && !net;
+  const vsPar = net ? toPar - played.reduce((t, [, k]) => t + info.strokes[k], 0) : toPar;
   const tally = !entered ? "" : `<span class="ptally">
-      <span class="ptot"><b class="num">${gross}</b><small>strokes</small>${scored ? `<b class="num">${ptsSoFar(e, info)}</b><small>pts</small>`
-        : toPar !== null ? `<b class="num">${toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar}</b><small>to par</small>` : ""}</span>
-      ${scored ? (pts === null ? `<b class="phole gap" aria-hidden="true"></b>` : `<b class="phole num ${pts ? "" : "nil"}">+${pts}</b>`) : ""}</span>`;
+      <span class="ptot"><b class="num">${gross}</b><small>strokes</small>${byPts ? `<b class="num">${ptsSoFar(e, info)}</b><small>pts</small>`
+        : vsPar !== null ? `<b class="num">${vsPar === 0 ? "E" : vsPar > 0 ? `+${vsPar}` : vsPar}</b><small>${net ? "net" : "to par"}</small>` : ""}</span>
+      ${byPts ? (pts === null ? `<b class="phole gap" aria-hidden="true"></b>` : `<b class="phole num ${pts ? "" : "nil"}">+${pts}</b>`) : ""}</span>`;
   const who = e.role === "team" ? `<small class="members">${esc(r.entries.filter(m => e.members.includes(m.playerId)).map(m => firstName(m.name)).join(" · "))}</small>` : "";
   return `<div class="prow" data-i="${i}">
     <div class="phead">
@@ -50,10 +55,11 @@ function block(r, c, e, i, h, kinds) {
 }
 
 /** The state of a match, in one line, with a concede button for each side on this hole. */
-function matchStrip(r, c, h) {
+function matchStrip(r, c, h, g) {
   if (!Mo.isMatchFormat(r.format) || !Mo.matchPlay) return "";
+  if (!g && S.manyGroups(r)) return "";
   let M;
-  try { M = Mo.matchPlay(c, { ...S.toModelRound(r), final: false }); } catch (e) { return `<div class="matchstrip warn">${esc(e.message)} · <a href="#players/${r.id}">fix the sides</a></div>`; }
+  try { M = Mo.matchPlay(c, groupRound(r, g)); } catch (e) { return `<div class="matchstrip warn">${esc(e.message)} · <a href="#players/${r.id}${g ? `/${g}` : ""}">fix the sides</a></div>`; }
   const hole = M.holes[h];
   const decided = hole && hole.winner;
   return `<div class="matchstrip"><b>${esc(M.result || M.status)}</b>
@@ -97,13 +103,13 @@ async function boardSheet(r, c) {
   let board, through = 0;
   if (Mo.isMatchFormat(r.format) && Mo.matchPlay) {
     let list = [];
-    try { const M = Mo.matchPlay(c, { ...S.toModelRound(r), final: false }); list = [{ place: "", name: `${M.sides.A.join(" & ")} v ${M.sides.B.join(" & ")}`, main: M.result || M.status, sub: "" }]; } catch (e) { list = []; }
+    try { list = Mo.matchesOf(c, groupRound(r, 0)).filter(M => !gf || M.group === gf).map(M => ({ name: `${groups.length > 1 ? `${M.group}. ` : ""}${M.sides.A.join(" & ")} v ${M.sides.B.join(" & ")}`, main: M.result || M.status })); } catch (e) { list = []; }
     board = list.length ? `<div class="hboard">${list.map(x => `<div class="hrowb"><span>${esc(x.name)}</span><span class="num">${esc(x.main)}</span></div>`).join("")}</div>` : `<p class="muted">Nothing to rank yet.</p>`;
   } else {
-    const L = liveBoard(r);
+    const L = liveBoard(r, null, { net: pointsHidden(r) });
     const list = L ? L.rows.filter(x => !gf || x.group === gf) : [];
     through = L ? L.through : 0;
-    board = list.length ? holeGrid(r, c, list, L.byNet) :`<p class="muted">Nothing to rank yet.</p>`;
+    board = list.length ? holeGrid(r, c, list, L.byNet, pointsHidden(r)) :`<p class="muted">Nothing to rank yet.</p>`;
   }
   const v = await sheet({ title: formatLabel(r.format), lead: `${r.name} · as it stands`,
     body: `${groups.length > 1 ? `<div class="filter">${[0, ...groups].map(g => `<button data-sheet="gf-${g}" class="${gf === g ? "on" : ""}">${g ? `Group ${g}` : "All"}</button>`).join("")}</div>` : ""}${board}`,
@@ -114,7 +120,7 @@ async function boardSheet(r, c) {
 }
 
 /** Every player a row, every hole a box, the total at the far right; rows in the order of the board. */
-function holeGrid(r, c, list, byNet) {
+function holeGrid(r, c, list, byNet, hidePts = false) {
   const seats = new Map(S.scoringSeats(r).map(e => [e.playerId, e]));
   const holes = c.par.map((_, h) => h);
   const head = `<tr class="hghead"><th class="hgname">Hole</th>${holes.map(h => `<th>${c.first_hole + h}</th>`).join("")}<th class="hgtot">Tot</th></tr>
@@ -123,10 +129,10 @@ function holeGrid(r, c, list, byNet) {
     const e = seats.get(x.id);
     if (!e) return "";
     const info = infoFor(r, c, e);
-    const pts = h => { const v = e.scores[h]; return !info || c.unlisted || v === null ? "" : v === 0 ? 0 : stableford(v, info.par[h], info.strokes[h]); };
+    const pts = h => { const v = e.scores[h]; return hidePts || !info || c.unlisted || v === null ? "" : v === 0 ? 0 : stableford(v, info.par[h], info.strokes[h]); };
     const cells = holes.map(h => (e.fromHole || 1) - 1 > h ? `<td data-h="${h}"></td>`
       : `<td data-h="${h}">${mark(e.scores[h], info ? info.par[h] : c.par[h])}<small class="hgpts num">${pts(h)}</small></td>`).join("");
-    const tot = !x.holes ? "" : `<small>${x.pts} pts</small>${byNet ? `<small>${esc(x.main)}</small>` : ""}`;
+    const tot = !x.holes ? "" : `${hidePts ? "" : `<small>${x.pts} pts</small>`}${byNet ? `<small>${esc(x.main)}</small>` : ""}`;
     return `<tr><th class="hgname"><b>${x.place ?? "–"}</b> ${esc(x.name)}</th>${cells}<td class="hgtot"><b class="num">${x.holes ? x.gross : "–"}</b>${tot}</td></tr>`;
   }).join("");
   return `<div class="hgwrap"><table class="hgrid">${head}${rows}</table></div>`;
@@ -138,12 +144,14 @@ async function menuSheet(r) {
       <button data-sheet="players"><span class="lead">${ICONS.people}<div><div class="name">Players, sides and handicaps</div></div></span><span class="chev">›</span></button>
       <button data-sheet="invite"><span class="lead">${ICONS.link}<div><div class="name">Invite to this card</div><div class="muted small">They score with you, live</div></div></span><span class="chev">›</span></button>
       ${mine ? `<button data-sheet="track"><span class="lead">${ICONS.chart}<div><div class="name">${mine.trackStats ? "Stop keeping my putts and the rest" : "Keep my putts and the rest"}</div></div></span></button>` : ""}
+      ${Mo.isMatchFormat(r.format) ? "" : `<button data-sheet="pts"><span class="lead">${ICONS.settings}<div><div class="name">${pointsHidden(r) ? "Show Stableford points" : "Hide Stableford points"}</div><div class="muted small">On this phone; the card still keeps them</div></div></span></button>`}
       <button data-sheet="card"><span class="lead">${ICONS.card}<div><div class="name">The whole card</div></div></span><span class="chev">›</span></button>
       <button data-sheet="live"><span class="lead">${ICONS.trophy}<div><div class="name">${r.live ? "Live board is on" : "Show it on a live board"}</div><div class="muted small">For the people at home and the clubhouse screen</div></div></span><span class="chev">›</span></button>
     </div>`, actions: [{ label: "Discard this round", value: "drop", kind: "danger" }, { label: "Close", value: "no" }] });
   if (v === "players") return go(`#players/${r.id}`);
   if (v === "invite") return inviteSheet(r);
   if (v === "track") { S.setTrackStats(r, mine, !mine.trackStats); return score(r.id, S.holeOf(r)); }
+  if (v === "pts") { S.setSetting("hidePoints", !S.state.settings.hidePoints); return score(r.id, S.holeOf(r)); }
   if (v === "card") return go(`#review/${r.id}`);
   if (v === "live") { const { liveSheet } = await import("./together.js"); return liveSheet(r); }
   if (v === "drop") return dropRound(r.id);
@@ -191,8 +199,8 @@ export function score(rid, hArg) {
   const body = `
     <div class="holebar"><span class="hnum num">${c.first_hole + h}</span>${meta}${syncPill()}</div>
     <div class="holestrip" style="grid-template-columns:repeat(${Math.ceil(n / rows)},1fr)">${strip}</div>
-    ${gf ? `<button class="gfchip" data-act="board">Group ${gf} · all groups ›</button>` : ""}
-    ${matchStrip(r, c, h)}
+    ${gf ? `<button class="gfchip" data-act="board">Group ${gf} · all groups ›</button>` : ""}${r.event ? `<a class="gfchip" href="#event/${rid}">Tee sheet ›</a>` : ""}
+    ${matchStrip(r, c, h, gf)}
     ${noPar ? `<p class="muted center">What par is hole ${c.first_hole + h}? Pick it above and the scores open.</p>`
       : `<div class="prows" id="rows">${shown.map(([e, i]) => block(r, c, e, i, h, kinds)).join("")}</div>`}
     ${seats.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}`;
@@ -213,7 +221,7 @@ export function score(rid, hArg) {
     if (ow) ow.classList.toggle("primary", d);
     const pill = document.querySelector(".syncpill");
     if (pill) pill.outerHTML = syncPill();
-    if (Mo.isMatchFormat(r.format)) { const ms = document.querySelector(".matchstrip"); if (ms) ms.outerHTML = matchStrip(r, c, h); }
+    if (Mo.isMatchFormat(r.format)) { const ms = document.querySelector(".matchstrip"); if (ms) ms.outerHTML = matchStrip(r, c, h, gf); }
   };
   const refresh = i => {
     const el = document.querySelector(`.prow[data-i="${i}"]`);
@@ -245,8 +253,9 @@ export function score(rid, hArg) {
     if (act === "set-par") { S.setPar(r, h, Number(b.dataset.p)); return score(rid, h); }
     if (act === "concede") {
       // conceding is the side picking up: their ball is out of the hole, which loses it to any score
-      for (const e of seats.filter(x => x.side === b.dataset.s)) S.setScore(r, e, h, 0);
-      for (const e of seats.filter(x => x.side !== b.dataset.s && x.scores[h] === null)) S.setScore(r, e, h, c.par[h]);
+      const mine = shown.map(([x]) => x);
+      for (const e of mine.filter(x => x.side === b.dataset.s)) S.setScore(r, e, h, 0);
+      for (const e of mine.filter(x => x.side !== b.dataset.s && x.scores[h] === null)) S.setScore(r, e, h, c.par[h]);
       toast("Hole conceded");
       return score(rid, h);
     }

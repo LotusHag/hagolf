@@ -16,21 +16,78 @@ export const scrollPos = () => app.scrollTop;
 export const scrollAt = y => { app.scrollTop = y; };
 
 /**
- * Back goes back one, wherever you came from. A screen declares a fallback for the one case where going back
- * would leave the app -- a link opened cold, with nothing behind it -- and otherwise the phone's own history
- * is what answers, so a board reached from a player returns to that player and not to the top of the league.
+ * Back is up. The phone's history is kept as the path from the first screen down to this one, so the header's
+ * arrow, Android's back gesture and the browser's button all return to the screen this one was opened from.
+ * Moving sideways -- another hole, another board of the same page -- takes the place of the entry; going to a
+ * screen already on the path goes back to it instead of stacking it again; a bottom tab starts the path afresh.
+ * A screen's declared back is only the fallback for a link opened cold, with nothing behind it.
  */
-let wentSomewhere = 0;
-window.addEventListener("hashchange", () => { wentSomewhere++; });
+const norm = h => (h && h !== "#" ? h : "#home");
+const TRAIL = "hagolf-trail";
+let trail = [], at = 0, replacing = false, then = null;
+const stamp = () => {
+  try { history.replaceState({ ...(history.state || {}), at }, ""); } catch (e) {}
+  trail[at] = norm(location.hash);
+  try { sessionStorage.setItem(TRAIL, JSON.stringify(trail)); } catch (e) {}
+};
+if (history.state && typeof history.state.at === "number") {
+  at = history.state.at;
+  try { trail = JSON.parse(sessionStorage.getItem(TRAIL)) || []; } catch (e) {}
+}
+stamp();
+window.addEventListener("hashchange", ev => {
+  const s = history.state;
+  if (s && typeof s.at === "number") at = s.at;   // back or forward
+  else if (!replacing) { at++; trail.length = at; }
+  replacing = false;
+  stamp();
+  if (then === null) return;
+  const t = then;
+  then = null;
+  if (t !== location.hash) { ev.stopImmediatePropagation(); replacing = true; location.replace(t); }
+});
+
+const SETUP = /^#(new|scan|j)(\/|$)/;
+/** Screens that are one place seen different ways: the holes and check of a card, the stats tabs, a society's boards. */
+function placeOf(h) {
+  const [n, a, b] = h.slice(1).split("/");
+  if (n === "score" || n === "review") return `card/${a}`;
+  if (n === "stats") return "stats";
+  if (n === "league" && (b === "table" || b === "vs")) return `league/${a}/${b}`;
+  return null;
+}
+const samePlace = (x, y) => x === y || (!!placeOf(x) && placeOf(x) === placeOf(y));
+/** To the k-th screen of the path, then that screen swapped for `to`. */
+function rebase(k, to) {
+  const from = norm(location.hash);
+  if (k > at) { location.hash = to; return; }
+  if (k === at || norm(trail[k]) === from) { if (to !== location.hash) { replacing = true; location.replace(to); } return; }
+  then = norm(trail[k]) === to ? null : to;
+  history.go(k - at);
+}
+export function go(hash) {
+  const to = norm(hash), from = norm(location.hash);
+  if (to === location.hash) return;
+  if (TABS.some(t => t[1] === to)) return rebase(to === "#home" || norm(trail[0]) !== "#home" ? 0 : 1, to);
+  for (let k = at - 1; k >= 0; k--) if (trail[k] && samePlace(to, norm(trail[k]))) return rebase(k, to);
+  const players = from.match(/^#players\/([^/]+)/);
+  if (samePlace(to, from) || (SETUP.test(from) && /^#(players|score|review)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
+  location.hash = to;
+}
 document.addEventListener("click", ev => {
   const b = ev.target.closest("[data-goback]");
-  if (!b) return;
+  if (b) {
+    ev.preventDefault();
+    if (at > 0) history.back(); else rebase(0, norm(b.dataset.goback));
+    return;
+  }
+  if (ev.defaultPrevented || ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+  const a = ev.target.closest("a[href^='#']");
+  if (!a || a.target || a.closest(".sheet-wrap, .viewer")) return;
   ev.preventDefault();
-  if (wentSomewhere > 0) history.back();
-  else location.hash = b.dataset.goback || "#home";
+  go(a.getAttribute("href"));
 });
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-export const go = hash => { location.hash = hash; };
 export const plural = (n, w, ws = `${w}s`) => `${n} ${n === 1 ? w : ws}`;
 export const andList = xs => xs.length < 2 ? (xs[0] || "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 export const firstName = n => String(n || "").trim().split(/\s+/)[0];
@@ -224,7 +281,7 @@ window.addEventListener("popstate", () => {
  * browser to go back, and the overlay shuts when the entry does.
  */
 function backShuts(shut) {
-  try { history.pushState({ overlay: overlays.length + 1 }, ""); }
+  try { history.pushState({ ...(history.state || {}), overlay: overlays.length + 1 }, ""); }
   catch (e) { return shut; }   // no history to lean on (file://): shut it outright
   overlays.push(shut);
   return () => { if (overlays.includes(shut)) history.back(); };
@@ -278,6 +335,15 @@ export function promptSheet(title, lead, { placeholder = "", value = "", label =
         el.querySelector("[data-sheet=ok]").addEventListener("click", () => { resolve(f.querySelector("input").value.trim()); }, { once: true });
       } }).then(v => resolve(v === "ok" ? undefined : null));
   }).then(v => v === undefined ? null : v);
+}
+/** A sheet holding a form: resolves with the button picked and the form as it was then. */
+export async function formSheet({ title = "", lead = "", body = "", actions = [] }) {
+  let fd = null;
+  const v = await sheet({ title, lead, body: `<form id="formsheet">${body}</form>`, actions, onOpen: el => {
+    const f = el.querySelector("#formsheet"), keep = () => { fd = new FormData(f); };
+    f.addEventListener("input", keep); f.addEventListener("change", keep); f.addEventListener("submit", ev => ev.preventDefault()); keep();
+  } });
+  return [v, fd];
 }
 /** A sheet that just says something. */
 export const alertSheet = (title, lead, body = "") => sheet({ title, lead, body, actions: [{ label: "OK", value: "ok", kind: "primary" }] });

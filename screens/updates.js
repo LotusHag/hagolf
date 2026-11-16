@@ -5,14 +5,15 @@ import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
 import * as Y from "../sync.js";
-import { page, bind, esc, go, toast, plural, firstName, fmtDate, ago, courseBy, courseTitle, ICONS, emptyState, resumeHash } from "../ui.js";
+import { page, bind, esc, go, toast, plural, firstName, fmtDate, ago, ordinal, courseBy, courseTitle, ICONS, emptyState, resumeHash } from "../ui.js";
 
 const ICON_OF = { round_added: "card", round_shared: "card", card_public: "link", league_invite: "mail", league_joined: "users", league_round: "trophy",
-  claim_pending: "shield", claim_made: "shield", claim_confirmed: "check", friend_request: "friend", friend_accepted: "people", round_seated: "golf", seat_proposed: "golf" };
+  claim_pending: "shield", claim_made: "shield", claim_confirmed: "check", friend_request: "friend", friend_accepted: "people", round_seated: "golf", seat_proposed: "golf", event_draw: "flag" };
 
 /** Where tapping a line goes. */
 function hrefOf(n) {
   if (["round_added", "round_shared", "card_public"].includes(n.kind)) return S.getRound(n.round_id) ? `#review/${n.round_id}` : null;
+  if (n.kind === "event_draw") return `#event/${n.round_id}`;
   if (n.kind === "round_seated") return S.getRound(n.round_id) ? resumeHash(S.getRound(n.round_id)) : null;
   if (["league_joined", "league_round", "claim_pending", "claim_made", "claim_confirmed"].includes(n.kind)) return n.league_id ? `#league/${n.league_id}` : null;
   if (["friend_request", "friend_accepted"].includes(n.kind)) return n.account_id ? `#person/${n.account_id}` : null;
@@ -37,6 +38,8 @@ function textOf(n) {
     case "friend_request": return `<b>${esc(n.name || who)}</b> wants to be your friend`;
     case "friend_accepted": return `<b>${esc(n.name || who)}</b> accepted your friend request`;
     case "round_seated": return `<b>${who}</b> put you on their card: ${where}`;
+    case "event_draw": { const p = n.payload || {}, hole = c ? c.first_hole + (p.hole || 1) - 1 : p.hole || 1;
+      return `${esc(n.name || "Your event")}${n.date ? `, ${esc(fmtDate(n.date))}` : ""}: you're off ${p.time ? `at <b>${esc(p.time)}</b> ` : ""}from the ${ordinal(hole)}${(p.with || []).length ? ` with ${esc(p.with.map(firstName).join(", "))}` : ""}`; }
     case "seat_proposed": return `<b>${who}</b> thinks you were on their card at ${where}${n.date ? `, ${esc(fmtDate(n.date))}` : ""}`;
     default: return esc(n.kind);
   }

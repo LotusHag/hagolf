@@ -1,7 +1,7 @@
 // The ways a league is scored, in words, and the one place every standings table is computed.
 import * as S from "../store.js";
 import { esc, plural, safeCompute } from "../ui.js";
-import { compute, isMatchFormat, standings, strokeStandings, matchStandings, gpStandings, eloStandings, GP_POINTS, ELO, leagueCards, fmtToPar, fix } from "../model.js";
+import { compute, isMatchFormat, standings, strokeStandings, matchStandings, gpStandings, eloStandings, GP_POINTS, ELO, leagueCards, golfersOf, fmtToPar, fix } from "../model.js";
 
 export const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay (stroke)",
   matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)",
@@ -90,7 +90,7 @@ export function leagueResults(g) {
     if (M) Ms.push(M);
   }
   // a match's golfers are its players; a scramble team's are its members, never the team
-  const members = [...new Set(Ms.flatMap(M => M.match ? [...M.match.players.A, ...M.match.players.B] : M.players).map(p => p.id).filter(Boolean))];
+  const members = [...new Set(Ms.flatMap(golfersOf).map(p => p.id).filter(Boolean))];
   return { Ms, members, S: standings(Ms, members, g.bestN) };
 }
 

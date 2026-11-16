@@ -4,22 +4,23 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as Y from "../sync.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, confirmSheet, subtabs } from "../ui.js";
-import { compute, fix, fmtToPar, STAT_SWITCHES } from "../model.js";
+import { compute, fix, fmtToPar, STAT_SWITCHES, matchWith } from "../model.js";
 import { myGame, myGameBody } from "./stats.js";
 import { dayBlock, nowCard, formatLabel } from "./home.js";
 
 const TOPICS = [
   ["scoring", "Scoring"],
-  ["extras", "Putts & more"],
-  ["sg", "Strokes gained"],
-  ["nines", "Nines"],
+  ["shots", "Shots"],
   ["h2h", "Head to head"],
+  ["nines", "Nines"],
   ["rounds", "Rounds"],
 ];
+// putts and strokes gained were tabs of their own before they became Shots; an old link still lands there
+const FORMER = { extras: "shots", sg: "shots" };
 
 /** One row of tabs for everything under Stats: each topic is a view of the same numbers, not a page of its own. */
-function tabRow(on, anyExtras) {
-  return subtabs(TOPICS.filter(([k]) => k !== "extras" || anyExtras || on === "extras")
+function tabRow(on) {
+  return subtabs(TOPICS
     .map(([k, label]) => `<button data-act="stab" data-t="${k}" class="${k === on ? "on" : ""}">${esc(label)}</button>`).join(""));
 }
 
@@ -38,15 +39,15 @@ function tiles(p) {
 }
 
 export function stats(view, topic) {
-  const on = view === "rounds" ? "rounds" : view === "t" && TOPICS.some(([k]) => k === topic) ? topic : "scoring";
+  const t = FORMER[topic] || topic;
+  const on = view === "rounds" ? "rounds" : view === "t" && TOPICS.some(([k]) => k === t) ? t : "scoring";
   if (on === "rounds") return roundsList();
   const { p } = myGame();
   const anyExtras = p && p.statline.any;
   page("Stats", `
-    ${tabRow(on, anyExtras)}
-    ${p ? `${tiles(p)}${myGameBody(on)}
-        ${on === "extras" && !anyExtras ? `<p class="muted small center">Nothing kept yet. <a href="#me/keep">Choose what you keep ›</a></p>` : ""}
-        ${on === "scoring" && !anyExtras ? `<p class="muted small center">Want putts and greens in regulation too? <a href="#me/keep">Choose what you keep ›</a></p>` : ""}`
+    ${tabRow(on)}
+    ${p ? `${on === "scoring" ? tiles(p) : ""}${myGameBody(on)}
+        ${on === "shots" && !anyExtras ? `<p class="muted small center">Keep putts and fairways on your card and greens, the spread off the tee and your putting appear here. <a href="#me/keep">Choose what you keep ›</a></p>` : ""}`
       : emptyState("chart", "No numbers yet", "Play a round, or scan an old card, and they start here.")}`,
     { back: "", tabs: "stats", keepScroll: ui.statsTab === on });
   ui.statsTab = on;
@@ -63,11 +64,12 @@ function bindTabs() {
 
 // ---------------------------------------------------------------- every round I can see
 /** My side's result in a match: won, lost or halved, and by how much. */
-export function matchFor(m, seat, r) {
+export function matchFor(M, seat, r) {
   // in a scramble match my side is my team's
   const team = seat.role === "member" ? r.entries.find(t => t.role === "team" && (t.members || []).includes(seat.playerId)) : null;
   const side = (team || seat).side || "";
-  if (side !== "A" && side !== "B") return null;
+  const m = matchWith(M.matches, (team || seat).playerId);
+  if (!m || (side !== "A" && side !== "B")) return null;
   const mine = m.leader === side, n = Math.abs(m.up);
   const word = !m.result ? `THRU ${m.thru}` : !m.leader ? "HALVED" : mine ? "WON" : "LOST";
   // the margin from my side, the way a match card reads it: 3&2 either way, otherwise holes up or down
@@ -91,7 +93,7 @@ function roundsList() {
     const seat = S.mySeat(r);
     const mine = M && seat ? M.players.find(x => x.id === seat.playerId) : null;
     const year = r.date && !String(r.date).startsWith(thisYear) ? String(r.date).slice(0, 4) : "";
-    const won = M && M.match && seat ? matchFor(M.match, seat, r) : null;
+    const won = M && seat ? matchFor(M, seat, r) : null;
     const val = won ? `<span class="v">${esc(won.margin)}<small class="u"> ${won.word}</small><small class="pl">${esc(won.against)}</small></span>`
       : !mine ? `<span class="chev">›</span>` : r.format === "stroke" ? `<span class="v">${mine.net ?? "NR"}<small class="u"> NET</small></span>`
       : `<span class="v">${mine.pts}<small class="u"> PTS</small><small class="pl">${ordinal(mine.splace)} of ${M.field}</small></span>`;
@@ -102,7 +104,7 @@ function roundsList() {
   };
   const list = shown.filter(hit);
   page("Stats", `
-    ${tabRow("rounds", (myGame().p || {}).statline?.any)}
+    ${tabRow("rounds")}
     ${open.length ? `<h2>Playing now</h2>${open.map(nowCard).join("")}` : ""}
     <div class="filter mini"><button data-act="rf" data-v="all" class="${f === "all" ? "on" : ""}">All</button><button data-act="rf" data-v="mine" class="${f === "mine" ? "on" : ""}">Mine</button><button data-act="rf" data-v="shared" class="${f === "shared" ? "on" : ""}">Shared</button></div>
     ${finished.length > 6 ? `<input id="q" class="search" placeholder="Search by date, course or player" value="${esc(ui.search || "")}" autocomplete="off">` : ""}

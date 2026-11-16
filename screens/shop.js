@@ -142,7 +142,7 @@ export async function shop(state) {
  */
 function everything(cat) {
   tab = "all";
-  if (location.hash !== "#shop") history.replaceState(null, "", "#shop");
+  if (location.hash !== "#shop") history.replaceState(history.state, "", "#shop");
   return page("Shop", `
     <div class="now pass"><div class="k">The shop</div><div class="name">You have all of it.</div>
       <div class="live">Every theme, the full boards and cards, every way of ranking a season, and the mark gone. There is nothing here left to sell you.</div></div>
@@ -155,7 +155,7 @@ function everything(cat) {
 function showTab() {
   app.querySelectorAll("[data-tab]").forEach(el => { if (el.dataset.act === "tab") el.classList.toggle("on", el.dataset.tab === tab); else el.hidden = tab !== "all" && el.dataset.tab !== tab; });
   const h = tab === "all" ? "#shop" : `#shop/${tab}`;
-  if (location.hash !== h) history.replaceState(null, "", h);
+  if (location.hash !== h) history.replaceState(history.state, "", h);
 }
 
 /** The one thing worth saying about money, kept off the shop page and free of any price: prices date, the reason does not. */

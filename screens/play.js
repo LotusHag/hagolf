@@ -6,6 +6,7 @@ import * as S from "../store.js";
 import { page, bind, esc, go, ui, plural, courseTitle, courseBy, sheet, ICONS, tip } from "../ui.js";
 import { formatLabel, home, formatSheet, offeredFormat } from "./home.js";
 import { dayCardId, joinDay } from "./together.js";
+import { createEvent } from "./event.js";
 
 // ---------------------------------------------------------------- where the clubs are
 const REGION = (() => { try { return new Intl.DisplayNames(["en"], { type: "region" }); } catch { return null; } })();
@@ -129,9 +130,10 @@ export function newRound(slug = null) {
     ${near ? `<h2>Near you</h2>` : ""}
     <div class="list" id="courses">${rows.map(x => x.html).join("")}</div>
     <p id="cnone" class="muted center" hidden>Nothing matches.</p>
-    <div class="list" style="margin-top:16px"><a href="#new/unlisted"><span class="lead">${ICONS.plus}<div><div class="name">Course not listed? Play it anyway</div><div class="muted small">Fill in each hole's par as you play it</div></div></span><span class="chev">›</span></a></div>`,
-    { back: "#home", sub: ui.dayLeague && S.getLeague(ui.dayLeague) ? `${S.getLeague(ui.dayLeague).name} · today` : formatLabel(fmt),
-      actions: ui.dayLeague ? "" : `<button class="btn small ghost" data-act="fmt">Change</button>` });
+    ${ui.eventFor ? "" : `<div class="list" style="margin-top:16px"><a href="#new/unlisted"><span class="lead">${ICONS.plus}<div><div class="name">Course not listed? Play it anyway</div><div class="muted small">Fill in each hole's par as you play it</div></div></span><span class="chev">›</span></a></div>`}`,
+    { back: "#home", sub: ui.eventFor ? `New event${ui.eventFor.leagueId && S.getLeague(ui.eventFor.leagueId) ? ` · ${S.getLeague(ui.eventFor.leagueId).name}` : ""}`
+        : ui.dayLeague && S.getLeague(ui.dayLeague) ? `${S.getLeague(ui.dayLeague).name} · today` : formatLabel(fmt),
+      actions: ui.dayLeague || ui.eventFor ? "" : `<button class="btn small ghost" data-act="fmt">Change</button>` });
 
   const q = document.getElementById("q");
   const apply = () => {
@@ -172,8 +174,12 @@ export function startRound(slug, { leagueId = ui.dayLeague || null, id = null } 
   const c = courseBy(slug);
   if (!c) return go("#new");
   ui.dayLeague = null;
-  // a society's day is one card: every phone that starts it for this loop today lands on the same id
+  if (ui.eventFor) { const ef = ui.eventFor; ui.eventFor = null; return createEvent(slug, ef.leagueId); }
+  // a society's day is one card: every phone that starts it for this loop today lands on the same id, and an
+  // event planned for it is that card
   if (leagueId) {
+    const planned = S.rounds().find(r => r.leagueId === leagueId && r.date === S.today() && r.course === slug && r.status !== "done");
+    if (planned) { if (planned.event) go(`#event/${planned.id}`); else joinDay(planned.id); return planned; }
     id = id || dayCardId(leagueId, S.today(), slug);
     if (S.getRound(id)) { joinDay(id); return S.getRound(id); }
   }

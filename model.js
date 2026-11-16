@@ -447,16 +447,18 @@ export function compute(courseIn, round) {
   ranks(holes.map(h => Math.round(h.vspar * 1e6) / 1e6), false).forEach((d, i) => { holes[i].difficulty = d; });
   M.holes = holes;
   // a match card is read as the match; its strokes and points are not a round of golf anyone played for
-  M.match = null;
-  if (scratch) try { M.match = matchPlay(courseIn, round); } catch (e) { M.match = null; }
+  M.matches = [];
+  if (scratch) try { M.matches = matchesOf(courseIn, round); } catch (e) { M.matches = []; }
+  M.match = M.matches.length === 1 ? M.matches[0] : null;
   return M;
 }
 
 // ---------------------------------------------------------------- round formats
-// every way a card can be scored; a new card picks a group, then one of its kinds, then strokes or points on the setup screen
+// every way a card can be scored; a new card picks a group, then one of its kinds, then strokes or points on the setup screen.
+// Stroke play and Stableford are one card, the standard one; a society's stroke day keeps "stroke" so its board ranks on net.
 export const FORMATS_ROUND = [
-  { key: "stableford", label: "Stableford", blurb: "points against your handicap" },
-  { key: "stroke", label: "Stroke play", blurb: "every shot counts, net of handicap" },
+  { key: "stableford", label: "Standard card", blurb: "Stroke / Stableford" },
+  { key: "stroke", label: "Standard card", blurb: "Stroke / Stableford" },
   { key: "match", label: "Match play", blurb: "hole by hole, fewest strokes, no handicap" },
   { key: "matchpts", label: "Match play on points", blurb: "hole by hole, most Stableford points, no handicap" },
   { key: "scramble", label: "Scramble", blurb: "teams, one ball, net strokes" },
@@ -467,8 +469,7 @@ export const FORMATS_ROUND = [
 // a group is how the ball is played; a group with no kinds yet is not offered
 export const PLAY_GROUPS = [
   { key: "individual", label: "Individual", blurb: "everyone plays their own ball", kinds: [
-    { key: "stroke", label: "Stroke play", blurb: "fewest strokes, net of handicap" },
-    { key: "stableford", label: "Stableford", blurb: "most points against your handicap" },
+    { key: "stableford", label: "Standard card", blurb: "Stroke / Stableford" },
     { key: "match", label: "Match play", blurb: "hole by hole, one or two a side, no handicap" }] },
   { key: "team", label: "Team", blurb: "one ball a team", kinds: [
     { key: "scramble", label: "Scramble", blurb: "every team for itself, play the best ball" },
@@ -478,7 +479,7 @@ export const PLAY_GROUPS = [
 export const PLAY_KINDS = PLAY_GROUPS.flatMap(g => g.kinds);
 export const kindOf = f => {
   const k = String(f || "stableford");
-  return k.startsWith("scramblematch") ? "scramblematch" : k.startsWith("scramble") ? "scramble" : k.startsWith("match") ? "match" : k === "stroke" ? "stroke" : "stableford";
+  return k.startsWith("scramblematch") ? "scramblematch" : k.startsWith("scramble") ? "scramble" : k.startsWith("match") ? "match" : "stableford";
 };
 export const isMatchFormat = f => f === "match" || f === "matchpts" || f === "scramblematch" || f === "scramblematchpts";
 export const isTeamFormat = f => String(f || "").startsWith("scramble");
@@ -562,24 +563,115 @@ export function matchPlay(courseIn, round) {
   const sides = { A: A.map(e => String(e.name).trim()), B: B.map(e => String(e.name).trim()) };
   const ids = { A: seats.filter(s => s.side === "A").map(s => s.id), B: seats.filter(s => s.side === "B").map(s => s.id) };
   const players = { A: seats.filter(s => s.side === "A").flatMap(s => s.golfers), B: seats.filter(s => s.side === "B").flatMap(s => s.golfers) };
+  const squads = { A: (A[0] || {}).squad || 0, B: (B[0] || {}).squad || 0 };
   const label = k => sides[k].join(" & ");
   const margin = Math.abs(up);
   // a scramble team is one seat named after its members ("Anna & Bo"), and a pair wins, not wins
   const wins = k => `${label(k)} ${sides[k].length > 1 || / & /.test(sides[k][0]) ? "win" : "wins"}`;
   const result = !closed && thru < n ? null : !leader ? "Halved" : `${wins(leader)} ${left ? `${margin}&${left}` : `${margin} UP`}`;
   const status = result || (!leader ? (thru ? `All square thru ${thru}` : "All square") : `${label(leader)} ${margin} UP thru ${thru}`);
-  return { kind, basis: points ? "points" : "strokes", sides, ids, players, holes, up, thru, left, closed, leader, status, result,
+  return { kind, basis: points ? "points" : "strokes", sides, ids, players, squads, holes, up, thru, left, closed, leader, status, result,
     // the score the way a match card reads it: "2 UP", "3&2", "halved"
     margin: !leader ? "halved" : left && result ? `${margin}&${left}` : `${margin} UP` };
+}
+
+/** The match a seat played in: its own, or its scramble team's. */
+export const matchWith = (matches, seatId) => (matches || []).find(m => m.ids.A.includes(seatId) || m.ids.B.includes(seatId)) || null;
+/** Everyone who played a card: a match's golfers, a scramble team's members, never the team itself. */
+export const golfersOf = M => (M.matches && M.matches.length ? M.matches.flatMap(m => [...m.players.A, ...m.players.B]) : M.players);
+
+export const groupsOf = entries => [...new Set((entries || []).map(e => e.group || 1))].sort((a, b) => a - b);
+
+/** Every match on a card: each group plays its own, side A against side B. A group not set up as a match is left out. */
+export function matchesOf(courseIn, round) {
+  const gs = groupsOf(round.entries);
+  if (gs.length <= 1) return [{ ...matchPlay(courseIn, round), group: gs[0] || 1 }];
+  const out = [];
+  for (const g of gs) {
+    try { out.push({ ...matchPlay(courseIn, { ...round, entries: round.entries.filter(e => (e.group || 1) === g) }), group: g }); } catch (e) { /* not a match yet */ }
+  }
+  return out;
+}
+
+/** An event's teams: a match won is a point for the winner's team, a halved one half each. `live` counts matches still going as they stand. */
+export function teamPoints(matches, names) {
+  const rows = names.map((name, i) => ({ squad: i + 1, name, pts: 0, live: 0, won: 0, halved: 0, lost: 0 }));
+  for (const m of matches) for (const k of ["A", "B"]) {
+    const row = rows[(m.squads ? m.squads[k] : 0) - 1];
+    if (!row || !m.thru) continue;
+    const got = m.leader === k ? 1 : !m.leader ? 0.5 : 0;
+    row.live += got;
+    if (!m.result) continue;
+    row.pts += got;
+    row[got === 1 ? "won" : got ? "halved" : "lost"]++;
+  }
+  return rows.sort((a, b) => b.pts - a.pts || b.live - a.live);
+}
+
+/** The fewest groups of at most `size`, as even as they come: ten in fours is 4, 3, 3. */
+export function groupSizes(n, size) {
+  const k = Math.ceil(n / Math.max(1, size));
+  return Array.from({ length: k }, (_, i) => Math.floor(n / k) + (i < n % k ? 1 : 0));
+}
+
+/** Items dealt into k piles down a snake of `key`, so each pile gets a spread: the even way to split a field. */
+export function snake(items, k, key) {
+  const piles = Array.from({ length: k }, () => []);
+  [...items].sort((a, b) => key(a) - key(b)).forEach((x, i) => { const lap = Math.floor(i / k), pos = i % k; piles[lap % 2 ? k - 1 - pos : pos].push(x); });
+  return piles;
+}
+
+function shuffled(xs, rand) {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+/**
+ * A random draw. Stroke play fills groups of up to `size` as evenly as they come. A match is two sides of
+ * `perSide` (one or two), one match a group; with event teams (`squadOf`) the two sides of a match are always
+ * different teams. Whoever cannot make a full side or find an opponent is `left`, for the organiser to place.
+ */
+export function drawGroups(ids, { size = 4, perSide = 0, squadOf = null, rand = Math.random } = {}) {
+  if (!perSide) {
+    const order = shuffled(ids, rand), groups = [];
+    let at = 0;
+    for (const n of groupSizes(order.length, size)) { groups.push({ players: order.slice(at, at + n) }); at += n; }
+    return { groups, left: [] };
+  }
+  const left = [], units = new Map();
+  const pools = new Map();
+  for (const id of shuffled(ids, rand)) { const k = squadOf ? squadOf(id) || 0 : 0; if (!pools.has(k)) pools.set(k, []); pools.get(k).push(id); }
+  for (const [k, pool] of pools) {
+    if (squadOf && !k) { left.push(...pool); continue; }   // in a team event, nobody plays for no team
+    const full = pool.length - pool.length % perSide;
+    left.push(...pool.slice(full));
+    units.set(k, Array.from({ length: full / perSide }, (_, i) => pool.slice(i * perSide, (i + 1) * perSide)));
+  }
+  const groups = [];
+  if (!squadOf) {
+    const all = units.get(0) || [];
+    for (let i = 0; i + 1 < all.length; i += 2) groups.push({ A: all[i], B: all[i + 1] });
+    if (all.length % 2) left.push(...all[all.length - 1]);
+    return { groups, left };
+  }
+  // the two teams with the most sides still waiting meet, until one team is all that is left
+  for (;;) {
+    const open = [...units.entries()].filter(([, u]) => u.length).sort((a, b) => b[1].length - a[1].length || rand() - 0.5);
+    if (open.length < 2) { for (const [, u] of open) for (const x of u) left.push(...x); break; }
+    groups.push({ A: open[0][1].pop(), B: open[1][1].pop() });
+  }
+  return { groups: shuffled(groups, rand), left };
 }
 
 export function roundRanking(courseIn, round) {
   const format = round.format || "stableford";
   if (!FORMATS_ROUND.some(f => f.key === format)) throw new Error(`'${format}' is not a round format`);
   if (isMatchFormat(format)) {
-    const match = matchPlay(courseIn, round);
-    const rows = ["A", "B"].map(k => ({ place: !match.leader || match.leader === k ? 1 : 2, id: k, name: match.sides[k].join(" & "), main: match.status, sub: null }));
-    return { format, rows: rows.sort((a, b) => a.place - b.place), match };
+    const matches = matchesOf(courseIn, round), many = matches.length > 1;
+    const rows = matches.flatMap(m => ["A", "B"].map(k => ({ place: !m.leader || m.leader === k ? 1 : 2, id: many ? `${m.group}${k}` : k, name: m.sides[k].join(" & "), main: m.status,
+      sub: many ? `group ${m.group}` : null, group: m.group })).sort((a, b) => a.place - b.place));
+    return { format, rows, matches, match: many ? null : matches[0] };
   }
   const M = compute(courseIn, round);
   const row = (p, place, main, sub) => ({ place, id: p.id ?? p.name, name: p.name, main, sub });
@@ -832,9 +924,10 @@ export function statReadings(x, { per18 = false } = {}) {
   // `pair` marks a reading that means something set against somebody else's: a rate or an average, never a
   // raw count. One player's 7 three-putts against a whole league's 17 is not a comparison, it is two
   // different questions, and a bar drawn between them says the wrong thing in the right colours.
-  const rate = (key, part, of, { title, label, short, group, deep = false, lower = false, min = SHOW_MIN }) => {
+  // `always` is for a family drawn side by side, where one fraction among percentages reads as a mistake
+  const rate = (key, part, of, { title, label, short, group, deep = false, lower = false, min = SHOW_MIN, always = false }) => {
     if (!of || of < min) return;
-    const pct = part / of, enough = of >= RATE_MIN;
+    const pct = part / of, enough = always || of >= RATE_MIN;
     out.push({ key, group, deep, lower, pair: true, title, short, name: label, n: of, value: pct, fmt: fmtPct,
       big: enough ? fmtPct(pct) : `${part}/${of}`,
       count: `${part}/${of}`,
@@ -892,7 +985,7 @@ export function statReadings(x, { per18 = false } = {}) {
   if (x.birdies) rate("birdies", x.birdies.made, x.birdies.holes, { title: "Greens turned into birdies", label: "birdie conversion", short: "Birdies", group: "striking", deep: true, min: 6 });
   if (x.girByPar) for (const par of Object.keys(x.girByPar)) {
     const g = x.girByPar[par];
-    rate(`girPar${par}`, g.hit, g.holes, { title: `Greens in regulation on par ${par}s`, label: `GIR on par ${par}s`, short: `GIR par ${par}s`, group: "striking", deep: true, min: 6 });
+    rate(`girPar${par}`, g.hit, g.holes, { title: `Greens in regulation on par ${par}s`, label: `GIR on par ${par}s`, short: `GIR par ${par}s`, group: "striking", deep: true, min: 4, always: true });
   }
   if (x.upDown) rate("upDown", x.upDown.made, x.upDown.holes, { title: "Up and down", label: "up and down", short: "Up & down", group: "saves" });
   // Sand saves ask the same question of a handful of holes, so they do not belong beside the readings every
@@ -943,6 +1036,7 @@ export function strokesGained(cards, pid, { basis = "gross", against = null } = 
   const holed = (p, h) => p.scores[h] !== null && !p.skipped[h] && !p.filled[h];
   const puttsOf = (p, h) => (p.stats && p.stats[h] && p.stats[h].putts !== null && p.stats[h].putts !== undefined) ? p.stats[h].putts : null;
   let holes = 0, total = 0, splitHoles = 0, splitTotal = 0, putting = 0, rounds = 0, opponents = new Set();
+  const byPar = {};
   for (const card of cards) {
     const me = card.players.find(p => p.id !== null && p.id === pid);
     if (!me) continue;
@@ -954,7 +1048,10 @@ export function strokesGained(cards, pid, { basis = "gross", against = null } = 
       const pool = others.filter(o => holed(o, h));
       if (!pool.length) continue;
       holes++; counted++;
-      total += mean(pool.map(o => value(o, h))) - value(me, h);
+      const gained = mean(pool.map(o => value(o, h))) - value(me, h);
+      total += gained;
+      const par = (me.par || card.par || [])[h];
+      if (par) { byPar[par] = byPar[par] || { holes: 0, total: 0 }; byPar[par].holes++; byPar[par].total += gained; }
       const myPutts = puttsOf(me, h);
       if (myPutts === null) continue;
       const poolP = pool.filter(o => puttsOf(o, h) !== null);
@@ -968,6 +1065,8 @@ export function strokesGained(cards, pid, { basis = "gross", against = null } = 
   const per18 = v => holes ? (v / holes) * 18 : null;
   return {
     basis, holes, rounds, opponents: opponents.size, total: holes ? total : null, per18: per18(total),
+    // each kind of hole's share of `per18`, so the three add back up to it; `perHole` is the same gain a hole
+    byPar: Object.fromEntries(Object.entries(byPar).map(([k, v]) => [k, { ...v, per18: per18(v.total), perHole: v.total / v.holes }])),
     // The split only speaks where both cards kept putts; `holes` above is the wider set.
     split: !splitHoles ? null : {
       holes: splitHoles, total: splitTotal, putting, teeToGreen: splitTotal - putting,
@@ -1064,7 +1163,7 @@ function oneCard(key, Ms) {
     players.push({ ...p, roundId: p.roundId ?? M.id, roundName: p.roundName ?? M.name });
   }
   const card = { ...(strokeMs[0] || Ms[0]), id: key, key, rounds: Ms, players, field: players.length, match: null,
-    matches: Ms.filter(M => M.match).map(M => ({ ...M.match, roundId: M.id, date: M.date })),
+    matches: Ms.flatMap(M => (M.matches || []).map(m => ({ ...m, roundId: M.id, date: M.date }))),
     name: [...new Set(Ms.map(M => M.name))].join(" · ") };
   // a card of one round is that round's board again; several need the countback run over the lot. The
   // per-hole field figures (`holes`, and each player's `vsrest`) stay as the round computed them: nothing
