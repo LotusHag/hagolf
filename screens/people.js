@@ -3,10 +3,11 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, h2tip, roundClub, roundLoop, safeCompute, saveFiles } from "../ui.js";
-import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained, isMatchFormat } from "../model.js";
-import { statBlock, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
-import { playerRounds, ninesPlayed } from "./stats.js";
+import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, roundClub, roundLoop, safeCompute, saveFiles } from "../ui.js";
+import { compute, fmtIndex, fmtToPar, halves, statSummary, isMatchFormat } from "../model.js";
+import { statLine, statHolesOf } from "./extras.js";
+import { playerRounds, ninesPlayerBlock } from "./stats.js";
+import { shotsBody } from "./shots.js";
 import { leagueResults, standingsFor, standingValue, MATCH_BASIS, ELO_BASIS } from "./formats.js";
 import { myCard, nineLine } from "./review.js";
 import { matchFor } from "./mine.js";
@@ -169,18 +170,14 @@ export function player(id) {
       <button class="btn small" data-act="my-card" data-rid="${r.id}" data-pid="${p.id}">Save card</button></div>`;
   }).join("");
   const career = statSummary(statHolesOf(golf, p.id));
-  const sgMine = strokesGained(golf.map(o => o.M), p.id);
-  const nines = ninesPlayed(S.roundsOf(p.id), p.id);
+  const nines = ninesPlayerBlock(S.roundsOf(p.id), p.id, isMe ? "you" : firstName(p.name));
   const linkedTo = p.linkedAccount && !isMe ? F.friendById(p.linkedAccount) : null;
   page(isMe ? "My rounds" : p.name, `
     <div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">${p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))} · ` : ""}${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(rs.length, "round")}${linkedTo ? ` · <a href="#person/${esc(p.linkedAccount)}">friend</a>` : ""}</div></div></div>
     ${stats}
     ${leagueLines ? `<h2>Societies</h2><div class="list">${leagueLines}</div>` : ""}
-    ${career.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(career, `Over ${plural(career.holes, "hole")} of ${plural(golf.length, "round")}.`, { per18: true })}` : ""}
-    ${sgMine.total === null ? "" : `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sgMine, "everyone else on the card")}`}
-    ${nines.length ? `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18.`)}
-      <table class="stand"><thead><tr><th class="l">Loop</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
-      <tbody>${nines.map(x => `<tr><td class="l">${esc(nineName(x.slug))}</td><td>${x.played}</td><td>${x.bestGross === null ? "–" : x.bestGross}</td><td>${x.avgGross === null ? "–" : x.avgGross.toFixed(1)}</td><td class="acc">${x.avgPts.toFixed(1)}</td></tr>`).join("")}</tbody></table>` : ""}
+    ${shotsBody(career, golf.map(o => o.M), p.id, "everyone else on the card")}
+    ${nines}
     <h2>Rounds</h2>
     ${list || `<p class="muted center">No finished rounds yet.</p>`}
     ${isMe ? "" : `<details class="card"><summary class="small">Name, index and rating</summary>

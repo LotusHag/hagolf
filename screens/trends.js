@@ -89,9 +89,9 @@ function movers(ms) {
 }
 
 const GROUPS = [
-  ["form", "Handicap and points", "<p>The handicap index is the one written on each card when it was played. Points are Stableford points.</p>"],
-  ["scoring", "Scoring", "<p>Every hole by its score against par, before handicap strokes.</p>"],
-  ["shots", "Shots", "<p>Strokes gained against everyone on the same card, and the extras you kept: each round counts only if it kept enough holes of that reading to say something.</p>"],
+  ["form", "Handicap and points", "<p>The handicap index is the one written on each card when it was played. Points are Stableford points.</p>", "gauge"],
+  ["scoring", "Scoring", "<p>Every hole by its score against par, before handicap strokes.</p>", "scorecard"],
+  ["shots", "Shots", "<p>Strokes gained against everyone on the same card, and the extras you kept: each round counts only if it kept enough holes of that reading to say something.</p>", "ball"],
 ];
 
 /** The whole tab, for one player: `holes` are statHoles rows, `cards` league cards for strokes gained. */
@@ -100,7 +100,7 @@ export function trendsBody(p, holes, cards, who = "you") {
   const ms = readings(p, holes, cards);
   const tip = `<p>Each dot is one round, oldest on the left; anything given a round is counted over 18 holes. The line is the average of the latest few rounds at every point, so one good or bad day bends it without breaking it. The dashed level is where the first few rounds started.</p>
     <p>The figure is the average of the last few rounds, and beside it how far that is from the first few. Green is better, whichever way better runs: a falling handicap is green.</p>`;
-  return `${h2tip("What is moving", `<p>The readings that have moved furthest since the first rounds, measured against how much each one normally wobbles from round to round.</p>${tip}`)}${movers(ms)}
-    ${GROUPS.map(([g, title, more]) => { const rows = ms.filter(m => m.group === g);
-      return rows.length ? `${h2tip(title, more + tip)}<div class="card trows">${rows.map(trendRow).join("")}</div>` : ""; }).join("")}`;
+  return `${h2tip("What is moving", `<p>The readings that have moved furthest since the first rounds, measured against how much each one normally wobbles from round to round.</p>${tip}`, "trend")}${movers(ms)}
+    ${GROUPS.map(([g, title, more, icon]) => { const rows = ms.filter(m => m.group === g);
+      return rows.length ? `${h2tip(title, more + tip, icon)}<div class="card trows">${rows.map(trendRow).join("")}</div>` : ""; }).join("")}`;
 }

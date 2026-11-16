@@ -214,6 +214,16 @@ export const ICONS = {
   approach: I(`<path d="M15 18V3l5 2.2L15 7.4"/><ellipse cx="14" cy="18.5" rx="7.5" ry="2.5"/><path d="M2.5 16C4 10 7.5 7.5 11 7.5" stroke-dasharray="0 3.2"/>`),
   bunker: I(`<path d="M2.5 15h4c1.2 3 3.2 4.5 5.5 4.5s4.3-1.5 5.5-4.5h4"/><path d="M11.5 15.5C12 10 14.5 6.5 18 5.5" stroke-dasharray="0 3.2"/><circle cx="20" cy="5" r="1.8"/>`),
   putt: I(`<path d="M4 3.5 8 15.2"/><path d="M6 15.8l4-1.3"/><circle cx="13" cy="17.6" r="1.9"/><ellipse cx="19.3" cy="19.2" rx="2.4" ry="1"/>`),
+  // and the rest of the stats headings: kinds of hole, stroke index, habits, handicap, the card, a ball, a loop, form, a podium
+  holes: I(`<path d="M5 20V12l3 1.2-3 1.2"/><path d="M11.5 20V8.5l3 1.2-3 1.2"/><path d="M18 20V5l3 1.2L18 7.4"/><path d="M2.5 20.5h19"/>`),
+  index: I(`<path d="M3 20h4.5v-4.5H12V11h4.5V6.5H21"/><path d="M3 20h18"/>`),
+  habits: I(`<path d="M5 5.5h14"/><path d="M5 18.5h14"/><path d="M3 12c1.5-3.5 3-3.5 4.5 0s3 3.5 4.5 0 3-3.5 4.5 0 3 3.5 4.5 0"/>`),
+  gauge: I(`<path d="M3.5 17a8.5 8.5 0 1 1 17 0"/><path d="M12 17l4.2-5.6"/><circle cx="12" cy="17" r="1.4"/><path d="M6.2 11.2l1.2 1M12 8.5v1.5M17.8 11.2l-1.2 1"/>`),
+  scorecard: I(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8.5h16"/><path d="M10 8.5V21"/><circle cx="15" cy="14.5" r="2.6"/>`),
+  ball: I(`<circle cx="12" cy="12" r="8.5"/><path d="M9 9.5h.01M12.5 8h.01M15 10.5h.01M10.5 13h.01M14 14h.01M8.5 16h.01"/>`),
+  loop: I(`<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M17.8 2.8l-.3 4.1-4.1-.3"/><path d="M11 16V8.5l3.5 1.4-3.5 1.4"/>`),
+  trend: I(`<path d="M3 17l5.5-5.5 4 4L20 8"/><path d="M15 8h5v5"/>`),
+  rank: I(`<path d="M3 20.5h18"/><path d="M9 20.5V9h6v11.5"/><path d="M3.5 20.5V14H9"/><path d="M15 16h5.5v4.5"/><path d="M11.5 12.5 12.6 12v4"/>`),
 };
 export const TABS = [["home", "#home", "Play", "golf"], ["stats", "#stats", "Stats", "chart"], ["leagues", "#leagues", "Societies", "leagues"], ["me", "#me", "Me", "me"]];
 

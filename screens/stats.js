@@ -1,14 +1,20 @@
 // What a pile of rounds says: the field, one player, their rivals, and the nines they walked.
 import * as S from "../store.js";
-import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, infoBtn, subtabs, safeCompute, ui } from "../ui.js";
-import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE, isTeamFormat, isMatchFormat } from "../model.js";
-import { statBlock, statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
+import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip as tipHead, infoBtn, subtabs, safeCompute, ui, ICONS } from "../ui.js";
+import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, STRIP_KEYS, NO_SCORE, isTeamFormat, isMatchFormat } from "../model.js";
+import { sgWords } from "./extras.js";
 import { H2H_BASES, basisUnit } from "./formats.js";
 import { nineName } from "./play.js";
 import { shotsBody, barRows, markKey, lead, leads } from "./shots.js";
 import { trendsBody } from "./trends.js";
 
 const BUCKET_KEY = SCORE_BUCKETS.map(b => b.key);
+// every stats heading carries its picture; a heading not named here goes without
+const HEAD_ICONS = { "The season, card by card": "chart", "Round by round": "chart", "Form and consistency": "rank", "Habits": "habits",
+  "Par 3s, 4s and 5s": "holes", "Easy holes and hard ones": "index", "Match play": "vs", "Who scores what": "scorecard",
+  "Player by player": "users", "Against the field": "vs", "Against each player": "users", "The nines walked": "loop", "Nines walked": "loop" };
+const h2tip = (title, text) => tipHead(title, text, HEAD_ICONS[title] || "");
+const h2 = (title, icon) => `<h2>${ICONS[icon] || ""}${esc(title)}</h2>`;
 export const pct = (v, t) => t ? Math.round((v / t) * 100) : 0;
 const sumc = cs => cs.reduce((a, b) => a + b, 0);
 export const parOrBetter = x => x.counts[0] + x.counts[1] + x.counts[2];
@@ -129,21 +135,7 @@ function seasonChart(St, gid, meId) {
     <div class="chips-wrap scroll" style="margin-top:8px">${chip("", "Nobody")}${P.players.map(p => chip(p.id, p.name)).join("")}</div>`;
 }
 
-// ---------------------------------------------------------------- putts, fairways and the rest, on screen
-/** One player's extras set against the rest of the league, or on their own where nobody else keeps them. */
-function extrasCompare(p, first) {
-  const x = p.statline;
-  if (!x || !x.any) return "";
-  const opts = { per18: true };
-  const pairs = statPairs(x, p.rest && p.rest.statline, opts).filter(r => !r.deep);
-  const intro = `${esc(first)} over ${plural(x.holes, "hole")} in this society.`;
-  if (!pairs.length) return statBlock(x, `${intro} Nobody else here has kept the same readings, so there is nothing to set them against.`, opts);
-  const deep = statTiles(x, { ...opts, deep: true });
-  return `<div class="card tapes mine">${pairs.map(r => tapeRow(r.title.toLowerCase(), r.value, r.theirs, r.lower, r.fmt)).join("")}</div>
-    <p class="muted small" style="margin:6px 4px 0">${esc(first)} left, the rest of the society right</p>
-    ${deep ? `<details class="card morestats"><summary class="small">More of the same, for fun</summary>${deep}</details>` : ""}`;
-}
-
+// ---------------------------------------------------------------- putts, fairways and the rest, player by player
 /** Every player who keeps them, one row each, so a league can see its fairways and its greens in one place. */
 function extrasTable(St) {
   const opts = { per18: true };
@@ -226,13 +218,13 @@ function fieldStats(St, nines = "", gid = "", meId = null) {
       <p class="muted small" style="margin:10px 0 0">${plural(F.holes, "hole")} · ${fix(F.avgPts)} pts a round · ${fmtSigned(F.vspar, 2)} a hole against par</p></div>
     ${seasonChart(St, gid, meId)}
     ${formTable(St)}
-    ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(F.statline, `Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.`, { per18: true })}${extrasTable(St)}` : ""}
+    ${F.statline.any ? `${shotsBody(F.statline, [], null, "")}${extrasTable(St)}` : ""}
     ${holeKinds(F, "everyone in this society together")}
     ${nines}
     ${matchTable(St)}
     ${h2tip("Who scores what", `One bar a player: every hole they have played in this society, best scores on the left and worst on the right. The longer the left end, the more often they are at par or better.`)}
     <div class="card dists">${inlineKey()}${dist}</div>
-    <h2>Records</h2>
+    ${h2("Records", "trophy")}
     <div class="card"><div class="sleads grid">
       ${F.bestRound ? recFig(F.bestRound, F.bestRound.pts, "points, best round", recSub(F.bestRound)) : ""}
       ${F.lowRound ? recFig(F.lowRound, F.lowRound.gross, `best against par, ${fmtToPar(F.lowRound.topar)}`, recSub(F.lowRound)) : ""}
@@ -271,7 +263,7 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
         : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}</p>`}`;
   const who = society ? esc(first) : "you";
   const form = one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear after a second round${society ? " here" : ""}.</p>`
-    : `${h2tip("Over more than one round", `<p><b>Either side</b> is how far a typical round sits from the average: the smaller, the steadier. ${society ? " <b>Last three</b> is form, the average of the latest three rounds. <b>Trend</b> compares the first half of the rounds with the second; plus means the second half was better. <b>Streak</b> counts the latest rounds in a row above the rest of the field." : " How each part of your game has moved over time is under Trends."}</p>
+    : `${h2tip("Habits", `<p><b>Either side</b> is how far a typical round sits from the average: the smaller, the steadier. ${society ? " <b>Last three</b> is form, the average of the latest three rounds. <b>Trend</b> compares the first half of the rounds with the second; plus means the second half was better. <b>Streak</b> counts the latest rounds in a row above the rest of the field." : " How each part of your game has moved over time is under Trends."}</p>
       <p><b>Points a hole</b> splits a round in two, front half and back half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>${mixed ? "<p>These rounds mix nines and eighteens, so the points a round mix lengths too.</p>" : ""}`)}
     <div class="card"><div class="sleads grid">
       ${fig(`±${fix(p.consistency)}`, "points either side", `of ${fix(p.avgPts)} on average`)}
@@ -297,11 +289,10 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
       ${line("Matches", `${p.match.won} won, ${p.match.halved} halved, ${p.match.lost} lost`)}
       ${line("Holes", `${p.match.holesWon} won, ${p.match.holesHalved} halved, ${p.match.holesLost} lost`)}</div>` : ""}
     ${want("rivals") ? rivalsBlock(St, p, gid, cards) : ""}
-    ${want("sg") ? sgLeague(cards, p.id, !gid) : ""}
-    ${want("extras") && p.statline.any ? `${h2tip("Putts, fairways and the rest", `${STATS_TIP}<p>Set against the rest of the society, each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>`)}${extrasCompare(p, first)}` : ""}
+    ${want("sg") ? shotsBody(p.statline, cards, p.id, society ? "the rest of this society" : "everyone you played with") : ""}
     ${want("core") ? holeKinds(p, who) : ""}
     ${want("nines") ? nines : ""}
-    ${want("core") ? `<h2>${society ? `${esc(first)} in this society` : "Records"}</h2>
+    ${want("core") ? `${h2(society ? `${first} in this society` : "Records", "trophy")}
     <div class="card"><div class="sleads grid">
       ${p.bestRound ? recFig(p.bestRound, p.bestRound.pts, "points, best round", recSub(p.bestRound)) : ""}
       ${one ? "" : lead(p.worstPts, "points, worst round", `${fix(p.avgPts)} on average`)}
@@ -331,13 +322,6 @@ export function myGameBody(topic) {
   const nines = topic === "nines" ? ninesPlayerBlock(rounds, p.id, "You") || `<p class="muted center">No loop walked yet.</p>` : "";
   const body = playerStats(St, p, nines, "", leagueCards(Ms), parts);
   return `<div class="statsbody">${body.trim() || `<p class="muted center" style="margin:30px 0">Nothing here yet.</p>`}</div>`;
-}
-
-function sgLeague(cards, pid, mine = false) {
-  if (!cards.length) return "";
-  const sg = strokesGained(cards, pid);
-  if (sg.total === null || !sg.holes) return "";
-  return `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sg, mine ? "everyone you played with" : "the rest of this society")}`;
 }
 
 function rivalVerdict(r, me, them) {
@@ -462,10 +446,11 @@ function ninesFieldBlock(gid, rounds, me) {
   }
   const table = [...rows.values()].map(e => ({ ...e, played: e.pts.length, avgPts: e.pts.reduce((a, b) => a + b, 0) / e.pts.length, bestGross: e.gs.length ? Math.min(...e.gs) : null, avgGross: e.gs.length ? e.gs.reduce((a, b) => a + b, 0) / e.gs.length : null }))
     .sort((a, b) => b.avgPts - a.avgPts || (a.avgGross ?? 99) - (b.avgGross ?? 99) || a.name.localeCompare(b.name));
-  return `${h2tip("The nines walked", `This club's loops are rated on their own, so every nine is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18. Pick a loop; the table ranks the players on it by average points.`)}
+  return `${h2tip("The nines walked", `This club's loops are rated on their own, so every nine is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18. Pick a loop; the bars rank the players on it by average points, and the mark is net par, eighteen points.`)}
     <div class="chips-wrap">${nines.map(x => `<button class="pchip ${x.slug === pick ? "on" : ""}" data-act="ninetab" data-slug="${esc(x.slug)}">${esc(nineName(x.slug))}<small>${plural(x.played, "card")}</small></button>`).join("")}</div>
-    <table class="stand" style="margin-top:12px"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
-      <tbody>${table.map((e, i) => `<tr class="${me && e.id === me.id ? "acc" : ""}"><td class="pos">${i + 1}</td><td class="l">${esc(e.name)}</td><td>${e.played}</td><td>${e.bestGross === null ? "–" : e.bestGross}</td><td>${e.avgGross === null ? "–" : fix(e.avgGross)}</td><td class="acc">${fix(e.avgPts)}</td></tr>`).join("")}</tbody></table>
+    <div class="card" style="margin-top:12px">${barRows(table.map((e, i) => ({ label: `${i + 1}. ${e.name}`, v: e.avgPts, big: fix(e.avgPts),
+      sub: [`${e.played} walked`, e.bestGross === null ? "" : `best ${e.bestGross}`, e.avgGross === null ? "" : `avg ${fix(e.avgGross)}`].filter(Boolean).join(" · ") })), { top: 27, mark: 18 })}
+      ${markKey("net par")}</div>
     ${loop.unrated.length ? `<p class="muted small" style="margin:10px 4px">${namesList(loop.unrated)} walked it too. This loop carries no rating for the tees they played, so there is no way to work out their strokes on it.</p>` : ""}`;
 }
 export function ninesPlayerBlock(rounds, pid, first) {
