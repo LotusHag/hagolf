@@ -1656,7 +1656,7 @@ function roundLine(M, p, others, place, of) {
   const otherTopar = others.map(q => q.topar).filter(v => v !== null);
   return {
     id: p.roundId ?? M.id, card: M.key ?? M.id, name: M.name, date: M.date, where: M.course.name, loop: M.course.loop || "", n,
-    pid: p.id, player: p.name, pts: p.pts, gross: p.gross, topar: p.topar, net: p.net, ph: p.ph,
+    pid: p.id, player: p.name, pts: p.pts, gross: p.gross, topar: p.topar, net: p.net, ph: p.ph, hi: p.hi,
     place, of, splace: p.splace, field: M.field, counts, holes: p.holes_played,
     penalties: p.penalty_total, counted10: p.filled.filter(Boolean).length,
     chances, backs, blowups, first: sum(p.hpts.slice(0, half)) / half, last: sum(p.hpts.slice(n - half)) / half,

@@ -646,6 +646,22 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .bkey em { top: 1px; bottom: 1px; left: 1px; margin: 0; }
 .sleads > a { display: flex; flex-direction: column; min-width: 0; color: inherit; text-decoration: none; }
 .sleads > a i { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trows { display: grid; gap: 26px; }
+.trhead { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 10px; }
+.trhead span { font-size: 14px; color: var(--ink); line-height: 1.25; }
+.trhead span small { display: block; font-size: 11px; color: var(--ink3); margin-top: 2px; }
+.trhead b { font-size: 24px; font-weight: 600; color: var(--ink); }
+.trhead em { font-style: normal; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink3); min-width: 44px; text-align: right; }
+.trhead em.up { color: var(--under); } .trhead em.down { color: var(--bogey); }
+.tchart { display: block; width: 100%; height: auto; margin-top: 10px; overflow: visible; }
+.tbase { stroke: var(--line2); stroke-width: 1; stroke-dasharray: 3 4; }
+.tdot { fill: var(--ink3); opacity: .45; }
+.tline { fill: none; stroke: var(--ink2); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.tline.up { stroke: var(--under); } .tline.down { stroke: var(--bogey); }
+.tlast { fill: var(--ink2); stroke: var(--card); stroke-width: 2; }
+.tlast.up { fill: var(--under); } .tlast.down { fill: var(--bogey); }
+.tdates { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 11px; }
+.sleads b.flat { color: var(--ink2); }
 .mrow { display: grid; grid-template-columns: 112px 1fr 44px; align-items: center; gap: 10px; padding: 5px 0; }
 .mrow > span { font-size: 13px; color: var(--ink2); line-height: 1.2; }
 .mrow > span small { display: block; font-size: 11px; color: var(--ink3); }

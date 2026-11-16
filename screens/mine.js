@@ -11,12 +11,13 @@ import { dayBlock, nowCard, formatLabel } from "./home.js";
 const TOPICS = [
   ["scoring", "Scoring"],
   ["shots", "Shots"],
-  ["h2h", "Head to head"],
+  ["trends", "Trends"],
   ["nines", "Nines"],
   ["rounds", "Rounds"],
 ];
-// putts and strokes gained were tabs of their own before they became Shots; an old link still lands there
-const FORMER = { extras: "shots", sg: "shots" };
+// putts and strokes gained were tabs of their own before they became Shots; an old link still lands there.
+// Head to head lives inside a society now, so its old link lands on Scoring.
+const FORMER = { extras: "shots", sg: "shots", h2h: "scoring" };
 
 /** One row of tabs for everything under Stats: each topic is a view of the same numbers, not a page of its own. */
 function tabRow(on) {
