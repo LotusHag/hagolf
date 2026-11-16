@@ -5,13 +5,14 @@ import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKET
 import { statBlock, statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
 import { H2H_BASES, basisUnit } from "./formats.js";
 import { nineName } from "./play.js";
-import { shotsBody } from "./shots.js";
+import { shotsBody, barRows, markKey, lead, leads } from "./shots.js";
 
 const BUCKET_KEY = SCORE_BUCKETS.map(b => b.key);
 export const pct = (v, t) => t ? Math.round((v / t) * 100) : 0;
 const sumc = cs => cs.reduce((a, b) => a + b, 0);
 export const parOrBetter = x => x.counts[0] + x.counts[1] + x.counts[2];
 const whereName = w => String(w || "").replace(/, 9 holes$/, "");
+const recFig = (r, big, label, sub) => r ? `<a href="#review/${esc(r.id)}"><b class="num">${esc(big)}</b><small>${esc(label)}</small><i>${esc(sub)}</i></a>` : "";
 /** The currency these comparisons are read in, as one line that opens a sheet rather than a row of tabs. */
 export const basisPicker = (act, chosen) => `<button class="pickrow" data-act="${act}-open">Compared on <b>${esc((H2H_BASES.find(x => x[0] === chosen) || H2H_BASES[0])[1])}</b> <i aria-hidden="true">⌄</i></button>`;
 export const basisSheetBody = chosen => `<div class="fmtpicks">${H2H_BASES.map(([k, label, rw]) => `<button class="fmtpick${k === chosen ? " on" : ""}" data-sheet="${k}"><span><b>${esc(label)}</b><small>the day goes to ${esc(rw)}</small></span></button>`).join("")}</div>`;
@@ -165,18 +166,24 @@ function extrasTable(St) {
       <tbody>${rows.map(r => `<tr><td class="l">${esc(r.name)}</td>${cols.map(c => `<td>${cell(r.by[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
-function parRow(label, x) {
-  if (!x || !x.holes) return "";
-  return `<tr><td class="l">${label}</td><td>${x.holes}</td><td>${fix(x.avg, 2)}</td><td>${fmtSigned(x.vspar, 2)}</td><td class="acc">${fix(x.pts, 2)}</td><td>${pct(x.counts[0] + x.counts[1], x.holes)}%</td></tr>`;
+const birdiePct = x => pct(x.counts[0] + x.counts[1], x.holes);
+const holeRow = (label, x) => x && x.holes ? { label, v: x.pts, big: fix(x.pts, 2),
+  sub: `${plural(x.holes, "hole")} · ${fix(x.avg, 2)} a hole (${fmtSigned(x.vspar, 2)}) · ${birdiePct(x)}% birdies` } : null;
+const parTableTip = who => `<p>How ${who} plays each kind of hole. Each bar is the Stableford points a hole of that kind is worth on average; under it, how many have been played, the average score and how far that is over or under par, and how often one was birdied or better.</p>
+  <p>The mark on every bar is two points, a hole played exactly to the handicap. A bar past it is drawn green.</p>`;
+// two points is a hole played to the handicap, so every bar on these cards is read against it
+const NET_PAR_KEY = markKey("two points, a hole played to the handicap");
+/** Par 3s, 4s and 5s, then the card split into thirds by stroke index: points a hole, as bars. */
+function holeKinds(x, who) {
+  const pars = Object.keys(x.byPar).sort().map(k => holeRow(`Par ${k}s`, x.byPar[k])).filter(Boolean);
+  const bands = x.bands.map((b, i) => holeRow(BANDS[i], b)).filter(Boolean);
+  return `${h2tip("Par 3s, 4s and 5s", parTableTip(who))}
+    <div class="card">${leads([lead(fix(x.pts, 2), "points a hole", `every hole · ${fmtSigned(x.vspar, 2)} against par · ${birdiePct(x)}% birdie or better`)])}
+      <div class="sgap"></div>${barRows(pars, { top: 3, mark: 2 })}${NET_PAR_KEY}</div>
+    ${bands.length ? `${h2tip("Easy holes and hard ones", BANDS_TIP)}<div class="card">${barRows(bands, { top: 3, mark: 2 })}${NET_PAR_KEY}</div>` : ""}`;
 }
-const parTableTip = who => `<p>How ${who} plays each kind of hole.</p>
-  <p><b>Played</b> is how many holes of that kind have been walked, <b>Avg</b> the average score on one, <b>Vs par</b> how far that average is over or under par, <b>Pts</b> the Stableford points a hole, and <b>Birdie+</b> how often the hole was birdied or better.</p>`;
 const BANDS_TIP = `<p>Every scorecard gives each hole a stroke index, the number that ranks the holes from hardest (1) to easiest. Sorted by it, a card falls into three bands: the hardest third, the middle third and the easiest third.</p>
   <p>The hardest holes are also where handicap strokes are given, which is why they often pay the most Stableford points even though they are played worst against par.</p>`;
-const PAR_TABLE_HEAD = `<thead><tr><th class="l">Holes</th><th>Played</th><th>Avg</th><th>Vs par</th><th>Pts</th><th>Birdie+</th></tr></thead>`;
-const PAR_TABLE = `<table class="stand partab">`;
-const parRows = x => Object.keys(x.byPar).sort().map(k => parRow(`Par ${k}`, x.byPar[k])).join("");
-const everyHoleRow = x => `<tr class="tot"><td class="l">Every hole</td><td>${x.holes}</td><td>${fix(x.avg, 2)}</td><td>${fmtSigned(x.vspar, 2)}</td><td class="acc">${fix(x.pts, 2)}</td><td>${pct(x.counts[0] + x.counts[1], x.holes)}%</td></tr>`;
 const BANDS = ["Hardest third", "Middle third", "Easiest third"];
 
 /**
@@ -210,7 +217,7 @@ function matchTable(St) {
 
 function fieldStats(St, nines = "", gid = "", meId = null) {
   const F = St.field;
-  const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span><span class="muted">${esc(firstName(r.player))} · ${value} · ${esc(shortDate(r.date))}</span></a>` : "";
+  const recSub = r => `${firstName(r.player)} · ${shortDate(r.date)}`;
   const dist = [...St.players].sort((a, b) => pct(parOrBetter(b), b.holes) - pct(parOrBetter(a), a.holes) || a.name.localeCompare(b.name))
     .map(p => `<div class="drow"><div class="dname">${esc(p.name)}<small class="muted">${pct(parOrBetter(p), p.holes)}% par or better</small></div>${distBar(p.counts)}</div>`).join("");
   return `
@@ -220,21 +227,18 @@ function fieldStats(St, nines = "", gid = "", meId = null) {
     ${seasonChart(St, gid, meId)}
     ${formTable(St)}
     ${F.statline.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(F.statline, `Everyone who keeps them, over ${plural(F.statline.holes, "hole")}.`, { per18: true })}${extrasTable(St)}` : ""}
-    ${h2tip("Par 3s, 4s and 5s", parTableTip("everyone in this society together"))}
-    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(F)}${everyHoleRow(F)}</tbody></table>
-    ${h2tip("Easy holes and hard ones", BANDS_TIP)}
-    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${F.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>
+    ${holeKinds(F, "everyone in this society together")}
     ${nines}
     ${matchTable(St)}
     ${h2tip("Who scores what", `One bar a player: every hole they have played in this society, best scores on the left and worst on the right. The longer the left end, the more often they are at par or better.`)}
     <div class="card dists">${inlineKey()}${dist}</div>
     <h2>Records</h2>
-    <div class="card">
-      ${rec("Best round", F.bestRound, `${F.bestRound ? F.bestRound.pts : ""} pts`)}
-      ${rec("Best against par", F.lowRound, F.lowRound ? `${F.lowRound.gross} (${fmtToPar(F.lowRound.topar)})` : "")}
-      ${rec("Most birdies", F.mostBirdies && F.mostBirdies.birdies > 1 ? F.mostBirdies : null, F.mostBirdies ? plural(F.mostBirdies.birdies, "birdie") : "")}
-      ${F.bounce === null ? "" : `<div class="kv"><span>Bounce back</span><span class="muted">${Math.round(F.bounce * 100)}% of the holes after a bogey or worse were played in par or better</span></div>`}
-    </div>`;
+    <div class="card"><div class="sleads grid">
+      ${F.bestRound ? recFig(F.bestRound, F.bestRound.pts, "points, best round", recSub(F.bestRound)) : ""}
+      ${F.lowRound ? recFig(F.lowRound, F.lowRound.gross, `best against par, ${fmtToPar(F.lowRound.topar)}`, recSub(F.lowRound)) : ""}
+      ${F.mostBirdies && F.mostBirdies.birdies > 1 ? recFig(F.mostBirdies, F.mostBirdies.birdies, "most birdies in a round", recSub(F.mostBirdies)) : ""}
+      ${F.bounce === null ? "" : lead(`${Math.round(F.bounce * 100)}%`, "bounce back", "par or better after a bogey or worse")}
+    </div></div>`;
 }
 
 function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
@@ -242,7 +246,7 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
   const R = p.rest, one = p.played === 1, first = firstName(p.name);
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
   const fig = (big, label, sub = "") => `<div><b class="num">${big}</b><small>${label}</small>${sub ? `<i>${sub}</i>` : ""}</div>`;
-  const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span><span class="muted">${value} · ${esc(whereName(r.where))} · ${esc(shortDate(r.date))}</span></a>` : "";
+  const recSub = r => `${shortDate(r.date)} · ${whereName(r.where)}`;
   const line = (label, value) => `<div class="kv"><span>${label}</span><span class="muted">${value}</span></div>`;
   const per = k => p.played ? p.counts[k] / p.played : 0;
   const birdies = p.counts[0] + p.counts[1];
@@ -295,18 +299,15 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
     ${want("rivals") ? rivalsBlock(St, p, gid, cards) : ""}
     ${want("sg") ? sgLeague(cards, p.id, !gid) : ""}
     ${want("extras") && p.statline.any ? `${h2tip("Putts, fairways and the rest", `${STATS_TIP}<p>Set against the rest of the society, each reading counts only the holes that answered it on both sides, which is fewer holes than the rest of this page counts.</p>`)}${extrasCompare(p, first)}` : ""}
-    ${want("core") ? `${h2tip("Par 3s, 4s and 5s", parTableTip(who))}
-    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${parRows(p)}${everyHoleRow(p)}</tbody></table>
-    ${h2tip("Easy holes and hard ones", BANDS_TIP)}
-    ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${p.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>` : ""}
+    ${want("core") ? holeKinds(p, who) : ""}
     ${want("nines") ? nines : ""}
     ${want("core") ? `<h2>${society ? `${esc(first)} in this society` : "Records"}</h2>
-    <div class="card">
-      ${rec("Best round", p.bestRound, p.bestRound ? `${p.bestRound.pts} pts` : "")}
-      ${rec("Best against par", p.lowRound, p.lowRound ? `${p.lowRound.gross} (${fmtToPar(p.lowRound.topar)})` : "")}
-      ${rec("Most birdies", p.mostBirdies && p.mostBirdies.birdies > 1 ? p.mostBirdies : null, p.mostBirdies ? plural(p.mostBirdies.birdies, "birdie") : "")}
-      ${one ? "" : line("Best and worst", `${p.bestPts} points at best, ${p.worstPts} at worst`)}
-    </div>` : ""}`;
+    <div class="card"><div class="sleads grid">
+      ${p.bestRound ? recFig(p.bestRound, p.bestRound.pts, "points, best round", recSub(p.bestRound)) : ""}
+      ${one ? "" : lead(p.worstPts, "points, worst round", `${fix(p.avgPts)} on average`)}
+      ${p.lowRound ? recFig(p.lowRound, p.lowRound.gross, `best against par, ${fmtToPar(p.lowRound.topar)}`, recSub(p.lowRound)) : ""}
+      ${p.mostBirdies && p.mostBirdies.birdies > 1 ? recFig(p.mostBirdies, p.mostBirdies.birdies, "most birdies in a round", recSub(p.mostBirdies)) : ""}
+    </div></div>` : ""}`;
 }
 
 // ---------------------------------------------------------------- my own game, across every round I played
@@ -470,8 +471,9 @@ export function ninesPlayerBlock(rounds, pid, first) {
   const nines = ninesPlayed(rounds, pid);
   if (!nines.length) return "";
   return `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether ${esc(first)} walked it alone or as half of an 18, so the loops can be compared with each other.`)}
-    <table class="stand"><thead><tr><th class="l">Loop</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>
-      <tbody>${nines.map(x => `<tr><td class="l">${esc(nineName(x.slug))}</td><td>${x.played}</td><td>${x.bestGross === null ? "–" : x.bestGross}</td><td>${x.avgGross === null ? "–" : fix(x.avgGross)}</td><td class="acc">${fix(x.avgPts)}</td></tr>`).join("")}</tbody></table>`;
+    <div class="card">${barRows(nines.map(x => ({ label: nineName(x.slug), v: x.avgPts, big: fix(x.avgPts),
+      sub: [`walked ${plural(x.played, "time")}`, x.bestGross === null ? "" : `best ${x.bestGross}`, x.avgGross === null ? "" : `${fix(x.avgGross)} strokes on average`].filter(Boolean).join(" · ") })), { top: 27, mark: 18 })}
+      ${markKey("eighteen points, a nine played to the handicap")}</div>`;
 }
 export function ninesForPoster(rounds, members) {
   const ids = new Set(members);

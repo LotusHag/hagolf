@@ -1,5 +1,5 @@
 // The Shots tab: strokes gained first, then the ball's own way round -- off the tee, into the green, around it, and in.
-import { esc, plural, shortDate, h2tip } from "../ui.js";
+import { esc, plural, h2tip } from "../ui.js";
 import { fix, fmtSigned, fmtPct, strokesGained } from "../model.js";
 import { SG_TIP } from "./extras.js";
 
@@ -7,8 +7,8 @@ const signClass = v => v > 0.05 ? "up" : v < -0.05 ? "down" : "";
 const pctOf = (part, of) => of ? Math.round((part / of) * 100) : 0;
 
 /** A figure that leads a section: the number big, what it is under it. */
-const lead = (big, label, sub = "", cls = "") => `<div><b class="num ${cls}">${esc(big)}</b><small>${esc(label)}</small>${sub ? `<i>${esc(sub)}</i>` : ""}</div>`;
-const leads = xs => `<div class="sleads">${xs.join("")}</div>`;
+export const lead = (big, label, sub = "", cls = "") => `<div><b class="num ${cls}">${esc(big)}</b><small>${esc(label)}</small>${sub ? `<i>${esc(sub)}</i>` : ""}</div>`;
+export const leads = xs => `<div class="sleads">${xs.join("")}</div>`;
 
 /** One row out from a zero line, left for strokes lost and right for strokes gained, all on one scale. */
 function divRows(rows) {
@@ -25,25 +25,21 @@ function divRows(rows) {
 const meter = (label, part, of, cls = "") => `<div class="mrow"><span>${esc(label)}<small>${part} of ${of}</small></span>
   <div class="mtrack"><i class="${cls}" style="width:${pctOf(part, of)}%"></i></div><b class="num">${pctOf(part, of)}%</b></div>`;
 
-// ---------------------------------------------------------------- strokes gained
-/** Strokes gained in each round on its own, oldest on the left, above the line where they beat the field. */
-function sgRounds(cards, pid) {
-  const per = cards.map(c => ({ c, sg: strokesGained([c], pid) })).filter(x => x.sg.total !== null)
-    .sort((a, b) => String(a.c.date || "").localeCompare(String(b.c.date || ""))).slice(-16);
-  if (per.length < 2) return "";
-  // a nine and an eighteen only compare a hole at a time, so mixed lengths are read per 18
-  const mixed = new Set(per.map(x => x.sg.holes)).size > 1 && per.some(x => x.sg.holes < 12);
-  const val = x => mixed ? x.sg.per18 : x.sg.total;
-  const top = Math.max(1, ...per.map(x => Math.abs(val(x))));
-  const cols = per.map(x => {
-    const v = val(x), h = (Math.abs(v) / top) * 50, id = ((x.c.rounds || [])[0] || {}).id;
-    return `<a class="sgcol" ${id ? `href="#review/${esc(id)}"` : ""} title="${esc(`${shortDate(x.c.date)} · ${fmtSigned(v, 1)}`)}">
-      <div class="sgplot"><i class="${signClass(v) || "flat"}" style="${v >= 0 ? "bottom" : "top"}:50%;height:${Math.max(h, 1)}%"></i></div></a>`;
-  }).join("");
-  return `<div class="sgcols">${cols}</div><div class="sgdates muted"><span>${esc(shortDate(per[0].c.date))}</span><span>${mixed ? "per 18, round by round" : "round by round"}</span><span>${esc(shortDate(per[per.length - 1].c.date))}</span></div>`;
+/**
+ * Rows of one measure on one scale from zero, each with a line of detail under it. `mark` is the level every bar is
+ * read against; a bar that passes it is drawn in the good colour.
+ */
+export function barRows(rows, { top = 0, mark = null } = {}) {
+  const max = Math.max(top, mark || 0, ...rows.map(r => r.v), 0.01);
+  const at = v => `${Math.min(100, Math.max(0, (v / max) * 100)).toFixed(1)}%`;
+  return `<div class="brows">${rows.map(r => `<div class="brow"><div class="bhead"><span>${esc(r.label)}</span><b class="num">${esc(r.big)}</b></div>
+    <div class="btrack"><i class="${mark !== null && r.v > mark ? "up" : ""}" style="width:${at(r.v)}"></i>${mark === null ? "" : `<em style="left:${at(mark)}"></em>`}</div>
+    ${r.sub ? `<small>${esc(r.sub)}</small>` : ""}</div>`).join("")}</div>`;
 }
+export const markKey = words => `<p class="bkey"><em></em>${esc(words)}</p>`;
 
-function sgSection(sg, cards, pid, who) {
+// ---------------------------------------------------------------- strokes gained
+function sgSection(sg, who) {
   if (!sg || sg.total === null || !sg.holes) return "";
   // a split over a hole or two, scaled to 18, is one putt multiplied into a verdict
   const per = sg.split && sg.split.holes >= 9 ? sg.split.per18 : null;
@@ -62,7 +58,6 @@ function sgSection(sg, cards, pid, who) {
         <span>strokes a round against ${esc(who)}<small>${plural(sg.holes, "hole")}${sg.rounds > 1 ? ` over ${plural(sg.rounds, "round")}` : ""}</small></span></div>
       ${split}
       ${note ? `<p class="muted small" style="margin:10px 0 0">${esc(note)}</p>` : ""}
-      ${sgRounds(cards, pid)}
       ${pars.length > 1 ? `<div class="subhead">By the kind of hole</div>${divRows(pars.map(k => ({ label: `Par ${k}s`, sub: `${fmtSigned(sg.byPar[k].perHole, 2)} a hole`, v: sg.byPar[k].per18 })))}` : ""}
     </div>`;
 }
@@ -166,7 +161,7 @@ export function shotsBody(x, cards, pid, who) {
   const sg = cards.length ? strokesGained(cards, pid) : null;
   const any = x && x.any;
   return [
-    sgSection(sg, cards, pid, who),
+    sgSection(sg, who),
     any ? teeSection(x) : "",
     any ? approachSection(x) : "",
     any ? shortSection(x) : "",
