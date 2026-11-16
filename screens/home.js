@@ -5,15 +5,15 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
 import { page, bind, esc, go, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS, fmtDate } from "../ui.js";
-import { handicapFor, stableford, fmtIndex, FORMATS_ROUND } from "../model.js";
+import { handicapFor, stableford, fmtIndex, FORMATS_ROUND, PLAY_GROUPS, PLAY_KINDS, kindOf, isMatchFormat, matchPlay } from "../model.js";
 import { leagueResults, standingsFor } from "./formats.js";
 import { noteLine } from "./updates.js";
 
 // the four a new card offers; stroke stays only for society stroke days and older cards
-export const ROUND_FORMATS = FORMATS_ROUND.filter(f => f.key !== "stroke");
+export const ROUND_FORMATS = PLAY_KINDS;
 export const formatLabel = k => (FORMATS_ROUND.find(f => f.key === k) || FORMATS_ROUND[0]).label;
 /** The format a casual card starts in: the last one picked, if it is still on offer. */
-export const offeredFormat = k => ROUND_FORMATS.some(f => f.key === k) ? k : "stableford";
+export const offeredFormat = k => FORMATS_ROUND.some(f => f.key === k) ? k : "stableford";
 
 /** The board while a round is in play: points, or net to par, over the holes each card has played. */
 export function liveBoard(r, course = null) {
@@ -38,6 +38,10 @@ export function liveBoard(r, course = null) {
 
 export function liveLine(r) {
   if (r.status !== "scoring") return "";
+  if (isMatchFormat(r.format)) {
+    const c = courseBy(r.course);
+    try { const m = c && matchPlay(c, { ...S.toModelRound(r), final: false }); return m && m.thru ? `<div class="live">${esc(m.result || m.status)}</div>` : ""; } catch (e) { return ""; }
+  }
   const L = liveBoard(r);
   const v = x => x.main.replace(/ (pts|net)$/, "");
   return L && L.rows.length && L.through ? `<div class="live">through ${L.through} · ${L.rows.slice(0, 3).map((x, i) => `${i + 1}. ${esc(firstName(x.name))} <b>${v(x)}</b>`).join(" · ")}</div>` : "";
@@ -94,7 +98,7 @@ export function home() {
   const hero = cur
     ? `<a class="playbtn cont" href="${resumeHash(cur)}"><span class="pk">${esc(formatLabel(cur.format))} · ${esc(cur.name)}</span><b>${cur.status === "scoring" ? `Continue · hole ${Math.min(S.holeOf(cur) + 1, (courseBy(cur.course) || {}).n || 18)}` : "Continue"}</b>${liveLine(cur)}</a>
        <button class="btn wide" data-act="play">${ICONS.plus} Start another round</button>`
-    : `<button class="playbtn" data-act="play"><b>Play</b><span class="pk">Strokes & points, match or scramble</span></button>`;
+    : `<button class="playbtn" data-act="play"><b>Play</b><span class="pk">Stroke play, Stableford, match play or scramble</span></button>`;
   const others = open.slice(1);
   const ask = asks();
   page("Hagolf", `
@@ -122,17 +126,31 @@ export function home() {
   });
 }
 
-/** How are you playing? Four tiles; the last one used is lit. Scan is a quiet way in below them. */
+/**
+ * How are you playing? Two taps: the group (how the ball is played), then the kind inside it, and the card opens.
+ * Both steps are one sheet, so the second replaces the first in place. The last kind played is lit, with its group.
+ */
 export async function formatSheet() {
-  const last = offeredFormat(S.state.settings.lastFormat);
-  const v = await sheet({
-    title: "How are you playing?",
-    body: `<div class="fmtgrid">${ROUND_FORMATS.map(f => `<button class="fmttile ${f.key === last ? "on" : ""}" data-sheet="${f.key}"><b>${esc(f.label)}</b><small>${esc(f.blurb)}</small></button>`).join("")}</div>
-      <p class="center"><a class="linkish" href="#scan" data-sheet="scan">Scan a paper card instead ›</a></p>`,
-  });
+  const last = offeredFormat(S.state.settings.lastFormat), on = kindOf(last);
+  const groups = PLAY_GROUPS.filter(g => g.kinds.length);
+  const TITLE = "How are you playing?";
+  const tile = (attr, label, blurb, lit) => `<button class="fmttile ${lit ? "on" : ""}" ${attr}><b>${esc(label)}</b><small>${esc(blurb)}</small></button>`;
+  const first = `<div class="fmtgrid rows">${groups.map(g => tile(`data-grp="${g.key}"`, g.label, g.blurb, g.kinds.some(k => k.key === on))).join("")}</div>
+    <p class="center"><a class="linkish" href="#scan" data-sheet="scan">Scan a paper card instead ›</a></p>`;
+  const second = g => `<div class="fmtgrid rows">${g.kinds.map(k => tile(`data-sheet="${k.key}"`, k.label, k.blurb, k.key === on)).join("")}</div>
+    <p class="center"><button class="linkish" data-back>‹ ${esc(TITLE)}</button></p>`;
+  const v = await sheet({ title: TITLE, body: `<div id="fmtstep">${first}</div>`, onOpen: el => {
+    const box = el.querySelector("#fmtstep"), h = el.querySelector("h3");
+    el.addEventListener("click", ev => {
+      const g = ev.target.closest("[data-grp]");
+      if (g) { const G = groups.find(x => x.key === g.dataset.grp); h.textContent = G.label; box.innerHTML = second(G); return; }
+      if (ev.target.closest("[data-back]")) { h.textContent = TITLE; box.innerHTML = first; }
+    });
+  } });
   if (!v) return;
   if (v === "scan") return go("#scan");
-  S.setSetting("lastFormat", v);
+  // the same kind again keeps strokes or points as it was last played
+  S.setSetting("lastFormat", kindOf(last) === v ? last : v);
   go(`#new`);
 }
 

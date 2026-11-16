@@ -452,7 +452,7 @@ export function rounds() {
   return live(state.rounds).filter(r => !r.stub).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.created || "").localeCompare(a.created || ""));
 }
 
-export const ROUND_FORMATS = ["stableford", "stroke", "match", "scramble", "scramblematch"];
+export const ROUND_FORMATS = ["stableford", "stroke", "match", "matchpts", "scramble", "scramblepts", "scramblematch", "scramblematchpts"];
 
 export function createRound({ course, name, date, defaultTee, allowance, brand = null, format = "stableford", leagueId = null, id = null }) {
   const r = { id: id || uid(), owner: myAccount(), course, name, date, defaultTee, allowance: Number(allowance) || 100, status: "setup", brand,
@@ -737,14 +737,16 @@ export function toModelRound(round, collapse = false) {
   const entries = [];
   for (const e of round.entries) {
     if (e.role === "member") continue;                         // a scramble team scores; its members do not
-    if (collapse && e.role === "team") continue;               // and a team is nobody's personal round
+    // and a team is nobody's personal round, except in a match, where its members won or lost it
+    if (collapse && e.role === "team" && !String(round.format || "").startsWith("scramblematch")) continue;
     const id = collapse ? seatIdentity(e) : e.playerId;
     if (seen.has(id)) continue;   // two contacts for one golfer on one card: a data error, and not two players
     seen.add(id);
     entries.push({ id, name: collapse && !e.accountId ? identityName(id, e.name) : e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
       courseHandicap: e.courseHandicap ?? getPch(e.contactId || e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1,
       stats: e.stats || [], trackStats: !!e.trackStats, side: e.side || null, role: e.role || "player",
-      members: (e.members || []).map(m => (round.entries.find(x => x.playerId === m) || {}).name).filter(Boolean) });
+      members: (e.members || []).map(m => (round.entries.find(x => x.playerId === m) || {}).name).filter(Boolean),
+      memberIds: collapse ? (e.members || []).map(m => round.entries.find(x => x.playerId === m)).filter(Boolean).map(seatIdentity) : null });
   }
   return {
     format: round.format || "stableford",

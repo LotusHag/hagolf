@@ -285,6 +285,15 @@ export function handicapFor(courseIn, entry, defaultTee, allowance = 100) {
   return { ch, ph, strokes: strokesPerHole(ph, course.stroke_index), par: t.par, tee };
 }
 
+/** What handicapFor gives a match player: the tee's par and not a shot anywhere. */
+export function scratchFor(courseIn, entry, defaultTee) {
+  const course = prepareCourse(courseIn);
+  const tee = entry.tee || defaultTee;
+  const t = course.tees[tee];
+  if (!t) throw new Error(`tee '${tee}' is not on the course`);
+  return { ch: 0, ph: 0, strokes: new Array(course.n).fill(0), par: t.par, tee };
+}
+
 /**
  * The gross and Stableford boards over a set of players on one course, countback and all, with the
  * places written onto the players. Shared by a round and by a league card of several rounds.
@@ -318,8 +327,9 @@ export function compute(courseIn, round) {
   if (!course.tees[defaultTee]) throw new Error(`default tee '${defaultTee}' is not on the course`);
   const allowance = Number(round.allowance ?? 100);
   if (!(allowance >= 10 && allowance <= 100)) throw new Error("allowance must be between 10 and 100 percent");
+  const format = round.format || "stableford", scratch = isMatchFormat(format);
   const M = {
-    name: String(round.name || "Round"), date: round.date || null, course, defaultTee, allowance, n, si,
+    name: String(round.name || "Round"), date: round.date || null, format, course, defaultTee, allowance, n, si,
     labels: course.labels, par: course.tees[defaultTee].par, course_par: course.tees[defaultTee].par_total,
     segments: countbackSegments(n), unfinished: [],
   };
@@ -355,18 +365,21 @@ export function compute(courseIn, round) {
     const t = course.tees[tee];
     if (!t) throw new Error(`${name}: tee '${tee}' is not on the course`);
     const par = t.par;
-    if (p.hi === null || p.hi === undefined || p.hi === "") throw new Error(`${name}: needs a handicap index`);
-    const hi = Number(p.hi);
-    if (!(hi >= -10 && hi <= 54)) throw new Error(`${name}: handicap index ${hi} is outside the WHS range (+10 to 54)`);
     const gender = String(p.gender || "m").toLowerCase()[0];
     if (gender !== "m" && gender !== "f") throw new Error(`${name}: gender must be m or f`);
-    let ch;
-    const override = p.courseHandicap !== null && p.courseHandicap !== undefined && p.courseHandicap !== "";
-    if (override) ch = Math.trunc(Number(p.courseHandicap));
-    else if (t.ratings && t.ratings[gender]) ch = courseHandicap(hi, t.ratings[gender].cr, t.ratings[gender].slope, t.par_total, n);
-    else throw new Error(`${name} plays the ${tee} tees, which have no ${gender === "f" ? "women's" : "men's"} rating; ` +
-                         `pick another tee or give ${name} a course handicap from the club table`);
-    const ph = playingHandicap(ch, allowance);
+    // match play is played off the strokes taken: nobody gets a shot, so nobody needs an index
+    let hi = null, ch = 0, override = false;
+    if (!scratch) {
+      if (p.hi === null || p.hi === undefined || p.hi === "") throw new Error(`${name}: needs a handicap index`);
+      hi = Number(p.hi);
+      if (!(hi >= -10 && hi <= 54)) throw new Error(`${name}: handicap index ${hi} is outside the WHS range (+10 to 54)`);
+      override = p.courseHandicap !== null && p.courseHandicap !== undefined && p.courseHandicap !== "";
+      if (override) ch = Math.trunc(Number(p.courseHandicap));
+      else if (t.ratings && t.ratings[gender]) ch = courseHandicap(hi, t.ratings[gender].cr, t.ratings[gender].slope, t.par_total, n);
+      else throw new Error(`${name} plays the ${tee} tees, which have no ${gender === "f" ? "women's" : "men's"} rating; ` +
+                           `pick another tee or give ${name} a course handicap from the club table`);
+    }
+    const ph = scratch ? 0 : playingHandicap(ch, allowance);
     const pen = new Array(n).fill(0);
     const pens = [];
     for (const x of p.penalties || []) {
@@ -433,20 +446,44 @@ export function compute(courseIn, round) {
   }
   ranks(holes.map(h => Math.round(h.vspar * 1e6) / 1e6), false).forEach((d, i) => { holes[i].difficulty = d; });
   M.holes = holes;
+  // a match card is read as the match; its strokes and points are not a round of golf anyone played for
+  M.match = null;
+  if (scratch) try { M.match = matchPlay(courseIn, round); } catch (e) { M.match = null; }
   return M;
 }
 
 // ---------------------------------------------------------------- round formats
-// stroke is no longer offered for a new card; a society's stroke day and older cards still rank by net
+// every way a card can be scored; a new card picks a group, then one of its kinds, then strokes or points on the setup screen
 export const FORMATS_ROUND = [
-  { key: "stableford", label: "Strokes & points", blurb: "your own ball, both counted" },
-  { key: "stroke", label: "Stroke play", blurb: "every shot counts" },
-  { key: "match", label: "Match play", blurb: "hole by hole" },
-  { key: "scramble", label: "Scramble", blurb: "teams, one ball" },
+  { key: "stableford", label: "Stableford", blurb: "points against your handicap" },
+  { key: "stroke", label: "Stroke play", blurb: "every shot counts, net of handicap" },
+  { key: "match", label: "Match play", blurb: "hole by hole, fewest strokes, no handicap" },
+  { key: "matchpts", label: "Match play on points", blurb: "hole by hole, most Stableford points, no handicap" },
+  { key: "scramble", label: "Scramble", blurb: "teams, one ball, net strokes" },
+  { key: "scramblepts", label: "Scramble on points", blurb: "teams, one ball, Stableford points" },
   { key: "scramblematch", label: "Scramble match", blurb: "two teams, one ball each, hole by hole" },
+  { key: "scramblematchpts", label: "Scramble match on points", blurb: "two teams, one ball each, hole by hole on points" },
 ];
-export const isMatchFormat = f => f === "match" || f === "scramblematch";
-export const isTeamFormat = f => f === "scramble" || f === "scramblematch";
+// a group is how the ball is played; a group with no kinds yet is not offered
+export const PLAY_GROUPS = [
+  { key: "individual", label: "Individual", blurb: "everyone plays their own ball", kinds: [
+    { key: "stroke", label: "Stroke play", blurb: "fewest strokes, net of handicap" },
+    { key: "stableford", label: "Stableford", blurb: "most points against your handicap" },
+    { key: "match", label: "Match play", blurb: "hole by hole, one or two a side, no handicap" }] },
+  { key: "team", label: "Team", blurb: "one ball a team", kinds: [
+    { key: "scramble", label: "Scramble", blurb: "every team for itself, play the best ball" },
+    { key: "scramblematch", label: "Scramble match", blurb: "two teams, hole by hole, no handicap" }] },
+  { key: "games", label: "Games", blurb: "a different way to win", kinds: [] },
+];
+export const PLAY_KINDS = PLAY_GROUPS.flatMap(g => g.kinds);
+export const kindOf = f => {
+  const k = String(f || "stableford");
+  return k.startsWith("scramblematch") ? "scramblematch" : k.startsWith("scramble") ? "scramble" : k.startsWith("match") ? "match" : k === "stroke" ? "stroke" : "stableford";
+};
+export const isMatchFormat = f => f === "match" || f === "matchpts" || f === "scramblematch" || f === "scramblematchpts";
+export const isTeamFormat = f => String(f || "").startsWith("scramble");
+/** Whether a card is settled on Stableford points rather than strokes. */
+export const onPoints = f => f === "stableford" || String(f || "").endsWith("pts");
 
 // WHS scramble allowances in whole percent, lowest course handicap first
 const TEAM_WEIGHTS = { 1: [100], 2: [35, 15], 3: [30, 20, 10], 4: [25, 20, 15, 10] };
@@ -458,9 +495,14 @@ export function teamHandicap(courseHandicaps) {
   return roundHalfUp(w.reduce((t, k, i) => t + k * chs[i], 0) / 100);
 }
 
+/**
+ * The match as it was played: side against side, each hole to the fewest strokes taken ("match") or the most
+ * Stableford points against par ("matchpts"). Nobody gets a shot. A fourball side counts its better ball.
+ */
 export function matchPlay(courseIn, round) {
   const course = prepareCourse(courseIn);
-  const n = course.n, si = course.stroke_index;
+  const n = course.n;
+  const points = onPoints(round.format);
   const defaultTee = round.defaultTee || Object.keys(course.tees)[0];
   const entries = (round.entries || []).filter(e => String(e.name || "").trim());
   const A = entries.filter(e => e.side === "A"), B = entries.filter(e => e.side === "B");
@@ -470,63 +512,65 @@ export function matchPlay(courseIn, round) {
   if (!(A.length === 1 || A.length === 2) || B.length !== A.length) {
     throw new Error(`match play is one against one or two against two, not ${A.length} against ${B.length}`);
   }
-  // a scramble team plays off its WHS team handicap, already its course handicap, like a single player
   const kind = teams ? "scramble" : A.length === 1 ? "singles" : "fourball";
   const blank = v => v === null || v === undefined || v === "";
   const seats = entries.map(e => {
     const name = String(e.name).trim();
-    let ch;
-    try { ch = handicapFor(courseIn, e, defaultTee).ch; } catch (err) { throw new Error(`${name}: ${err.message}`); }
-    return { e, name, id: e.id ?? name, side: e.side, ph: kind === "fourball" ? playingHandicap(ch, 90) : ch };
-  });
-  // strokes are given off the best player in the match, who plays off scratch
-  const low = Math.min(...seats.map(s => s.ph));
-  for (const s of seats) {
-    s.strokes = strokesPerHole(s.ph - low, si);
-    const from = Number(s.e.fromHole || 1) || 1;
+    const tee = course.tees[e.tee || defaultTee] || course.tees[defaultTee];
+    const from = Number(e.fromHole || 1) || 1;
     const pen = new Array(n).fill(0);
-    for (const x of s.e.penalties || []) { const h = Number(x.hole); if (h >= 1 && h <= n) pen[h - 1] += Number(x.strokes) || 0; }
-    const raw = Array.isArray(s.e.scores) ? s.e.scores : [];
-    // out: picked up, or not yet on the course; no net, but the hole is no longer waiting on this player
-    s.out = [...Array(n).keys()].map(h => h < from - 1 || (!blank(raw[h]) && Number(raw[h]) === 0));
-    s.net = [...Array(n).keys()].map(h => s.out[h] || blank(raw[h]) ? null : Number(raw[h]) + pen[h] - s.strokes[h]);
-  }
-  const sideNet = (k, h) => {
+    for (const x of e.penalties || []) { const h = Number(x.hole); if (h >= 1 && h <= n) pen[h - 1] += Number(x.strokes) || 0; }
+    const raw = Array.isArray(e.scores) ? e.scores : [];
+    const late = h => h < from - 1, picked = h => !blank(raw[h]) && Number(raw[h]) === 0;
+    // out: no ball on the hole. A pick-up on strokes gives the hole away; on points it is a zero, which can still halve
+    const out = [...Array(n).keys()].map(h => late(h) || (!points && picked(h)));
+    const value = [...Array(n).keys()].map(h => out[h] || blank(raw[h]) ? null
+      : points ? -(picked(h) ? 0 : stableford(Number(raw[h]) + pen[h], tee.par[h], 0)) : Number(raw[h]) + pen[h]);
+    // the golfers behind a seat: a scramble team is its members, so each of them won or lost the match
+    const golfers = Array.isArray(e.memberIds) && e.memberIds.length
+      ? e.memberIds.map((id, i) => ({ id, name: (e.members || [])[i] || name })) : [{ id: e.id ?? name, name }];
+    return { name, id: e.id ?? name, side: e.side, out, value, golfers };
+  });
+  const sideBest = (k, h) => {
     const mine = seats.filter(s => s.side === k);
-    const nets = mine.map(s => s.net[h]).filter(v => v !== null);
-    return nets.length ? { net: Math.min(...nets), out: false } : { net: null, out: mine.every(s => s.out[h]) };
+    const vs = mine.map(s => s.value[h]).filter(v => v !== null);
+    return vs.length ? { v: Math.min(...vs), out: false } : { v: null, out: mine.every(s => s.out[h]) };
   };
+  // A and B are each side's score on the hole as it is read: strokes, or points
+  const shown = v => v === null ? null : points ? -v : v;
   const holes = [];
   for (let h = 0; h < n; h++) {
-    const a = sideNet("A", h), b = sideNet("B", h);
+    const a = sideBest("A", h), b = sideBest("B", h);
     let winner = null;
-    if (a.net !== null && b.net !== null) winner = a.net < b.net ? "A" : b.net < a.net ? "B" : "halved";
+    if (a.v !== null && b.v !== null) winner = a.v < b.v ? "A" : b.v < a.v ? "B" : "halved";
     else if (a.out && b.out) winner = "halved";
-    else if (a.out && b.net !== null) winner = "B";
-    else if (b.out && a.net !== null) winner = "A";
-    holes.push({ hole: h + 1, A: a.net, B: b.net, winner });
+    else if (a.out && b.v !== null) winner = "B";
+    else if (b.out && a.v !== null) winner = "A";
+    holes.push({ hole: h + 1, A: shown(a.v), B: shown(b.v), winner, counted: false });
   }
   // a hole still waiting is stepped over, so one forgotten score does not freeze the match; holes after it closes do not count
   let up = 0, thru = 0, closed = false;
-  for (const { winner } of holes) {
-    if (!winner) continue;
+  for (const x of holes) {
+    if (!x.winner) continue;
     thru++;
-    up += winner === "A" ? 1 : winner === "B" ? -1 : 0;
+    x.counted = true;
+    up += x.winner === "A" ? 1 : x.winner === "B" ? -1 : 0;
     if (Math.abs(up) > n - thru) { closed = true; break; }
   }
   const left = n - thru;
   const leader = up > 0 ? "A" : up < 0 ? "B" : null;
   const sides = { A: A.map(e => String(e.name).trim()), B: B.map(e => String(e.name).trim()) };
+  const ids = { A: seats.filter(s => s.side === "A").map(s => s.id), B: seats.filter(s => s.side === "B").map(s => s.id) };
+  const players = { A: seats.filter(s => s.side === "A").flatMap(s => s.golfers), B: seats.filter(s => s.side === "B").flatMap(s => s.golfers) };
   const label = k => sides[k].join(" & ");
   const margin = Math.abs(up);
   // a scramble team is one seat named after its members ("Anna & Bo"), and a pair wins, not wins
   const wins = k => `${label(k)} ${sides[k].length > 1 || / & /.test(sides[k][0]) ? "win" : "wins"}`;
   const result = !closed && thru < n ? null : !leader ? "Halved" : `${wins(leader)} ${left ? `${margin}&${left}` : `${margin} UP`}`;
   const status = result || (!leader ? (thru ? `All square thru ${thru}` : "All square") : `${label(leader)} ${margin} UP thru ${thru}`);
-  return {
-    kind, sides, strokes: Object.fromEntries(seats.map(s => [s.id, s.strokes])),
-    holes, up, thru, left, closed, leader, status, result,
-  };
+  return { kind, basis: points ? "points" : "strokes", sides, ids, players, holes, up, thru, left, closed, leader, status, result,
+    // the score the way a match card reads it: "2 UP", "3&2", "halved"
+    margin: !leader ? "halved" : left && result ? `${margin}&${left}` : `${margin} UP` };
 }
 
 export function roundRanking(courseIn, round) {
@@ -539,14 +583,15 @@ export function roundRanking(courseIn, round) {
   }
   const M = compute(courseIn, round);
   const row = (p, place, main, sub) => ({ place, id: p.id ?? p.name, name: p.name, main, sub });
-  if (format === "stableford") return { format, rows: M.stbl_board.map(p => row(p, p.splace, `${p.pts} pts`, null)) };
+  const entryOf = p => (round.entries || []).find(e => p.id !== null ? e.id === p.id : String(e.name || "").trim() === p.name) || {};
+  const team = p => (entryOf(p).members || []).join(" · ");
+  if (format === "stableford" || format === "scramblepts") return { format, rows: M.stbl_board.map(p => row(p, p.splace, `${p.pts} pts`, format === "scramblepts" ? team(p) : null)) };
   const n = M.n, back = [...Array(n).keys()].reverse();
   // net ties split by the same countback as the gross board: back nine, six, three, then hole by hole
   const keyNet = p => [p.net, ...M.segments.map(k => sum(p.nets.slice(n - k))), ...back.map(h => p.nets[h])];
   const finished = M.players.filter(p => !p.nr).sort((a, b) => cmpTuple(keyNet(a), keyNet(b)));
   const noReturn = M.players.filter(p => p.nr).sort((a, b) => b.holes_played - a.holes_played);
-  const entryOf = p => (round.entries || []).find(e => p.id !== null ? e.id === p.id : String(e.name || "").trim() === p.name) || {};
-  const sub = p => format === "scramble" ? (entryOf(p).members || []).join(" · ") : p.nr ? `${p.holes_played} of ${n} holes` : `gross ${p.gross}`;
+  const sub = p => format === "scramble" ? team(p) : p.nr ? `${p.holes_played} of ${n} holes` : `gross ${p.gross}`;
   return { format, rows: [
     ...finished.map((p, i) => row(p, i + 1, `net ${p.net}`, sub(p))),
     ...noReturn.map(p => row(p, null, "NR", sub(p))),
@@ -1009,14 +1054,17 @@ export function leagueCards(results) {
 function oneCard(key, Ms) {
   const players = [];
   const sheets = new Set();
-  for (const M of Ms) for (const p of M.players) {
+  // a match round is on the day but in nobody's round of golf: its players play the match and nothing else
+  const strokeMs = Ms.filter(M => !isMatchFormat(M.format));
+  for (const M of strokeMs) for (const p of M.players) {
     // the same name against the same holes is one sheet handed in twice; anything else is a second go
     const sheet = p.raw_scores ? `${p.id ?? p.name}|${p.raw_scores.join(",")}` : null;
     if (sheet !== null && sheets.has(sheet)) continue;
     if (sheet !== null) sheets.add(sheet);
     players.push({ ...p, roundId: p.roundId ?? M.id, roundName: p.roundName ?? M.name });
   }
-  const card = { ...Ms[0], id: key, key, rounds: Ms, players, field: players.length,
+  const card = { ...(strokeMs[0] || Ms[0]), id: key, key, rounds: Ms, players, field: players.length, match: null,
+    matches: Ms.filter(M => M.match).map(M => ({ ...M.match, roundId: M.id, date: M.date })),
     name: [...new Set(Ms.map(M => M.name))].join(" · ") };
   // a card of one round is that round's board again; several need the countback run over the lot. The
   // per-hole field figures (`holes`, and each player's `vsrest`) stay as the round computed them: nothing
@@ -1127,6 +1175,42 @@ export function matchResult(pa, pb, basis = "net") {
 }
 
 /**
+ * The games a card's match rounds hold: each league player on one side against each on the other, never a
+ * partner. `s` and `up` are from `a`'s side; `up` is the holes the match was won by when it ended.
+ */
+export function matchGames(card, members) {
+  const out = [];
+  for (const m of card.matches || []) {
+    const s = m.up > 0 ? 1 : m.up < 0 ? 0 : 0.5;
+    for (const a of m.players.A) for (const b of m.players.B) {
+      if (a.id === b.id || !members.has(a.id) || !members.has(b.id)) continue;
+      out.push({ a, b, s, up: m.up, match: m });
+    }
+  }
+  return out;
+}
+
+/** Match play's own record per player, off the match rounds alone: matches and holes won, halved and lost. */
+export function matchRecords(results, memberIds) {
+  const members = new Set(memberIds);
+  const rows = new Map();
+  for (const card of leagueCards(results)) for (const m of card.matches || []) for (const k of ["A", "B"]) {
+    const sign = k === "A" ? 1 : -1;
+    m.players[k].forEach(({ id, name }) => {
+      if (!members.has(id)) return;
+      if (!rows.has(id)) rows.set(id, { id, name, played: 0, won: 0, halved: 0, lost: 0, holesWon: 0, holesHalved: 0, holesLost: 0 });
+      const r = rows.get(id), up = sign * m.up;
+      r.played++;
+      if (up > 0) r.won++; else if (up < 0) r.lost++; else r.halved++;
+      for (const h of m.holes.filter(x => x.counted)) {
+        if (h.winner === "halved") r.holesHalved++; else if (h.winner === k) r.holesWon++; else r.holesLost++;
+      }
+    });
+  }
+  return rows;
+}
+
+/**
  * Matchplay league: every pair who shared a round played a match on net score, hole by hole.
  * `win` and `draw` set what a result is worth, so the same maths gives a golf matchplay table
  * (2 and 1) or a football one (3 and 1).
@@ -1145,6 +1229,12 @@ export function matchStandings(results, memberIds, win = 2, draw = 1, basis = "n
       const a = row(mine[i]), b = row(mine[j]);
       a.played++; b.played++; a.up += up; b.up -= up;
       if (up > 0) { a.won++; b.lost++; } else if (up < 0) { b.won++; a.lost++; } else { a.drawn++; b.drawn++; }
+    }
+    // a match that was played counts as it was played, whatever this table settles a stroke round on
+    for (const g of matchGames(M, members)) {
+      const a = row(g.a), b = row(g.b);
+      a.played++; b.played++; a.up += g.up; b.up -= g.up;
+      if (g.up > 0) { a.won++; b.lost++; } else if (g.up < 0) { b.won++; a.lost++; } else { a.drawn++; b.drawn++; }
     }
   }
   const out = [...rows.values()].map(r => ({ ...r, points: win * r.won + draw * r.drawn }));
@@ -1265,22 +1355,32 @@ export function eloStandings(results, memberIds, basis = "all") {
     const delta = new Map();
     for (const M of days.get(date)) {
       const mine = M.players.filter(p => p.id !== null && members.has(p.id));
-      for (let i = 0; i < mine.length; i++) {
-        const pa = mine[i], ra = row(pa);
+      const duels = new Map();
+      const duel = (me, them, games) => {
+        if (!games.length) return;
+        row(me); row(them);
+        if (!duels.has(me.id)) duels.set(me.id, []);
+        duels.get(me.id).push({ them: them.id, games });
+      };
+      for (const pa of mine) for (const pb of mine) {
+        if (pa !== pb && pa.id !== pb.id) duel(pa, pb, bases.map(b => eloGame(pa, pb, b)).filter(Boolean));
+      }
+      // a match is the one game it was, on the holes it was won by; only the tables built for match play read it
+      for (const g of basis === "all" || basis === "match" ? matchGames(M, members) : []) {
+        duel(g.a, g.b, [{ s: g.s, d: g.up }]);
+        duel(g.b, g.a, [{ s: 1 - g.s, d: -g.up }]);
+      }
+      for (const [id, list] of duels) {
+        const ra = rows.get(id);
         const k = ELO.k * (ra.played < ELO.provisionalDays ? ELO.provisionalK : 1);
-        let sum = 0, opp = 0;
-        for (let j = 0; j < mine.length; j++) {
-          const pb = mine[j];
-          if (i === j || pa.id === pb.id) continue;
-          const games = bases.map(b => eloGame(pa, pb, b)).filter(Boolean);
-          if (!games.length) continue;
-          const E = eloExpected(ra.rating, row(pb).rating);
+        let sum = 0;
+        for (const { them, games } of list) {
+          const E = eloExpected(ra.rating, rows.get(them).rating);
           sum += games.reduce((t, x) => t + eloMargin(x.d) * (x.s - E), 0) / games.length;
-          opp++;
           const s = games.reduce((t, x) => t + x.s, 0) / games.length;
           if (s > 0.5) ra.won++; else if (s < 0.5) ra.lost++; else ra.drawn++;
         }
-        if (opp) delta.set(pa.id, (delta.get(pa.id) || 0) + k * sum / opp);
+        delta.set(id, (delta.get(id) || 0) + k * sum / list.length);
       }
     }
     // applied after the whole day, so the second loop of a Sunday is not played against the first loop's ratings
@@ -1477,6 +1577,7 @@ export function leagueStats(results, memberIds) {
   const members = new Set(memberIds);
   const cards = leagueCards(results);
   const holes = statHoles(cards, memberIds);
+  const matches = matchRecords(results, memberIds);
   const rounds = [];
   const names = new Map();
   for (const M of cards) {
@@ -1511,7 +1612,7 @@ export function leagueStats(results, memberIds) {
     }
     const half = Math.floor(rs.length / 2);
     return {
-      id, name: names.get(id), played: rs.length, rounds: rs, ...mine, rest,
+      id, name: names.get(id), played: rs.length, rounds: rs, ...mine, rest, match: matches.get(id) || null,
       totalPts: sum(pts), avgPts: mean(pts), bestPts: pts.length ? Math.max(...pts) : null,
       worstPts: pts.length ? Math.min(...pts) : null, consistency: stdev(pts),
       avgTopar: mean(topars), bestTopar: topars.length ? Math.min(...topars) : null,
@@ -1540,7 +1641,7 @@ export function leagueStats(results, memberIds) {
     mostBirdies: rounds.map(r => ({ ...r, birdies: r.counts[0] + r.counts[1] })).sort((a, b) => b.birdies - a.birdies)[0] || null,
     bounce: sum(rounds.map(r => r.chances)) ? sum(rounds.map(r => r.backs)) / sum(rounds.map(r => r.chances)) : null,
   };
-  return { rounds, holes, field, players };
+  return { rounds, holes, field, players, matches: [...matches.values()] };
 }
 
 /**

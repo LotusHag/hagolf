@@ -4,8 +4,8 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, ui, plural, courseBy, subtabs, tip, paint, themeNamed, appTheme, fmtDate, ordinal } from "../ui.js";
-import { compute, fmtToPar, fmtHcp, outcome, NO_SCORE } from "../model.js";
-import { FORMAT_NAMES, FORMAT_NOTES, standingsFor, standingsTable } from "./formats.js";
+import { compute, fmtToPar, fmtHcp, outcome, NO_SCORE, isMatchFormat } from "../model.js";
+import { FORMAT_NAMES, FORMAT_NOTES, standingsFor, standingsTable, readsMatches } from "./formats.js";
 
 export const courseOf = (slug, list) => courseBy(slug) || (() => { const k = (list || []).find(x => x.slug === slug); return k && k.data ? { ...k.data, slug } : null; })();
 
@@ -14,9 +14,14 @@ export function buildRound(P, r, entriesIn, scoresIn, course, final = true) {
   const entries = entriesIn.map(e => {
     const scores = new Array(n).fill(null);
     for (const s of scoresIn) if (s.id === e.id && s.hole < n) scores[s.hole] = s.strokes;
-    return { id: e.id, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", group: e.group || 1, courseHandicap: e.courseHandicap, scores, penalties: e.penalties || [], fromHole: e.fromHole || 1 };
+    return { id: e.id, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", group: e.group || 1, courseHandicap: e.courseHandicap, scores, penalties: e.penalties || [], fromHole: e.fromHole || 1,
+      side: e.side || null, role: e.role || "player", members: e.members || [],
+      // a team's members by the ids the board gives them, so a scramble match counts for each of them
+      memberIds: e.role === "team" ? (e.members || []).map(n => (entriesIn.find(x => x.role === "member" && x.name === n) || {}).id).filter(Boolean) : null };
   });
-  return Object.assign(compute(course, { name: r.name, date: r.date, defaultTee: r.defaultTee, allowance: r.allowance || 100, final, entries }), { id: r.id });
+  // a scramble team scores and its members do not, the way the app reads its own cards
+  return Object.assign(compute(course, { format: r.format || "stableford", name: r.name, date: r.date, defaultTee: r.defaultTee, allowance: r.allowance || 100, final,
+    entries: entries.filter(e => e.role !== "member") }), { id: r.id });
 }
 
 const signInLine = () => A.signedIn() ? "" : ` <a href="#welcome">Sign in</a> to keep rounds and societies of your own.`;
@@ -31,12 +36,16 @@ export async function board(token) {
   for (const r of P.rounds) {
     const course = courseOf(r.course, P.courses);
     if (!course) continue;
-    try { Ms.push(buildRound(P, r, P.entries.filter(e => e.roundId === r.id), P.scores.filter(s => s.roundId === r.id), course)); }
+    // a team is nobody's round in a society, as in the app's own tables, except a scramble match it won or lost
+    const teams = String(r.format || "").startsWith("scramblematch");
+    try { Ms.push(buildRound(P, r, P.entries.filter(e => e.roundId === r.id && (teams || e.role !== "team")), P.scores.filter(s => s.roundId === r.id), course)); }
     catch (e) { console.warn("board: round left out", r.id, e.message); }
   }
   const g = { id: P.league.id, name: P.league.name, formats: S.cleanFormats(P.league.formats), bestN: P.league.bestN || 0, theme: P.league.theme || null };
   paint(themeNamed(g.theme) || appTheme());
-  const members = [...new Set(Ms.flatMap(M => M.players.map(p => p.id)))];
+  // as leagueResults: a society with no table for match play never sees a match, and a match's golfers are its players
+  if (!g.formats.some(readsMatches)) Ms.splice(0, Ms.length, ...Ms.filter(M => !isMatchFormat(M.format)));
+  const members = [...new Set(Ms.flatMap(M => M.match ? [...M.match.players.A, ...M.match.players.B] : M.players).map(p => p.id))];
   const pick = g.formats.includes(ui.boardFmt) ? ui.boardFmt : g.formats[0];
   const body = Ms.length ? `
       ${g.formats.length > 1 ? subtabs(g.formats.map(f => `<button data-act="bfmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")) : ""}

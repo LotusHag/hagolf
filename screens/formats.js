@@ -1,7 +1,7 @@
 // The ways a league is scored, in words, and the one place every standings table is computed.
 import * as S from "../store.js";
 import { esc, plural, safeCompute } from "../ui.js";
-import { compute, standings, strokeStandings, matchStandings, gpStandings, eloStandings, GP_POINTS, ELO, leagueCards, fmtToPar, fix } from "../model.js";
+import { compute, isMatchFormat, standings, strokeStandings, matchStandings, gpStandings, eloStandings, GP_POINTS, ELO, leagueCards, fmtToPar, fix } from "../model.js";
 
 export const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay (stroke)",
   matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)",
@@ -41,11 +41,18 @@ const ELO_GAME = {
   elomatch: "A game is a match on net score, hole by hole, over every hole played rather than stopped once it is decided, and d is the holes up at the end. A hole only one of you finished goes to that player.",
 };
 
+// The tables a match play round registers in. Every other table, and a society with none of these, never sees one.
+export const MATCH_TABLES = ["match", "matchpts", "soccer", "soccerpts", "elo", "elomatch"];
+export const readsMatches = kind => MATCH_TABLES.includes(kind);
+// A match play round is the match that was played, in every table that reads one.
+const MATCH_ROUND = "A match play round counts as the match that was played, with no handicap: each player on one side against each on the other, never a partner, won by whoever won the match. d is the holes it was won by (3&2 counts 3), and the strokes and points on that card count for nothing.";
+
 /** How an Elo table is calculated: the formula first, then what each letter is, then one worked example. */
 function eloHow(kind) {
   const k = ELO.k, k0 = ELO.k * ELO.provisionalK;
   return `<p><b>Everyone starts on 0 points and nobody goes below 0.</b> Every day out, you play a game against each of the society's other players on the card.</p>
 <p><b>In this table:</b> ${ELO_GAME[kind]}</p>
+${readsMatches(kind) ? `<p>${MATCH_ROUND}</p>` : "<p>A match play round does not count in this table.</p>"}
 <p class="elof">points = K × M × (R − E) ÷ N</p>
 <p><b>K</b> ${k} a day, or ${k0} in your first ${ELO.provisionalDays} days while the table finds your level<br>
 <b>R</b> your result: 1 for a win, ½ for a draw, 0 for a loss<br>
@@ -59,8 +66,8 @@ function eloHow(kind) {
 export const FORMAT_NOTES = {
   stableford: "<b>Stroke play.</b> Everyone plays for their own score and nobody plays against anybody: each round gives you your Stableford points and this table adds them up. <b>Rds</b> is rounds played, <b>Wins</b> how often you had the most points on the day, <b>Avg</b> your points per round.",
   stroke: "<b>Stroke play.</b> Each round counts your net score against par, so −2 means two under. The lowest total wins. A round you did not finish a full card for counts nothing and is marked NR.",
-  match: "<b>Match play.</b> Everyone out on the same card played a match against everyone else on it. Each hole goes to the lower net score, which is the score after handicap strokes, and whoever wins more holes wins the match. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost across every match.",
-  matchpts: "<b>Match play.</b> Everyone out on the same card played a match against everyone else on it, and each hole goes to the higher Stableford points. Points stop at zero, so two ruined holes are halved where net scores would still separate them. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost.",
+  match: "<b>Match play.</b> A match play round counts as the match that was played, with no handicap, side against side. On any other card, everyone out on it played a match against everyone else on it. Each hole goes to the lower net score, which is the score after handicap strokes, and whoever wins more holes wins the match. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost across every match.",
+  matchpts: "<b>Match play.</b> A match play round counts as the match that was played, with no handicap, side against side. On any other card, everyone out on it played a match against everyone else on it, and each hole goes to the higher Stableford points. Points stop at zero, so two ruined holes are halved where net scores would still separate them. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost.",
   soccer: "<b>Match play, football table.</b> The same matches, each hole on the lower net score, scored the way a football league is: 3 points for a win, 1 for a draw, nothing for a loss.",
   soccerpts: "<b>Match play, football table.</b> The same matches, each hole on the higher Stableford points, scored 3 for a win, 1 for a draw, nothing for a loss.",
   gp: `<b>Stroke play.</b> Each card hands out points for where you finished on the day on Stableford points, as Formula 1 does: ${GP_POINTS.join(", ")} down the board and nothing after that. Equal points are separated by countback. Only this society's players count towards a position, so a guest cannot take the win off you.`,
@@ -71,20 +78,25 @@ export const FORMAT_NOTES = {
   elomatch: eloHow("elomatch"),
 };
 
+const forKind = (Ms, kind) => readsMatches(kind) ? Ms : Ms.filter(M => !isMatchFormat(M.format));
+
 /** Computed rounds attached to a league (finished ones), the players in them, and the standings. */
 export function leagueResults(g) {
   const ids = new Set(S.leagueRoundIds(g.id));
+  const matches = S.cleanFormats(g.formats).some(readsMatches);
   const Ms = [];
-  for (const r of S.rounds().filter(r => ids.has(r.id) && r.status === "done")) {
+  for (const r of S.rounds().filter(r => ids.has(r.id) && r.status === "done" && (matches || !isMatchFormat(r.format)))) {
     const M = safeCompute(compute, r, true);   // a league counts claimed contacts as one golfer, not one per address book
     if (M) Ms.push(M);
   }
-  const members = [...new Set(Ms.flatMap(M => M.players.map(p => p.id)).filter(Boolean))];
+  // a match's golfers are its players; a scramble team's are its members, never the team
+  const members = [...new Set(Ms.flatMap(M => M.match ? [...M.match.players.A, ...M.match.players.B] : M.players).map(p => p.id).filter(Boolean))];
   return { Ms, members, S: standings(Ms, members, g.bestN) };
 }
 
 /** The standings for one way of scoring a league. Every screen and every poster goes through here. */
-export function standingsFor(g, Ms, members, kind) {
+export function standingsFor(g, MsIn, members, kind) {
+  const Ms = forKind(MsIn, kind);
   if (kind === "stroke") return strokeStandings(Ms, members, g.bestN);
   if (kind in GP_BASIS) return gpStandings(Ms, members, g.bestN, GP_POINTS, GP_BASIS[kind]);
   if (kind in MATCH_BASIS) return matchStandings(Ms, members, kind.startsWith("soccer") ? 3 : 2, 1, MATCH_BASIS[kind]);
@@ -97,7 +109,8 @@ export function standingsFor(g, Ms, members, kind) {
  * "did I move?" is the same table run again over everything but the last card -- which works for every way
  * of scoring without any of them knowing about it, and needs nothing stored.
  */
-export function sinceLast(g, Ms, members, kind) {
+export function sinceLast(g, MsIn, members, kind) {
+  const Ms = forKind(MsIn, kind);
   const cards = leagueCards(Ms).filter(c => c.date);
   if (!cards.length) return null;
   // the unit is the day, not the card: one Sunday split over two loops is two cards and one outing, so
@@ -109,6 +122,32 @@ export function sinceLast(g, Ms, members, kind) {
   const last = onTheDay.reduce((x, y) => (y.players.length > x.players.length ? y : x));
   return { last, onTheDay, day, was, first: !before.length };
 }
+
+/**
+ * The table as it stood after each day, one column a day, for the climb chart. Every way of scoring gets it
+ * the way sinceLast does, by running the table again over a prefix of the days. Undated rounds count from the
+ * start, as the Elo table plays them first.
+ */
+export function boardOverTime(g, Ms, members, kind) {
+  const days = [...new Set(Ms.map(M => M.date).filter(Boolean))].sort();
+  const now = standingsFor(g, Ms, members, kind).rows.filter(r => r.played);
+  const players = now.map(r => ({ id: r.id, name: r.name, place: r.place, vals: [], played: [] }));
+  const seen = new Map();
+  for (const d of days) {
+    const rows = new Map(standingsFor(g, Ms.filter(M => !M.date || M.date <= d), members, kind).rows.map(r => [r.id, r]));
+    for (const p of players) {
+      const r = rows.get(p.id), on = !!(r && r.played);
+      p.vals.push(on ? decidingValue(kind, r) : null);
+      // a day they sat out leaves the count where it was; the line carries on without a node there
+      p.played.push(on && r.played > (seen.get(p.id) || 0));
+      seen.set(p.id, on ? r.played : 0);
+    }
+  }
+  return { days, players };
+}
+
+/** Stroke play is lowest-wins on a to-par total, which a chart of scores going up would draw upside down. */
+export const climbs = kind => kind !== "stroke";
 
 /** What a player's line in a league's table is worth, in that league's own units. */
 export function standingValue(kind, r) {
@@ -162,6 +201,14 @@ export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind ===
  * the Stableford board crowns the wrong player in the largest type on the screen, so the sort follows the
  * league. `gross_board` is no use here: it ranks gross strokes, and a stroke league is settled on net.
  */
+/** A match on a society's day, in words: "Ties beat Maurits 2 UP", or how it stands. */
+export function matchSentence(m) {
+  const names = k => m.sides[k].join(" & ");
+  if (!m.result) return `${names("A")} v ${names("B")}: ${m.status}`;
+  if (!m.leader) return `${names("A")} and ${names("B")} halved`;
+  return `${names(m.leader)} beat ${names(m.leader === "A" ? "B" : "A")} ${m.margin}`;
+}
+
 export function dayBoard(kind, card) {
   const basis = dayBasis(kind);
   const rows = [...(card.stbl_board || [])];

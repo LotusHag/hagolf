@@ -10,7 +10,7 @@ import * as F from "../social.js";
 import { brandField } from "./partner.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
-import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow } from "./formats.js";
+import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
 import { claimSheet } from "./gate.js";
 
@@ -144,6 +144,14 @@ function lastDay(C, move, cards) {
   const c = move.last;
   const D = dayBoard(C.kind, c);
   const board = D.rows.filter(p => p.id === null || C.members.includes(p.id));
+  const m = (c.matches || [])[0];
+  if (!board.length && m) {
+    return `<div class="panel lastout"><section class="inplay"><div class="rule"></div>
+      <div class="k">Last time out · match play</div>
+      <h1>${esc(m.leader ? m.sides[m.leader].map(firstName).join(" & ") : "Halved")}</h1>
+      <p class="where">${esc([dayWhere(c), fmtDate(c.date)].filter(Boolean).join(" · "))}</p></section>
+    <a class="thru caps dayl" href="#league/${C.gid}/day/${cardKey(c)}">${esc(matchSentence(m))} ›</a></div>`;
+  }
   if (!board.length) return "";
   // one card in the league means the day and the season are the same list; printing it twice says nothing
   const top = cards > 1 ? board.slice(0, 3) : [];
@@ -173,6 +181,108 @@ function leagueHero(C, Sx, move, nCards) {
   return `<div class="panel hero lhero">${id}
     <a class="youline" href="#league/${C.gid}/p/${esc(r.id)}"><span class="caps">You</span><div class="stats">
       ${tile(`${r.place}<small>${suffix}</small>`, `of ${Sx.rows.length}`)}${tile(esc(L.value), esc(L.unit) || "&nbsp;")}${tile(mv, "last card")}</div><span class="chev">›</span></a></div>`;
+}
+
+// ---------------------------------------------------------------- the climb
+const CLIMB_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><path d="m4 16 5-5 4 3 7-8"/></svg>`;
+const climbBtn = (kind, Ms) => climbs(kind) && datesIn(Ms) >= 2
+  ? `<button type="button" class="gbtn" data-act="board-graph" data-kind="${esc(kind)}" aria-label="${esc(FORMAT_NAMES[kind])} over time">${CLIMB_ICON}</button>` : "";
+const datesIn = Ms => new Set(Ms.map(M => M.date).filter(Boolean)).size;
+
+/**
+ * A gentle curve through the points (monotone cubic, Fritsch–Carlson): it never overshoots a point, so a day
+ * sat out stays flat and a line never dips below the floor it climbed off.
+ */
+function smoothPath(pts) {
+  const n = pts.length, f = v => v.toFixed(1);
+  if (n < 2) return n ? `M${f(pts[0][0])},${f(pts[0][1])}` : "";
+  const d = [], m = [];
+  for (let i = 0; i < n - 1; i++) d.push((pts[i + 1][1] - pts[i][1]) / (pts[i + 1][0] - pts[i][0]));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  let out = `M${f(pts[0][0])},${f(pts[0][1])}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], h = (x1 - x0) / 3;
+    out += `C${f(x0 + h)},${f(y0 + m[i] * h)} ${f(x1 - h)},${f(y1 - m[i + 1] * h)} ${f(x1)},${f(y1)}`;
+  }
+  return out;
+}
+
+/**
+ * Which days get a date under them: at most six, evenly spaced. A step that lands on both the first and the
+ * last day is preferred; where the count of days allows none with three or more, the step starts on day one
+ * and stops short of the end rather than squeezing an odd gap in before it.
+ */
+function dateTicks(n, max = 6) {
+  if (n <= max) return [...Array(n).keys()];
+  const count = s => Math.floor((n - 1) / s) + 1;
+  let s = 1;
+  while (count(s) > max) s++;
+  const ends = Array.from({ length: n - s }, (_, k) => s + k).find(t => (n - 1) % t === 0 && count(t) >= 3);
+  const step = ends || s;
+  return Array.from({ length: count(step) }, (_, k) => k * step);
+}
+
+/**
+ * Every player's score after each day. Nothing but the lines, the floor they rise off and a name at the end of
+ * each: one line is followed in the accent and the rest are the field behind it.
+ */
+function climbSvg(T, pick) {
+  const n = T.days.length;
+  const vals = T.players.flatMap(p => p.vals).filter(v => v !== null);
+  const hi = Math.max(1, ...vals), lo = Math.min(0, ...vals);
+  const W = 340, H = 210, padL = 6, padR = 78, padT = 12, padB = 24;
+  const X = i => padL + (i / (n - 1)) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  const f = x => x.toFixed(1);
+  const lineOf = p => {
+    const first = p.vals.findIndex(v => v !== null);
+    // someone who joins later climbs off the floor from the day before, not out of thin air
+    const pts = first > 0 ? [[X(first - 1), Y(0)]] : [];
+    p.vals.forEach((v, i) => { if (v !== null) pts.push([X(i), Y(v)]); });
+    return smoothPath(pts);
+  };
+  // the end labels are stacked out of each other's way; where they cannot all fit, the followed one and the top of the table are named
+  const room = Math.floor((H - padT - padB) / 12) + 1;
+  const named = T.players.filter(p => p.id === pick || p.place <= room - 1).slice(0, room);
+  const tags = named.map(p => ({ p, y: Y(p.vals[n - 1]) })).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < tags.length; i++) tags[i].y = Math.max(tags[i].y, tags[i - 1].y + 12);
+  if (tags.length) tags[tags.length - 1].y = Math.min(tags[tags.length - 1].y, H - padB);
+  for (let i = tags.length - 2; i >= 0; i--) tags[i].y = Math.min(tags[i].y, tags[i + 1].y - 12);
+  const short = s => (s.length > 9 ? `${s.slice(0, 8)}…` : s);
+  const dates = dateTicks(n).map(i => `<text class="cdate" x="${f(X(i))}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === n - 1 ? "end" : "middle"}">${esc(shortDate(T.days[i]))}</text>`).join("");
+  const order = [...T.players].sort((a, b) => (a.id === pick) - (b.id === pick));
+  return `<svg class="climb" viewBox="0 0 ${W} ${H}" role="img" aria-label="Each player's score after every day, oldest on the left">
+    <line class="cfloor" x1="${padL}" y1="${f(Y(0))}" x2="${W - padR}" y2="${f(Y(0))}"></line>
+    ${order.map(p => `<g class="cline${p.id === pick ? " on" : ""}" data-who="${esc(p.id)}"><path class="chit" d="${lineOf(p)}"></path>
+      <path d="${lineOf(p)}"></path><title>${esc(p.name)}</title></g>`).join("")}
+    ${tags.map(({ p, y }) => `<text class="ctag${p.id === pick ? " on" : ""}" data-who="${esc(p.id)}" x="${f(W - padR + 8)}" y="${f(y + 3.5)}">${esc(short(firstName(p.name)))} <tspan>${esc(String(p.vals[n - 1]))}</tspan></text>`).join("")}
+    ${dates}</svg>`;
+}
+
+async function climbSheet(C, kind) {
+  const T = boardOverTime(C.g, C.Ms, C.members, kind);
+  if (T.days.length < 2 || !T.players.length) return;
+  const mine = T.players.find(p => isMyRow(p, C.me));
+  let pick = (mine || T.players[0]).id;
+  const foot = () => {
+    const p = T.players.find(x => x.id === pick), n = T.days.length;
+    return `<b>${esc(p.name)}</b> · ${esc(String(p.vals[n - 1]))} after ${plural(p.played.filter(Boolean).length, "day")}`;
+  };
+  await sheet({ title: FORMAT_NAMES[kind],
+    body: `<div class="climbwrap">${climbSvg(T, pick)}</div><p class="muted small climbfoot">${foot()}</p>`,
+    onOpen: el => el.addEventListener("click", ev => {
+      const w = ev.target.closest("[data-who]");
+      if (!w || w.dataset.who === pick) return;
+      pick = w.dataset.who;
+      el.querySelector(".climbwrap").innerHTML = climbSvg(T, pick);
+      el.querySelector(".climbfoot").innerHTML = foot();
+    }) });
 }
 
 /** The sentences that are only true sometimes, and are therefore only drawn when they are. */
@@ -221,7 +331,7 @@ function boardView(C, keepScroll) {
     ${todayCard(C)}
     ${claimBanner(C)}${attachPrompt(C)}
     ${leagueHero(C, Sx, move, nCards)}
-    <section class="panel lpanel"><div class="ph">${ICONS.trophy}${pick}${infoBtn(FORMAT_NAMES[C.kind], FORMAT_NOTES[C.kind])}</div>
+    <section class="panel lpanel"><div class="ph">${ICONS.trophy}${pick}${climbBtn(C.kind, C.Ms)}${infoBtn(FORMAT_NAMES[C.kind], FORMAT_NOTES[C.kind])}</div>
     ${nCards > 1 ? stateOfPlay(C, Sx) : ""}
     ${Sx.rows.length ? `<div class="rows lboard">${shown.map(r => boardRow(C, r, move, Sx)).join("")}
       ${shown.length < Sx.rows.length ? `<a class="hrow more" href="#league/${gid}/table/${C.kind}"><span class="t"><b>The whole table</b><span>${plural(Sx.rows.length, "player")}, every column</span></span><span class="chev">›</span></a>` : ""}</div>`
@@ -248,7 +358,7 @@ function tableView(C, fmt, keep = false) {
     ? `<button class="tblhead" data-act="table-pick">${esc(FORMAT_NAMES[kind])} <i aria-hidden="true">⌄</i></button>`
     : `<div class="tblhead one">${esc(FORMAT_NAMES[kind])}</div>`;
   shell(C.g, C.g.name, `
-    <div class="tblbar">${head}${infoBtn(FORMAT_NAMES[kind], FORMAT_NOTES[kind])}</div>
+    <div class="tblbar">${head}${climbBtn(kind, C.Ms)}${infoBtn(FORMAT_NAMES[kind], FORMAT_NOTES[kind])}</div>
     ${C.formats.length > 1 ? `<p class="muted small" style="margin:0 4px 6px">${plural(C.formats.length, "way")} of scoring these rounds${mine ? ` · you are ${ordinal(mine.place)} here` : ""}. Tap the name to change it.</p>` : ""}
     ${stateOfPlay(Cx, Sx)}
     ${Sx.rows.length ? `<div class="rows lboard roomy">${Sx.rows.map(r => boardRow(Cx, r, move, Sx)).join("")}</div>`
@@ -365,9 +475,10 @@ function daysView(C) {
     const board = D.rows.filter(p => p.id === null || C.members.includes(p.id));
     const top = board[0];
     const mine = C.me ? board.find(p => isMyRow(p, C.me)) : null;
+    const matches = (c.matches || []).map(matchSentence);
     return `<a class="hrow" href="#league/${C.gid}/day/${cardKey(c)}">
       <span class="t"><b>${esc(c.date ? fmtDate(c.date) : c.name)}</b>
-        <span>${esc([dayWhere(c), top ? `${firstName(top.name)} ${D.value(top)} ${D.unit}` : "", `${plural(board.length, "player")}`].filter(Boolean).join(" · "))}</span></span>
+        <span>${esc([dayWhere(c), top ? `${firstName(top.name)} ${D.value(top)} ${D.unit}` : "", board.length ? `${plural(board.length, "player")}` : "", ...matches].filter(Boolean).join(" · "))}</span></span>
       ${mine ? `<span class="v num">${esc(D.value(mine))}<small class="u">${esc(D.unit)}</small></span>` : `<span class="chev">›</span>`}</a>`;
   };
   shell(C.g, C.g.name, `
@@ -393,14 +504,16 @@ function dayView(C, key) {
   const isLast = move && String(move.last.key ?? move.last.id) === want;
   const changed = isLast && move.was ? movedOnTheDay(C, move) : "";
   const sheets = c.rounds || [];
+  const matches = c.matches || [];
   shell(C.g, c.date ? fmtDate(c.date) : c.name, `
     <section class="inplay"><div class="rule"></div>
       <div class="k">${esc(dayWhere(c) || "The day")}</div>
-      <h1>${esc(board[0] ? firstName(board[0].name) : "No scores")}</h1>
-      <p class="where">${esc([c.date ? fmtDate(c.date) : "", plural(board.length, "player")].filter(Boolean).join(" · "))}</p></section>
+      <h1>${esc(board[0] ? firstName(board[0].name) : matches[0] && matches[0].leader ? matches[0].sides[matches[0].leader].map(firstName).join(" & ") : matches[0] ? "Halved" : "No scores")}</h1>
+      <p class="where">${esc([c.date ? fmtDate(c.date) : "", board.length ? plural(board.length, "player") : ""].filter(Boolean).join(" · "))}</p></section>
     ${board.length ? `<div class="rows lboard">${board.map((p, i) => `<${p.id ? "a" : "div"} class="hrow lrow${isMyRow(p, C.me) ? " me" : ""}"${p.id ? ` href="#league/${C.gid}/p/${esc(p.id)}"` : ""}>
       <span class="lp num">${i + 1}</span><span class="t"><b>${esc(p.name)}</b><span>${esc([p.gross === null ? "no return" : `${p.gross} gross`, p.topar === null ? "" : fmtToPar(p.topar), D.basis === "net" ? `${p.pts} pts` : ""].filter(Boolean).join(" · "))}</span></span>
       <span class="v num">${esc(D.value(p))}<small class="u">${esc(D.unit)}</small></span></${p.id ? "a" : "div"}>`).join("")}</div>` : ""}
+    ${matches.length ? `${sect("Match play")}<div class="rows">${matches.map(m => `<a class="hrow" href="#review/${m.roundId}"><span class="t"><b>${esc(`${m.sides.A.join(" & ")} v ${m.sides.B.join(" & ")}`)}</b><span>${esc(m.result || m.status)}</span></span><span class="chev">›</span></a>`).join("")}</div>` : ""}
     ${changed}
     ${sect(sheets.length > 1 ? "The sheets handed in" : "The card")}
     <div class="rows">${sheets.map(M => `<a class="hrow" href="#review/${M.id}"><span class="t"><b>${esc(M.name)}</b><span>${plural(M.players.length, "player")}</span></span><span class="chev">›</span></a>`).join("")}</div>`,
@@ -764,6 +877,7 @@ async function common(C, ev) {
   if (act === "play-today") { playToday(C); return true; }
   if (act === "dayjoin") { const { joinDay } = await import("./together.js"); joinDay(b.dataset.rid); return true; }
   if (act === "share-board") { await boardShare(C.g); return true; }
+  if (act === "board-graph") { await climbSheet(C, b.dataset.kind); return true; }
   if (act === "lgmenu") {
     const v = await sheet({ title: C.g.name, body: `<div class="list lmenu">${menuItems(C).map(([href, icon, name, sub]) => `<button data-sheet="${esc(href)}">
       <span class="lead">${ICONS[icon]}<div><div class="name">${esc(name)}</div><div class="muted small">${esc(sub)}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`,

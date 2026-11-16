@@ -1,7 +1,7 @@
 // What a pile of rounds says: the field, one player, their rivals, and the nines they walked.
 import * as S from "../store.js";
 import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip, infoBtn, subtabs, safeCompute, ui } from "../ui.js";
-import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE, isTeamFormat } from "../model.js";
+import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, statPairs, STRIP_KEYS, NO_SCORE, isTeamFormat, isMatchFormat } from "../model.js";
 import { statBlock, statTiles, sgBlock, sgWords, SG_TIP, STATS_TIP } from "./extras.js";
 import { H2H_BASES, basisUnit } from "./formats.js";
 import { nineName } from "./play.js";
@@ -196,6 +196,17 @@ function formTable(St) {
         <td>${p.trend === null ? "&ndash;" : fmtSigned(p.trend)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
+const MATCH_TIP = "Match play rounds count here and nowhere else on this page: a match is settled hole by hole on who won it, so its strokes and points say nothing about anyone's golf.";
+
+/** Every match this society has played, a line a player: matches, then holes, won, halved and lost. */
+function matchTable(St) {
+  if (!St.matches || !St.matches.length) return "";
+  const rows = [...St.matches].sort((a, b) => (b.won - b.lost) - (a.won - a.lost) || (b.holesWon - b.holesLost) - (a.holesWon - a.holesLost) || a.name.localeCompare(b.name));
+  return `${h2tip("Match play", MATCH_TIP)}
+    <table class="stand"><thead><tr><th class="l">Player</th><th>Pl</th><th>W</th><th>H</th><th>L</th><th>Holes</th></tr></thead>
+      <tbody>${rows.map(m => `<tr><td class="l">${esc(m.name)}</td><td>${m.played}</td><td>${m.won}</td><td>${m.halved}</td><td>${m.lost}</td><td class="acc">${m.holesWon}–${m.holesHalved}–${m.holesLost}</td></tr>`).join("")}</tbody></table>`;
+}
+
 function fieldStats(St, nines = "", gid = "", meId = null) {
   const F = St.field;
   const rec = (label, r, value) => r ? `<a class="kv" href="#review/${r.id}"><span>${label}</span><span class="muted">${esc(firstName(r.player))} · ${value} · ${esc(shortDate(r.date))}</span></a>` : "";
@@ -213,6 +224,7 @@ function fieldStats(St, nines = "", gid = "", meId = null) {
     ${h2tip("Easy holes and hard ones", BANDS_TIP)}
     ${PAR_TABLE}${PAR_TABLE_HEAD}<tbody>${F.bands.map((b, i) => parRow(BANDS[i], b)).join("")}</tbody></table>
     ${nines}
+    ${matchTable(St)}
     ${h2tip("Who scores what", `One bar a player: every hole they have played in this society, best scores on the left and worst on the right. The longer the left end, the more often they are at par or better.`)}
     <div class="card dists">${inlineKey()}${dist}</div>
     <h2>Records</h2>
@@ -254,6 +266,9 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
       <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} · ${fmtSigned(p.vspar, 2)} a hole against par</p></div>
     ${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this society on the right, over the ${plural(p.played, "round")} they played together. The green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixedLengths(p.rounds) ? " This society mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
     ${vsField}` : ""}
+    ${want("core") && p.match ? `${h2tip("Match play", MATCH_TIP)}<div class="card">
+      ${line("Matches", `${p.match.won} won, ${p.match.halved} halved, ${p.match.lost} lost`)}
+      ${line("Holes", `${p.match.holesWon} won, ${p.match.holesHalved} halved, ${p.match.holesLost} lost`)}</div>` : ""}
     ${want("rivals") ? rivalsBlock(St, p, gid, cards) : ""}
     ${want("core") ? `
     ${one ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left: ${esc(first)}'s points ${mixedLengths(p.rounds) ? "a hole, because this society mixes nines and eighteens" : "in each round"}. The grey column behind a bar is what everyone else in the society scored that day. Tap a bar for that card.`)}${formChart(p.rounds)}`}
@@ -377,7 +392,8 @@ export function ninesPlayed(rounds, pid = null) {
   // account's id, which is what the standings, the stats and the posters hand back in
   const who = pid ? S.identityOf(pid) : null;
   for (const r of rounds) {
-    if (r.status !== "done") continue;
+    // a match card's strokes are conceded holes and pick-ups, not a nine anyone played for
+    if (r.status !== "done" || isMatchFormat(r.format)) continue;
     const c = courseBy(r.course);
     const nines = (c && c.nines) || [];
     if (!nines.length || c.n !== nines.length * 9) continue;

@@ -4,11 +4,12 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, h2tip, roundClub, roundLoop, safeCompute, saveFiles } from "../ui.js";
-import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained } from "../model.js";
+import { compute, fmtIndex, fmtToPar, halves, statSummary, strokesGained, isMatchFormat } from "../model.js";
 import { statBlock, statLine, sgBlock, SG_TIP, STATS_TIP, statHolesOf } from "./extras.js";
 import { playerRounds, ninesPlayed } from "./stats.js";
 import { leagueResults, standingsFor, standingValue, MATCH_BASIS, ELO_BASIS } from "./formats.js";
 import { myCard, nineLine } from "./review.js";
+import { matchFor } from "./mine.js";
 import { nineName } from "./play.js";
 import { inviteSheet } from "./league.js";
 import { parseHI, hiOk } from "../ui.js";
@@ -87,7 +88,9 @@ export async function person(id) {
     const them = M ? M.players.find(p => p.id === id || contacts.some(c => c.id === p.id)) : null;
     const us = M && mine ? M.players.find(p => p.id === mine.id) : null;
     const loop = roundLoop(r);
-    return `<a href="#review/${r.id}"><div><div class="name">${esc(roundClub(r))}</div><div class="muted small">${loop ? `${esc(loop)} · ` : ""}${esc(fmtDate(r.date))}${them ? ` · ${esc(firstName(name))} ${them.pts} pts` : ""}${us ? ` · you ${us.pts} pts` : ""}</div></div><span class="chev">›</span></a>`;
+    const score = M && M.match ? ` · ${esc(M.match.result || M.match.status)}`
+      : `${them ? ` · ${esc(firstName(name))} ${them.pts} pts` : ""}${us ? ` · you ${us.pts} pts` : ""}`;
+    return `<a href="#review/${r.id}"><div><div class="name">${esc(roundClub(r))}</div><div class="muted small">${loop ? `${esc(loop)} · ` : ""}${esc(fmtDate(r.date))}${score}</div></div><span class="chev">›</span></a>`;
   };
   page(name, `
     <div class="person">${avatar(name, "big")}<div class="who"><div class="name">${esc(name)}</div><div class="handle">${f ? `@${esc(f.handle || "")}${f.hi !== null && f.hi !== undefined ? ` · index ${fmtIndex(Number(f.hi))}` : ""}` : incoming ? "wants to be your friend" : outgoing ? "request sent" : "not a friend yet"}</div></div></div>
@@ -137,11 +140,13 @@ export function player(id) {
   const me = S.me();
   const isMe = !!me && me.id === p.id;
   const rs = playerRounds(p.id);
-  const pts = rs.map(o => o.x.pts);
-  const grosses = rs.map(o => o.x.gross).filter(g => g !== null);
-  const wins = rs.filter(o => o.x.splace === 1).length;
+  // a match is won on holes, so its strokes and points stay out of the numbers below
+  const golf = rs.filter(o => !isMatchFormat(o.r.format));
+  const pts = golf.map(o => o.x.pts);
+  const grosses = golf.map(o => o.x.gross).filter(g => g !== null);
+  const wins = golf.filter(o => o.x.splace === 1).length;
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
-  const stats = rs.length ? `<div class="mecard"><div class="stats">${tile(rs.length, plural(rs.length, "round").split(" ")[1])}${tile(Math.max(...pts), "best pts")}${tile((pts.reduce((a, b) => a + b, 0) / pts.length).toFixed(1), "average")}${grosses.length ? tile(Math.min(...grosses), "best gross") : ""}${wins ? tile(wins, plural(wins, "win").split(" ")[1]) : ""}</div></div>` : "";
+  const stats = golf.length ? `<div class="mecard"><div class="stats">${tile(golf.length, plural(golf.length, "round").split(" ")[1])}${tile(Math.max(...pts), "best pts")}${tile((pts.reduce((a, b) => a + b, 0) / pts.length).toFixed(1), "average")}${grosses.length ? tile(Math.min(...grosses), "best gross") : ""}${wins ? tile(wins, plural(wins, "win").split(" ")[1]) : ""}</div></div>` : "";
   const leagueLines = S.leagues().map(g => {
     const { Ms, members } = leagueResults(g);
     const kind = S.cleanFormats(g.formats)[0];
@@ -149,6 +154,11 @@ export function player(id) {
     return row ? `<a href="#league/${g.id}/p/${esc(row.id)}"><div><div class="name">${esc(g.name)}</div><div class="muted small">${kind in MATCH_BASIS ? plural(row.played, "match") : kind in ELO_BASIS ? plural(row.played, "day") : `${plural(row.played, "round")} counted`}</div></div><span class="pill done">${ordinal(row.place)} · ${standingValue(kind, row)}</span></a>` : "";
   }).filter(Boolean).join("");
   const list = rs.map(({ r, M, x }) => {
+    const seat = r.entries.find(e => e.playerId === p.id);
+    const won = M.match && seat ? matchFor(M.match, seat, r) : null;
+    if (won) return `<div class="rround card"><a href="#review/${r.id}" style="display:block"><div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(roundClub(r))}</div>
+        ${roundLoop(r) ? `<div class="loop">${esc(roundLoop(r))}</div>` : ""}
+        <div class="res"><span class="big num">${esc(won.margin)}<small>${won.word.toLowerCase()}</small></span><span class="muted">${esc([won.against, "match play"].join(" · "))}</span></div></a></div>`;
     const H = halves(M, x);
     const split = H && H.length > 1 ? `<div class="nines">${H.map(h => `<span><b>${esc(nineName(h.slug))}</b> ${h.gross === null ? "–" : `${h.gross} ${fmtToPar(h.topar)}`} · ${h.pts} pts</span>`).join("")}</div>` : "";
     return `<div class="rround card"><a href="#review/${r.id}" style="display:block"><div class="d">${esc(fmtDate(r.date))}</div><div class="name">${esc(roundClub(r))}</div>
@@ -157,15 +167,15 @@ export function player(id) {
         ${x.statline.any ? `<div class="muted small">${esc(statLine(x.statline))}</div>` : ""}</a>
       <button class="btn small" data-act="my-card" data-rid="${r.id}" data-pid="${p.id}">Save card</button></div>`;
   }).join("");
-  const career = statSummary(statHolesOf(rs, p.id));
-  const sgMine = strokesGained(rs.map(o => o.M), p.id);
+  const career = statSummary(statHolesOf(golf, p.id));
+  const sgMine = strokesGained(golf.map(o => o.M), p.id);
   const nines = ninesPlayed(S.roundsOf(p.id), p.id);
   const linkedTo = p.linkedAccount && !isMe ? F.friendById(p.linkedAccount) : null;
   page(isMe ? "My rounds" : p.name, `
     <div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">${p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))} · ` : ""}${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(rs.length, "round")}${linkedTo ? ` · <a href="#person/${esc(p.linkedAccount)}">friend</a>` : ""}</div></div></div>
     ${stats}
     ${leagueLines ? `<h2>Societies</h2><div class="list">${leagueLines}</div>` : ""}
-    ${career.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(career, `Over ${plural(career.holes, "hole")} of ${plural(rs.length, "round")}.`, { per18: true })}` : ""}
+    ${career.any ? `${h2tip("Putts, fairways and the rest", STATS_TIP)}${statBlock(career, `Over ${plural(career.holes, "hole")} of ${plural(golf.length, "round")}.`, { per18: true })}` : ""}
     ${sgMine.total === null ? "" : `${h2tip("Strokes gained", SG_TIP)}${sgBlock(sgMine, "everyone else on the card")}`}
     ${nines.length ? `${h2tip("Nines walked", `Each loop is scored on its own stroke index and course rating, whether it was walked alone or as half of an 18.`)}
       <table class="stand"><thead><tr><th class="l">Loop</th><th>Walked</th><th>Best</th><th>Avg gross</th><th>Avg pts</th></tr></thead>

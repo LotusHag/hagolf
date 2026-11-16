@@ -8,9 +8,10 @@ import * as F from "../social.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
 import { page, bind, esc, go, toast, plural, firstName, courseTitle, courseBy, noCourse, parseHI, hiOk, confirmSheet, promptSheet, sheet, teeColor, shareLink, qrHtml, fmtDate, avatar } from "../ui.js";
-import { handicapFor, fmtHcp, fmtIndex } from "../model.js";
+import { handicapFor, scratchFor, fmtHcp, fmtIndex } from "../model.js";
 import { brandField } from "./partner.js";
-import { ROUND_FORMATS, formatLabel } from "./home.js";
+import { formatLabel } from "./home.js";
+import { readsMatches } from "./formats.js";
 
 /** Giving up on a round: it is thrown away everywhere. A finished one is deleted by whoever was on it. */
 export function dropBtn(r) {
@@ -31,8 +32,13 @@ export async function dropRound(rid) {
 }
 
 const pchOf = (r, e) => e.courseHandicap ?? S.getPch(e.contactId || e.playerId, r.course, e.tee);
+// one against one or two against two, each with a side; a scramble match picks sides by team
+const sidedMatch = f => f === "match" || f === "matchpts";
 export function seatInfo(r, c, e) {
-  try { return handicapFor(c, { ...e, courseHandicap: pchOf(r, e) }, r.defaultTee, r.allowance); } catch (err) { return { error: err.message }; }
+  try {
+    if (Mo.isMatchFormat(r.format)) return scratchFor(c, e, r.defaultTee);
+    return handicapFor(c, { ...e, courseHandicap: pchOf(r, e) }, r.defaultTee, r.allowance);
+  } catch (err) { return { error: err.message }; }
 }
 
 /** A team's handicap from its members, the WHS way; recomputed whenever the team changes. */
@@ -58,19 +64,41 @@ function twoSides(r, c) {
   }
 }
 
-/** Who gets which strokes in a match, in words, worked out by the model. */
+/** How the match is settled, in words: nobody gets a shot in match play. */
 function matchLine(r, c) {
-  if (!Mo.matchPlay) return "";
   try {
     const M = Mo.matchPlay(c, { ...S.toModelRound(r), final: false });
-    const by = r.entries;
-    const bits = Object.entries(M.strokes).map(([id, st]) => {
-      const e = by.find(x => x.playerId === id);
-      const holes = st.map((k, h) => k ? c.first_hole + h : null).filter(Boolean);
-      return e && holes.length ? `${esc(firstName(e.name))} gets ${holes.length}: ${holes.length > 8 ? `${holes.slice(0, 8).join(", ")}…` : holes.join(", ")}` : null;
-    }).filter(Boolean);
-    return `<p class="muted small strokesline">${M.kind === "fourball" ? "Better ball, 90% of handicaps. " : M.kind === "scramble" ? "Team handicaps, strokes off the lower one. " : ""}${bits.length ? bits.join(" · ") : "Level: nobody gets a stroke."}</p>`;
+    const ball = M.kind === "fourball" ? "Better ball. " : "";
+    return `<p class="muted small strokesline">${ball}No handicaps: each hole goes to the ${M.basis === "points" ? "most Stableford points against par" : "fewest strokes"}.</p>`;
   } catch (e) { return `<p class="muted small strokesline">${esc(e.message)}</p>`; }
+}
+
+const scrambleMatch = f => String(f || "").startsWith("scramblematch");
+
+/** One choice inside a way of playing, as radio rows; each row is the format it turns the card into. */
+const pickRows = (name, fmt, rows) => `<div class="card radios">${rows.map(([k, label, sub]) =>
+  `<label class="radiorow"><input type="radio" name="${name}" data-act="variant" value="${k}" ${fmt === k ? "checked" : ""}><span><b>${label}</b><small>${sub}</small></span></label>`).join("")}</div>`;
+
+/** Strokes or points: the one thing left to choose inside match play or a scramble once the card is open. */
+function variantPick(fmt) {
+  const vs = scrambleMatch(fmt);
+  if (sidedMatch(fmt) || vs) {
+    const [s, p] = vs ? ["scramblematch", "scramblematchpts"] : ["match", "matchpts"];
+    return `<h2>Each hole goes to</h2>${pickRows("basis", fmt, [[s, "Fewest strokes", "the lower score wins the hole"],
+      [p, "Most Stableford points", "points against par; two blow-ups halve the hole"]])}`;
+  }
+  if (!Mo.isTeamFormat(fmt)) return "";
+  return `<h2>Ranked on</h2>${pickRows("score", fmt, [["scramble", "Net strokes", "the lowest net score wins"], ["scramblepts", "Stableford points", "the most points wins"]])}`;
+}
+
+/** Whether this match counts for each society that has a table for match play; a society day card always does. */
+function countsPick(r) {
+  if (r.leagueId || !Mo.isMatchFormat(r.format)) return "";
+  const gs = S.leagues().filter(g => S.cleanFormats(g.formats).some(readsMatches));
+  if (!gs.length) return "";
+  const on = new Set(S.leaguesOfRound(r.id).map(g => g.id));
+  return `<h2>Counts for</h2><div class="card radios">${gs.map(g => `<label class="radiorow"><input type="checkbox" data-act="counts" data-g="${esc(g.id)}" ${on.has(g.id) ? "checked" : ""}>
+    <span><b>${esc(g.name)}</b><small>${on.has(g.id) ? "in its match play and Elo tables" : "a friendly: this society never sees it"}</small></span></label>`).join("")}</div>`;
 }
 
 // ---------------------------------------------------------------- the screen
@@ -82,54 +110,56 @@ export function players(rid, keep = false) {
   if (!S.isScorer(r)) return go(`#review/${rid}`);
   const tees = Object.keys(c.tees);
   const fmt = r.format || "stableford";
-  if (fmt === "scramblematch") twoSides(r, c);
+  if (scrambleMatch(fmt)) twoSides(r, c);
   const lg = S.leaguesOfRound(rid);
   const me = S.myAccount();
   const people = r.entries.filter(e => e.role !== "team");
   const showGroups = people.length > 4 || people.some(e => (e.group || 1) > 1);
+  const match = Mo.isMatchFormat(fmt);
 
   const row = e => {
     const i = r.entries.indexOf(e);
     const info = seatInfo(r, c, e);
     const sub = [e.accountId && e.accountId === me ? "you" : e.accountId ? "" : e.proposedAccount ? "asked" : "guest",
-      info.error ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", e.trackStats ? "advanced stats" : ""].filter(Boolean).join(" · ");
-    const side = fmt === "match" ? `<div class="eseg sides">${["A", "B"].map(sd => `<button data-act="side" data-i="${i}" data-s="${sd}" class="${e.side === sd ? "on" : ""}">${sd}</button>`).join("")}</div>` : "";
+      info.error || match ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", e.trackStats ? "advanced stats" : ""].filter(Boolean).join(" · ");
+    const side = sidedMatch(fmt) ? `<div class="eseg sides">${["A", "B"].map(sd => `<button data-act="side" data-i="${i}" data-s="${sd}" class="${e.side === sd ? "on" : ""}">${sd}</button>`).join("")}</div>` : "";
     return `<div class="card who" data-i="${i}">
       <div class="whotop"><button class="wname" data-act="psheet" data-i="${i}"><b>${esc(e.name)}</b><small>${esc(sub)}${info.error ? ` <span class="warn">${esc(info.error)}</span>` : ""}</small></button>
         ${side}
-        <label class="hiin"><span class="flab">Index</span><input class="efv hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="${esc(e.name)}'s handicap index"></label></div>
+        ${match ? "" : `<label class="hiin"><span class="flab">Index</span><input class="efv hi" data-act="hi" data-i="${i}" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}" aria-label="${esc(e.name)}'s handicap index"></label>`}</div>
       ${c.unlisted || e.role === "member" && fmt === "scramble" && false ? "" : `<div class="tees">${tees.map(t => `<button class="tee ${t === e.tee ? "on" : ""}" style="--c:${teeColor(t)}" data-act="tee" data-i="${i}" data-t="${esc(t)}" aria-label="${esc(t)} tee" aria-pressed="${t === e.tee}"><i></i></button>`).join("")}</div>`}
     </div>`;
   };
 
   let rows;
-  if (fmt === "match") {
+  if (sidedMatch(fmt)) {
     const a = people.filter(e => e.side === "A"), b = people.filter(e => e.side === "B"), none = people.filter(e => e.side !== "A" && e.side !== "B");
-    rows = `${none.length ? none.map(row).join("") : ""}
+    rows = `${variantPick(fmt)}${countsPick(r)}
+      ${none.length ? none.map(row).join("") : ""}
       <h2>Side A</h2>${a.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
       <h2>Side B</h2>${b.map(row).join("") || `<p class="muted small">Nobody yet.</p>`}
       ${a.length && b.length ? matchLine(r, c) : ""}`;
   } else if (Mo.isTeamFormat(fmt)) {
     const teams = r.entries.filter(e => e.role === "team");
     const free = people.filter(e => e.role !== "member");
-    const vs = fmt === "scramblematch";
-    const card = t => `<div class="card team"><div class="whotop"><div class="wname"><b>${esc(t.name)}</b><small>team handicap ${t.courseHandicap ?? "–"}</small></div>
-          <label class="hiin"><span class="flab">Team hcp</span><input class="efv" data-act="teamch" data-tid="${esc(t.playerId)}" inputmode="numeric" value="${t.courseHandicap ?? ""}"></label></div>
+    const vs = scrambleMatch(fmt);
+    const card = t => `<div class="card team"><div class="whotop"><div class="wname"><b>${esc(t.name)}</b>${vs ? "" : `<small>team handicap ${t.courseHandicap ?? "–"}</small>`}</div>
+          ${vs ? "" : `<label class="hiin"><span class="flab">Team hcp</span><input class="efv" data-act="teamch" data-tid="${esc(t.playerId)}" inputmode="numeric" value="${t.courseHandicap ?? ""}"></label>`}</div>
         <div class="chips-wrap">${r.entries.filter(m => t.members.includes(m.playerId)).map(m => `<button class="pchip on" data-act="unteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span>${esc(m.name)}</span><small>tap to take out</small></button>`).join("")}
           ${free.map(m => `<button class="pchip" data-act="toteam" data-tid="${esc(t.playerId)}" data-pid="${esc(m.playerId)}"><span><span class="plus">+</span>${esc(m.name)}</span></button>`).join("")}</div></div>`;
     const sided = ["A", "B"].map(sd => `<h2>Side ${sd}</h2>${teams.filter(t => t.side === sd).map(card).join("")}`).join("");
     const stray = teams.filter(t => t.side !== "A" && t.side !== "B");
-    rows = `${people.map(row).join("")}
+    rows = `${variantPick(fmt)}${countsPick(r)}${people.map(row).join("")}
       ${vs ? `${sided}${stray.length ? `<h2>Not in the match</h2>${stray.map(card).join("")}` : ""}` : `<h2>Teams</h2>${teams.map(card).join("")}`}
       <div class="btnrow">${vs ? "" : `<button class="btn" data-act="newteam">+ Team</button>`}${people.length >= 2 ? `<button class="btn" data-act="autoteams">Make teams for me</button>` : ""}</div>
       ${vs && teams.some(t => t.members.length) ? matchLine(r, c) : ""}
-      ${teams.length ? `<p class="muted small">Team handicaps follow the World Handicap System: 35% and 15% for two, 30/20/10 for three, 25/20/15/10 for four.</p>` : ""}`;
+      ${teams.length && !vs ? `<p class="muted small">Team handicaps follow the World Handicap System: 35% and 15% for two, 30/20/10 for three, 25/20/15/10 for four.</p>` : ""}`;
   } else rows = people.map(row).join("");
 
-  const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 ? `${r.allowance}%` : "", S.cardKeepsStats(r) ? "advanced stats" : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
-  const ready = fmt === "match" ? people.some(e => e.side === "A") && people.some(e => e.side === "B")
-    : fmt === "scramble" ? r.entries.some(e => e.role === "team" && e.members.length)
-    : fmt === "scramblematch" ? ["A", "B"].every(sd => r.entries.some(e => e.role === "team" && e.side === sd && e.members.length)) && !r.entries.some(e => e.role === "team" && e.side !== "A" && e.side !== "B" && e.members.length)
+  const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 && !match ? `${r.allowance}%` : "", S.cardKeepsStats(r) ? "advanced stats" : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
+  const ready = sidedMatch(fmt) ? people.some(e => e.side === "A") && people.some(e => e.side === "B")
+    : Mo.isTeamFormat(fmt) && !scrambleMatch(fmt) ? r.entries.some(e => e.role === "team" && e.members.length)
+    : scrambleMatch(fmt) ? ["A", "B"].every(sd => r.entries.some(e => e.role === "team" && e.side === sd && e.members.length)) && !r.entries.some(e => e.role === "team" && e.side !== "A" && e.side !== "B" && e.members.length)
     : people.length > 0;
   const bar = !people.length ? `<button class="btn" disabled>Add players to start</button>`
     : r.status === "done" ? `<a class="btn primary" href="#review/${rid}">Back to the card ›</a>`
@@ -160,7 +190,7 @@ export function players(rid, keep = false) {
       const next = act === "toteam" ? [...t.members, b.dataset.pid] : t.members.filter(x => x !== b.dataset.pid);
       S.setTeamMembers(r, t, next);
       // an emptied team goes, except a scramble match's own two sides
-      if (!next.length && act === "unteam" && !(r.format === "scramblematch" && (t.side === "A" || t.side === "B"))) { const k = r.entries.indexOf(t); S.removeEntry(r, k); }
+      if (!next.length && act === "unteam" && !(scrambleMatch(r.format) && (t.side === "A" || t.side === "B"))) { const k = r.entries.indexOf(t); S.removeEntry(r, k); }
       else refreshTeam(r, c, t);
       return players(rid, true);
     }
@@ -169,6 +199,8 @@ export function players(rid, keep = false) {
   document.querySelector("main").addEventListener("change", ev => {
     const el = ev.target.closest("[data-act]");
     if (!el) return;
+    if (el.dataset.act === "variant") { r.format = el.value; S.state.settings.lastFormat = r.format; S.saveRound(r); return players(rid, true); }
+    if (el.dataset.act === "counts") { S.setLeagueRound(el.dataset.g, r.id, el.checked); return players(rid, true); }
     if (el.dataset.act === "hi") {
       const e = r.entries[Number(el.dataset.i)], hi = parseHI(el.value);
       if (!hiOk(hi)) { el.value = fmtIndex(Number(e.hi)); return toast("Handicap index between +10 and 54, e.g. 18,4"); }
@@ -187,7 +219,7 @@ const teamsChanged = (r, c) => { for (const t of r.entries.filter(e => e.role ==
 /** Teams of two, three or four, drawn so each has a spread of handicaps: a snake down the list. */
 async function autoTeams(r, c) {
   const people = r.entries.filter(e => e.role !== "team");
-  const vs = r.format === "scramblematch";
+  const vs = scrambleMatch(r.format);
   const v = vs ? "2" : await sheet({ title: "Make teams", lead: `${plural(people.length, "player")}. How many in a team?`,
     actions: [2, 3, 4].filter(n => n <= people.length).map(n => ({ label: `Teams of ${n}`, value: String(n), kind: n === 2 ? "primary" : "" })) });
   if (!v) return;
@@ -203,12 +235,13 @@ async function autoTeams(r, c) {
 async function optionsSheet(r, c) {
   const gs = S.leagues();
   const on = new Set(S.leaguesOfRound(r.id).map(g => g.id));
+  const tile = Mo.kindOf(r.format);
   const v = await sheet({ title: "This round", body: `<form id="optf">
-      <p class="pickline">How you're playing</p>
-      <div class="fmtgrid small">${ROUND_FORMATS.map(f => `<label class="fmttile ${r.format === f.key ? "on" : ""}"><input type="radio" name="fmt" value="${f.key}" ${r.format === f.key ? "checked" : ""} hidden><b>${esc(f.label)}</b><small>${esc(f.blurb)}</small></label>`).join("")}</div>
+      ${Mo.PLAY_GROUPS.filter(g => g.kinds.length).map(g => `<p class="pickline">${esc(g.label)}</p><div class="card radios">${g.kinds.map(f =>
+        `<label class="radiorow"><input type="radio" name="fmt" value="${f.key}" ${tile === f.key ? "checked" : ""}><span><b>${esc(f.label)}</b><small>${esc(f.blurb)}</small></span></label>`).join("")}</div>`).join("")}
       <label>Name<input name="name" value="${esc(r.name)}"></label>
       <div class="two"><label>Date<input name="date" type="date" value="${esc(r.date || "")}"></label>
-      <label>Allowance<select name="allow">${[100, 95, 90, 85, 75].map(a => `<option value="${a}" ${Number(r.allowance) === a ? "selected" : ""}>${a}%</option>`).join("")}</select></label></div>
+      ${Mo.isMatchFormat(r.format) ? "" : `<label>Allowance<select name="allow">${[100, 95, 90, 85, 75].map(a => `<option value="${a}" ${Number(r.allowance) === a ? "selected" : ""}>${a}%</option>`).join("")}</select></label>`}</div>
       <p class="pickline" style="margin-top:16px">Stats</p>
       <div class="card radios">${[["simple", "Simple", "just the score"], ["advanced", "Advanced", "putts, fairways, bunker shots and penalties as well"]].map(([v, label, sub]) =>
         `<label class="radiorow"><input type="radio" name="stats" value="${v}" ${(v === "advanced") === S.cardKeepsStats(r) ? "checked" : ""}><span><b>${label}</b><small>${sub}</small></span></label>`).join("")}</div>
@@ -224,10 +257,11 @@ async function optionsSheet(r, c) {
   const f = window.__opt;
   window.__opt = null;
   if (v !== "ok" || !f) return;
-  r.format = f.get("fmt") || r.format;
+  const fmt = f.get("fmt") || tile;
+  if (fmt !== tile) r.format = fmt;
   r.name = String(f.get("name") || "").trim() || r.name;
   r.date = f.get("date") || r.date;
-  r.allowance = Number(f.get("allow")) || 100;
+  if (f.get("allow") !== null) r.allowance = Number(f.get("allow")) || 100;
   if (f.get("rbrand") !== null) r.brand = f.get("rbrand") || null;
   S.state.settings.lastFormat = r.format;
   S.saveRound(r);
@@ -243,7 +277,7 @@ async function optionsSheet(r, c) {
     const want = new Set(f.getAll("lg"));
     for (const g of gs) if (want.has(g.id) !== on.has(g.id)) S.setLeagueRound(g.id, r.id, want.has(g.id));
   }
-  if (r.format === "match") {
+  if (sidedMatch(r.format)) {
     const people = r.entries.filter(e => e.role !== "team");
     people.forEach((e, k) => { if (e.side !== "A" && e.side !== "B") S.setSide(r, e, k % 2 ? "B" : "A"); });
   }
@@ -263,11 +297,13 @@ function seat(r, c, p, hi, accountId) {
   const people = r.entries.filter(e => e.role !== "team");
   const e = S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null,
     accountId, trackStats: accountId && accountId === S.myAccount() ? S.keepsAny(S.myKeep()) : false });
-  if (r.format === "match") S.setSide(r, e, people.filter(x => x.side === "A").length <= people.filter(x => x.side === "B").length ? "A" : "B");
+  if (sidedMatch(r.format)) S.setSide(r, e, people.filter(x => x.side === "A").length <= people.filter(x => x.side === "B").length ? "A" : "B");
   return e;
 }
 
 async function addSheet(r, c) {
+  // nobody plays off a handicap in a match, so nobody is asked for one
+  const match = Mo.isMatchFormat(r.format);
   const onCard = new Set(r.entries.map(e => e.contactId || e.playerId));
   const onCardAccounts = new Set(r.entries.map(e => e.accountId).filter(Boolean));
   const me = S.me();
@@ -302,7 +338,7 @@ async function addSheet(r, c) {
     const f = F.friendById(id);
     if (!f) return;
     let hi = f.hi;
-    if (hi === null || hi === undefined) { hi = await askIndex(f.name); if (hi === null) return; }
+    if ((hi === null || hi === undefined) && !match) { hi = await askIndex(f.name); if (hi === null) return; }
     const p = S.upsertPlayer(f.name, hi, "m");
     if (p.linkedAccount !== f.id) { p.linkedAccount = f.id; S.touch("players", p); S.save(); }
     seat(r, c, p, hi, f.id);
@@ -310,7 +346,7 @@ async function addSheet(r, c) {
     const p = S.players().find(x => x.id === id);
     if (!p) return;
     let hi = S.currentIndex(p);
-    if (hi === null || hi === undefined) {
+    if ((hi === null || hi === undefined) && !match) {
       hi = await askIndex(p.name);
       if (hi === null) return;
       if (me && p.id === me.id && A.signedIn()) { try { await A.update({ hi }); } catch (e) { /* the seat still carries it */ } }
@@ -322,8 +358,8 @@ async function addSheet(r, c) {
     if (r.entries.some(e => S.nameKey(e.name) === S.nameKey(name))) {
       if (!await confirmSheet(`Another ${firstName(name)}?`, `Someone called ${name} is already on this card. Add a second one?`, { label: "Add" })) return;
     }
-    const hi = await askIndex(name);
-    if (hi === null) return;
+    const hi = match ? null : await askIndex(name);
+    if (hi === null && !match) return;
     const p = S.findPlayer(name) || S.upsertPlayer(name, hi, "m");
     seat(r, c, p, hi, p.linkedAccount || null);
   }
@@ -335,9 +371,9 @@ async function playerSheet(r, c, e) {
   const info = seatInfo(r, c, e);
   const ov = pchOf(r, e);
   const showGroups = r.entries.length > 4 || r.entries.some(x => (x.group || 1) > 1);
-  const v = await sheet({ title: e.name, lead: info.error ? info.error : `Course handicap ${fmtHcp(info.ch)} · plays off ${fmtHcp(info.ph)}`, body: `<form id="psf">
-      <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}"></label>
-        <label>Course hcp <span class="muted">(club table)</span><input name="pch" inputmode="numeric" value="${ov ?? ""}" placeholder="worked out"></label></div>
+  const v = await sheet({ title: e.name, lead: Mo.isMatchFormat(r.format) ? "Match play: no handicap" : info.error ? info.error : `Course handicap ${fmtHcp(info.ch)} · plays off ${fmtHcp(info.ph)}`, body: `<form id="psf">
+      ${Mo.isMatchFormat(r.format) ? "" : `<div class="two"><label>Handicap index<input name="hi" inputmode="decimal" value="${esc(fmtIndex(Number(e.hi)))}"></label>
+        <label>Course hcp <span class="muted">(club table)</span><input name="pch" inputmode="numeric" value="${ov ?? ""}" placeholder="worked out"></label></div>`}
       ${c.unlisted ? "" : `<p class="pickline">Tee</p><div class="tees">${tees.map(t => `<label class="tee ${t === e.tee ? "on" : ""}" style="--c:${teeColor(t)}"><input type="radio" name="tee" value="${esc(t)}" ${t === e.tee ? "checked" : ""} hidden><i></i></label>`).join("")}</div>`}
       <div class="two"><label>Starts at<select name="from">${c.par.map((_, k) => `<option value="${k + 1}" ${(e.fromHole || 1) === k + 1 ? "selected" : ""}>Hole ${c.first_hole + k}</option>`).join("")}</select></label>
         <label>Rating<select name="gender"><option value="m" ${e.gender !== "f" ? "selected" : ""}>Men's</option><option value="f" ${e.gender === "f" ? "selected" : ""}>Women's</option></select></label></div>
@@ -369,7 +405,8 @@ async function playerSheet(r, c, e) {
   if (f.get("grp") !== null) e.group = Math.max(1, Math.floor(Number(f.get("grp")) || 1));
   e.trackStats = f.get("track") === "on";
   const raw = String(f.get("pch") || "").trim();
-  if (raw === "" || Number.isInteger(Number(raw))) {
+  // a match sheet has no course handicap field, and must not wipe the one kept for this tee
+  if (f.get("pch") !== null && (raw === "" || Number.isInteger(Number(raw)))) {
     e.courseHandicap = null;
     S.setPch(e.contactId || e.playerId, r.course, e.tee, raw === "" ? null : Number(raw));
   }

@@ -3,7 +3,7 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as Y from "../sync.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, confirmSheet, subtabs } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, confirmSheet, subtabs } from "../ui.js";
 import { compute, fix, fmtToPar, STAT_SWITCHES } from "../model.js";
 import { myGame, myGameBody } from "./stats.js";
 import { dayBlock, nowCard, formatLabel } from "./home.js";
@@ -62,6 +62,20 @@ function bindTabs() {
 }
 
 // ---------------------------------------------------------------- every round I can see
+/** My side's result in a match: won, lost or halved, and by how much. */
+export function matchFor(m, seat, r) {
+  // in a scramble match my side is my team's
+  const team = seat.role === "member" ? r.entries.find(t => t.role === "team" && (t.members || []).includes(seat.playerId)) : null;
+  const side = (team || seat).side || "";
+  if (side !== "A" && side !== "B") return null;
+  const mine = m.leader === side, n = Math.abs(m.up);
+  const word = !m.result ? `THRU ${m.thru}` : !m.leader ? "HALVED" : mine ? "WON" : "LOST";
+  // the margin from my side, the way a match card reads it: 3&2 either way, otherwise holes up or down
+  const margin = !m.leader ? "AS" : m.result && m.left ? `${n}&${m.left}` : `${n} ${mine ? "UP" : "DN"}`;
+  const other = m.sides[side === "A" ? "B" : "A"];
+  return { word, margin, against: `v ${other.map(firstName).join(" & ")}` };
+}
+
 function roundsList() {
   const rounds = S.rounds();
   const open = rounds.filter(r => r.status !== "done");
@@ -77,7 +91,9 @@ function roundsList() {
     const seat = S.mySeat(r);
     const mine = M && seat ? M.players.find(x => x.id === seat.playerId) : null;
     const year = r.date && !String(r.date).startsWith(thisYear) ? String(r.date).slice(0, 4) : "";
-    const val = !mine ? `<span class="chev">›</span>` : r.format === "stroke" ? `<span class="v">${mine.net ?? "NR"}<small class="u"> NET</small></span>`
+    const won = M && M.match && seat ? matchFor(M.match, seat, r) : null;
+    const val = won ? `<span class="v">${esc(won.margin)}<small class="u"> ${won.word}</small><small class="pl">${esc(won.against)}</small></span>`
+      : !mine ? `<span class="chev">›</span>` : r.format === "stroke" ? `<span class="v">${mine.net ?? "NR"}<small class="u"> NET</small></span>`
       : `<span class="v">${mine.pts}<small class="u"> PTS</small><small class="pl">${ordinal(mine.splace)} of ${M.field}</small></span>`;
     return `<a class="rround hrow lead" href="${resumeHash(r)}">${dayBlock(r.date)}
       <span class="t"><b>${esc(roundClub(r))}${shared.has(r.id) ? ` <i class="tag">shared</i>` : ""}</b>

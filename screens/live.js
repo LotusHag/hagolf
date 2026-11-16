@@ -53,7 +53,7 @@ export async function liveScreen(token, mode) {
   let body;
   if (Mo.isMatchFormat(r.format) && Mo.matchPlay) {
     let M = null;
-    try { M = Mo.matchPlay(course, { format: "match", name: P.round.name, defaultTee: r.defaultTee, allowance: r.allowance, final: false,
+    try { M = Mo.matchPlay(course, { format: r.format, name: P.round.name, defaultTee: r.defaultTee, allowance: r.allowance, final: false,
       entries: r.entries.filter(e => e.role !== "member").map(e => ({ id: e.playerId, role: e.role, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, courseHandicap: e.courseHandicap, scores: e.scores, side: e.side, fromHole: e.fromHole, penalties: e.penalties })) }); } catch (e) { M = null; }
     body = M ? `<div class="livematch"><div class="side">${esc(M.sides.A.join(" & "))}</div><div class="state num">${esc(M.result || M.status)}</div><div class="side">${esc(M.sides.B.join(" & "))}</div></div>
       <div class="holeline">${M.holes.map(h => `<span class="${h.winner === "A" ? "a" : h.winner === "B" ? "b" : h.winner === "halved" ? "h" : ""}">${course.first_hole + h.hole - 1}</span>`).join("")}</div>`

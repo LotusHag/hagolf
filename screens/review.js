@@ -8,7 +8,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, saveFiles, slugFile, ICONS, makeTheme, loadFonts, sizedLooks, sizedName, themeForRound } from "../ui.js";
 import { DATA } from "../data.js";
-import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat } from "../model.js";
+import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat, onPoints } from "../model.js";
 import { formatLabel } from "./home.js";
 import { renderCards } from "../cards.js";
 import { statTap, statStep, statLine, seedStats } from "./extras.js";
@@ -186,15 +186,18 @@ export function review(rid, keep = false) {
       ${scoreStepper(e, ei, i, par)}${e.role === "team" ? "" : extrasRows(c, e, ei, i, kinds)}</div>`;
   };
   const oldPens = e => (e.penalties || []).length ? `<div class="pens">${e.penalties.map((p, k) => `<span class="pen">+${p.strokes} on hole ${p.hole}${p.reason ? ` (${esc(p.reason)})` : ""}${scorer ? ` <button data-act="del-pen" data-pid="${e.playerId}" data-k="${k}" aria-label="remove">×</button>` : ""}</span>`).join("")}</div>` : "";
+  // a match card counts holes; its strokes and points are not a round anyone played for
+  const match = isMatchFormat(fmt) && R.match;
+  const holesWon = p => { const e = byId(p.id), k = e && e.side; return k ? R.match.holes.filter(h => h.counted && h.winner === k).length : "–"; };
   const detail = p => {
     const e = byId(p.id);
     if (!e) return "";
     return `<div class="card pl ${ui.expanded === e.playerId ? "open" : ""}">
       <button class="row plain" data-act="expand" data-pid="${e.playerId}">
         <div class="who"><div><div class="name">${esc(p.name)}${p.penalty_total ? ` <span class="pen">pen +${p.penalty_total}</span>` : ""}</div>
-          <div class="muted small">hcp ${fmtHcp(p.ph)}${c.unlisted ? "" : ` · ${esc(p.tee)}`}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.filled.some(Boolean) ? ` · ${plural(p.filled.filter(Boolean).length, "hole")} counted ${NO_SCORE}` : ""}</div>${nineLine(M, p)}${p.statline.any ? `<div class="muted small">${esc(statLine(p.statline))}</div>` : ""}</div></div>
-        <div class="nums"><span><b class="num">${p.gross === null ? "NR" : p.gross}</b><small>gross${p.topar !== null ? " " + fmtToPar(p.topar) : ""}</small></span>
-          <span><b class="num">${p.net === null ? "NR" : p.net}</b><small>net</small></span><span class="${fmt === "stableford" ? "acc" : ""}"><b class="num">${p.pts}</b><small>pts</small></span></div></button>
+          <div class="muted small">${match ? "no handicap" : `hcp ${fmtHcp(p.ph)}`}${c.unlisted ? "" : ` · ${esc(p.tee)}`}${p.skipped.some(Boolean) ? ` · from hole ${c.first_hole + p.from_hole - 1}` : ""}${p.filled.some(Boolean) && !match ? ` · ${plural(p.filled.filter(Boolean).length, "hole")} counted ${NO_SCORE}` : ""}</div>${match ? "" : nineLine(M, p)}${p.statline.any ? `<div class="muted small">${esc(statLine(p.statline))}</div>` : ""}</div></div>
+        <div class="nums">${match ? `<span><b class="num">${holesWon(p)}</b><small>holes won</small></span>` : `<span><b class="num">${p.gross === null ? "NR" : p.gross}</b><small>gross${p.topar !== null ? " " + fmtToPar(p.topar) : ""}</small></span>
+          <span><b class="num">${p.net === null ? "NR" : p.net}</b><small>net</small></span><span class="${onPoints(fmt) ? "acc" : ""}"><b class="num">${p.pts}</b><small>pts</small></span>`}</div></button>
       ${ui.expanded === e.playerId ? `<div class="chips">${chips(e)}</div>${editor(e)}${oldPens(e)}` : ""}</div>`;
   };
   // the board in the round's own format, then every card underneath it to open and correct

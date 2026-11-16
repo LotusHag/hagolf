@@ -6,7 +6,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
 import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet, ICONS, firstName, toast } from "../ui.js";
-import { handicapFor, stableford, NO_SCORE } from "../model.js";
+import { handicapFor, scratchFor, stableford, NO_SCORE } from "../model.js";
 import { scoreStepper, extrasRows, ptsSoFar, mark } from "../pad.js";
 import { statTap, statStep, seedStats } from "./extras.js";
 import { dropRound, inviteSheet } from "./players.js";
@@ -14,8 +14,10 @@ import { formatLabel, liveBoard } from "./home.js";
 
 const groupOf = rid => ui.groupFilter[rid] || 0;
 const infoFor = (r, c, e) => {
-  try { return handicapFor(c, { ...e, courseHandicap: e.courseHandicap ?? S.getPch(e.contactId || e.playerId, r.course, e.tee) }, r.defaultTee, r.allowance); }
-  catch (err) { return null; }
+  try {
+    if (Mo.isMatchFormat(r.format)) return scratchFor(c, e, r.defaultTee);
+    return handicapFor(c, { ...e, courseHandicap: e.courseHandicap ?? S.getPch(e.contactId || e.playerId, r.course, e.tee) }, r.defaultTee, r.allowance);
+  } catch (err) { return null; }
 };
 
 // ---------------------------------------------------------------- one player, everything about this hole
@@ -27,8 +29,8 @@ function block(r, c, e, i, h, kinds) {
       <span class="muted small">joins at hole ${c.first_hole + e.fromHole - 1}</span></div></div>`;
   const v = e.scores[h], st = info && !c.unlisted ? info.strokes[h] : 0;
   const entered = e.scores.some(x => x !== null);
-  // points come off the same strokes in every format, so every card shows them beside the total
-  const scored = !!info && !c.unlisted;
+  // points come off the same strokes in every format, so every card shows them beside the total; a match on strokes counts strokes
+  const scored = !!info && !c.unlisted && !(Mo.isMatchFormat(r.format) && !Mo.onPoints(r.format));
   const pts = !scored || v === null ? null : v === 0 ? 0 : stableford(v, par, info.strokes[h]);
   const played = e.scores.map((x, k) => [x, k]).filter(([x]) => x !== null);
   const gross = played.reduce((t, [x]) => t + (x || NO_SCORE), 0);
