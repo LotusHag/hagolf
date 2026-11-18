@@ -6,7 +6,7 @@ import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as E from "../entitlements.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, roundWhere } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, lookMode, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, roundWhere } from "../ui.js";
 import { fmtIndex, STAT_SWITCHES, STAT_SWITCH_KEYS } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
@@ -152,8 +152,18 @@ function privacySettings() {
 // ---------------------------------------------------------------- appearance
 function look() {
   sub("Appearance", `<p class="muted small" style="margin:4px 4px 10px">The look of the app itself, and of every poster and card it makes. A society that has picked its own wears that instead.</p>
+    <h2>Light or dark</h2>
+    <div class="segpick">${[["auto", "Like the phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<button data-act="mode" data-v="${v}" class="${lookMode() === v ? "on" : ""}">${l}</button>`).join("")}</div>
+    <h2>Theme</h2>
     <div class="themes">${themeRadios("apptheme", appTheme().name)}</div>`);
   bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); S.setSetting("themeChosen", true); paint(themeHere()); toast("Saved"); });
+  bind(ev => {
+    const b = ev.target.closest("[data-act=mode]");
+    if (!b) return;
+    S.setSetting("mode", b.dataset.v);
+    paint(themeHere());
+    look();
+  });
 }
 
 // ---------------------------------------------------------------- scoring extras

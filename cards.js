@@ -164,10 +164,10 @@ function sectionRows(M, p) {
 }
 
 /**
- * How much of a card the theme's family takes.
+ * How much of a card the theme takes.
  *
  * A card is not a poster: the scorecard is a grid with one column a hole, so it cannot be reflowed into two
- * columns and the sheet cannot be narrowed far without breaking it. What the family does get to say is how
+ * columns and the sheet cannot be narrowed far without breaking it. What the theme does get to say is how
  * wide the paper is, whether the two panels under the scorecard stand side by side or one above the other,
  * and how much of the story is told -- the card's own version of the prose levels the posters use. The
  * story is never dropped altogether, because unlike a footer it is the point of the card rather than a
@@ -230,8 +230,8 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   // block ends with the same reserved strip, so the two cards are the same card.
   const strip = basic || !extras ? [] : stripReadings(p.statline);
   const H = house(T);
-  // A narrow family stands the two panels under the scorecard one above the other instead of side by side,
-  // and every family tells as much of the story as its prose level allows. Both change the height, which is
+  // A narrow theme stands the two panels under the scorecard one above the other instead of side by side,
+  // and every theme tells as much of the story as its prose level allows. Both change the height, which is
   // summed here once, before the figure exists, so nothing below has to know which way it went.
   const stacked = H.page === "portrait";
   const storyN = STORY_LINES[H.prose] ?? 7;
@@ -404,7 +404,7 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
       (blockX1 - blockX) * W_IN, STATS_IN - STATS_GAP, strip);
   }
 
-  // story. The axes is only as tall as the entries that survived the family's prose level, so the block is
+  // story. The axes is only as tall as the entries that survived the theme's prose level, so the block is
   // laid out in inches from its own top and never spreads three lines over the room seven would have taken.
   const axf = fig.axes(rect(storyTop, storyIn), [0, 1], [0, 1]);
   const down = v => 1 - v / storyIn;           // inches from the top of the block, in its own units

@@ -2,7 +2,7 @@
 // strokes. App-only, so there is no Python twin.
 //
 // Every panel here is a BLOCK (sheet.js): a height and a draw call, with no opinion about where on the page
-// it lands. `sheet` puts them somewhere according to the theme family's template, which is why the same
+// it lands. `sheet` puts them somewhere according to the theme theme's template, which is why the same
 // four posters come out as a narrow sheet of paper for one collection and a two-column landscape for
 // another. A block only has to survive being handed a narrower column than it expected, or declare the
 // narrowest one it can take and be given a full-width row instead.
@@ -126,7 +126,7 @@ function distributionBlock(T, counts, label) {
 /**
  * Rows of one reading each, the bar running from a zero line so a figure under par points the other way.
  * `rows` are [label, value, note, good]: with `good` set the bar takes the accent when it is the better
- * side; without it the family's palette decides, because a description is not a comparison.
+ * side; without it the theme's palette decides, because a description is not a comparison.
  */
 function barRowsBlock(T, rows, { title, fmtv = v => fix(v, 2), noteHead = "", labelW = 2.4 } = {}) {
   if (isPhone(T)) return phoneBarRows(T, rows, { title, fmtv, noteHead });
@@ -412,7 +412,7 @@ function progressBlock(T, P, label, tail) {
     const ends = [];
     P.players.forEach((p, i) => {
       // The one chart where colour is identity rather than decoration, so it takes the five series colours
-      // whatever the family would otherwise paint a chart in: nine lines in one colour is nine lines lost.
+      // whatever the theme would otherwise paint a chart in: nine lines in one colour is nine lines lost.
       const col = T.SERIES[i % T.SERIES.length], pts = seen(p.points);
       run(pts, col, 2.0);
       for (const [k, v] of pts) fig.disc(ax.X(k), ax.Y(v), 0.075, col);

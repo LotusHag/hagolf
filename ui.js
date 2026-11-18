@@ -8,7 +8,7 @@ import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import * as N from "./notify.js";
 import * as E from "./entitlements.js";
-import { loadFonts, makeTheme, phone, setMarked, setMarkText } from "./draw.js";
+import { loadFonts, makeTheme, pickTheme, phone, setMarked, setMarkText } from "./draw.js";
 import { isNative } from "./native.js";
 
 export const app = document.getElementById("app");
@@ -474,16 +474,24 @@ export const leagueBadge = (g, cls = "") => g && g.icon && ICON_URL.test(g.icon)
 export const emptyState = (icon, title, text = "", action = "") => `<div class="empty">${ICONS[icon] || ""}<b>${esc(title)}</b>${text ? `<div>${esc(text)}</div>` : ""}${action}</div>`;
 
 // ---------------------------------------------------------------- the look
-// chalk became hagolf's own colours; leagues, clubs and phones that still say chalk get the same look
-const RETIRED = { chalk: "hagolf" };
-export const themeNamed = n => DATA.themes.find(t => t.name === (RETIRED[n] || n)) || B.brandThemeNamed(n) || null;
+// Every theme comes in a light and a dark version. A name can pin one -- `paper:dark`, which is also what a retired
+// dark theme maps to -- and otherwise the version follows the phone's own choice in Appearance, or the phone itself.
+const RETIRED = (DATA.retired && DATA.retired.themes) || {};
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+export const lookMode = () => S.state.settings.mode || "auto";
+export const darkNow = () => lookMode() === "dark" || (lookMode() !== "light" && darkQuery.matches);
+/** A theme by name: in the version asked for, else the one its name pins, else the one the phone is in now. */
+export const themeNamed = (n, dark = null) => (n && (pickTheme(DATA, n, dark, darkNow()) || B.brandThemeNamed(n))) || null;
+/** Every theme, each in the version the phone is in now. */
+export const looks = () => DATA.themes.map(t => themeNamed(t.name));
 // a course's members wear the course on every screen unless they chose a look of their own; a company stays on its rounds
 const clubTheme = () => {
   if (S.state.settings.themeChosen) return null;
   const c = B.myBrands().find(x => x.kind !== "company");
   return c ? B.brandTheme(B.brandById(c.id) || c) : null;
 };
-export const appTheme = () => clubTheme() || themeNamed(S.state.settings.theme) || themeNamed("hagolf") || DATA.themes[0];
+// light or dark picked in Appearance beats the version an old theme name pins; left to the phone, the pin holds
+export const appTheme = () => clubTheme() || themeNamed(S.state.settings.theme, lookMode() === "auto" ? null : darkNow()) || themeNamed("paper");
 export const leagueTheme = g => (g && (B.brandTheme(B.brandOfLeague(g)) || themeNamed(g.theme))) || null;
 export const themeFor = g => leagueTheme(g) || appTheme();
 export const themeForRound = rid => B.brandTheme(B.brandOfRound(rid)) || S.leaguesOfRound(rid).map(leagueTheme).find(Boolean) || appTheme();
@@ -496,16 +504,24 @@ export function themeHere() {
   return appTheme();
 }
 let painted = null;
+/** The screen in a theme: its colours, its two faces, its corners and its icon stroke, and its own touches in app.css. */
 export function paint(t) {
-  if (!t || !t.ui || t.name === painted) return;
-  painted = t.name;
-  const root = document.documentElement;
-  for (const [k, v] of Object.entries(t.ui)) if (k !== "scheme") root.style.setProperty(`--${k}`, v);
+  const key = t && `${t.name}:${t.mode || "light"}`;
+  if (!t || !t.ui || key === painted) return;
+  painted = key;
+  const root = document.documentElement, h = t.HOUSE || {}, r = Math.min(16, Math.max(2, Math.round(6 * (h.radius ?? 1))));
+  const vars = { ...t.ui, fd: `"${t.DISPLAY}", sans-serif`, ft: `"${t.TEXT}", sans-serif`, r: `${r}px`, "r-s": `${Math.max(2, Math.round(r * 0.66))}px`,
+    "r-xs": `${Math.max(2, Math.round(r / 2))}px`, isw: (h.icons || 1.9) / 1.9, icap: (h.radius ?? 1) > 0.3 ? "round" : "square", ijoin: (h.radius ?? 1) > 0.3 ? "round" : "miter" };
+  for (const [k, v] of Object.entries(vars)) if (k !== "scheme") root.style.setProperty(`--${k}`, v);
   root.style.colorScheme = t.ui.scheme;
-  root.dataset.theme = t.name;
+  root.dataset.theme = t.name.split("·")[0];
+  root.dataset.mode = t.mode || "light";
+  root.toggleAttribute("data-caps", !!h.caps);
+  if (t.fonts) loadFonts(t.fonts);
   const meta = document.querySelector("meta[name=theme-color]");
   if (meta) meta.content = t.ui.bg;
 }
+darkQuery.addEventListener("change", () => { if (lookMode() === "auto") paint(themeHere()); });
 /** What the account brings to the look: the mark, and a course's theme unless the phone chose its own. */
 export function applyBrand() {
   setMarkText(null);
@@ -514,52 +530,42 @@ export function applyBrand() {
   paint(themeHere());
   B.refreshBrands().then(() => { painted = null; paint(themeHere()); });
 }
-/** One chip a look, its swatch drawn from that theme's own tokens. */
+/** One chip a look, its swatch drawn from that theme's own tokens and set in its own display face. */
 export function tchip(input, t, label, on) {
-  return `<label class="tchip ${on ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK}">
+  return `<label class="tchip ${on ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK};--tfd:'${t.DISPLAY}'">
     ${input}<span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(label)}</label>`;
 }
-export const FAMILIES = DATA.families || [{ key: "other", name: "Every look", blurb: "" }];
-export const themesIn = key => DATA.themes.filter(t => (t.family || "other") === key);
-/** A strip of one sliver per look, the family seen at a glance. */
-export const familyStrip = themes => `<span class="fstrip">${themes.map(t => `<i style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT}"></i>`).join("")}</span>`;
+/** A strip of one sliver per look, the set seen at a glance. */
+export const swatchStrip = themes => `<span class="fstrip">${themes.map(t => `<i style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT}"></i>`).join("")}</span>`;
 // A picker shows what this account may use and nothing else: a look it does not hold is absent, not a padlock
 // wearing a price. What is missing is one button at the foot instead, and that button opens the shop over the
 // screen rather than sending the phone to the Shop tab and losing its place. `keep` are the looks already
 // chosen, which stay on the list however they were come by -- a league keeps wearing what it was given.
-const looksIn = (key, keep) => themesIn(key).filter(t => E.canTheme(t.name) || keep.includes(t.name));
+const usable = keep => looks().filter(t => E.canTheme(t.name) || keep.includes(t.name));
 const looksMissing = keep => DATA.themes.filter(t => !E.canTheme(t.name) && !keep.includes(t.name)).length;
 /** A button that opens the shop over whatever is on screen; `skus` is what it should open on. */
 export const shopBtn = (label, skus = "themes") => `<button class="btn soft wide shopmore" type="button" data-shop="${esc([].concat(skus).join(","))}">${esc(label)}</button>`;
-const moreLooks = keep => { const n = looksMissing(keep); return n ? shopBtn(`${plural(n, "more look")} in the shop`) : ""; };
+const moreLooks = keep => { const n = looksMissing(keep); return n ? shopBtn(`${plural(n, "more theme")} in the shop`) : ""; };
 document.addEventListener("click", async ev => {
   const b = ev.target.closest("[data-shop]");
   if (!b || b.disabled) return;
   b.disabled = true;
   try { await (await import("./screens/shop.js")).shopOver(b.dataset.shop.split(",")); } finally { b.disabled = false; }
 });
-/** A hundred looks are ten folded families, each opened only when it holds the pick; `chip` draws one look. */
-function familyFolds(chip, isOpen, keep = []) {
-  return FAMILIES.map(f => {
-    const ts = looksIn(f.key, keep);
-    if (!ts.length) return "";
-    return `<details class="tfam" ${ts.some(isOpen) ? "open" : ""}><summary>${familyStrip(ts)}<span class="fname">${esc(f.name)}</span><span class="muted small">${ts.length}</span></summary>
-      <div class="tgrid">${ts.map(chip).join("")}</div></details>`;
-  }).join("");
-}
+// each chip names its theme in that theme's own display face
+const lookGrid = (chip, keep = []) => { loadFonts(DATA.fonts); return `<div class="tgrid">${usable(keep).map(chip).join("")}</div>`; };
 export function themeChips(selected) {
-  return familyFolds(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name)),
-    t => selected.includes(t.name), selected) + moreLooks(selected);
+  return lookGrid(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name)), selected) + moreLooks(selected);
 }
 /** What the folded look row says it is set to: the swatches, then the name or how many. */
 const lookSays = sel => {
-  const ts = sel.map(themeNamed).filter(Boolean);
-  return `${familyStrip(ts)}<span class="fname">${ts.length === 1 ? esc(ts[0].name) : plural(ts.length, "look")}</span>`;
+  const ts = sel.map(n => themeNamed(n)).filter(Boolean);
+  return `${swatchStrip(ts)}<span class="fname">${ts.length === 1 ? esc(ts[0].name) : plural(ts.length, "theme")}</span>`;
 };
 /**
- * A hundred looks are a screen of their own, and on a screen that is really about something else they are a
- * wall to scroll past. So they fold to one row that says what is set, and open on a tap -- or already open
- * when more than one look is ticked, which is never what the row alone could say.
+ * On a screen that is really about something else the looks are a grid to scroll past, so they fold to one row
+ * that says what is set, and open on a tap -- or already open when more than one is ticked, which is never what
+ * the row alone could say.
  */
 export const themePicker = (selected, note = "") => `<details class="lookfold" ${selected.length > 1 ? "open" : ""}>
   <summary>${lookSays(selected)}</summary>
@@ -576,9 +582,10 @@ export function bindLook(el, onPick = null) {
 }
 
 export function themeRadios(name, sel, dflt = null) {
-  const none = dflt ? `<div class="tgrid">${tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel)}</div>` : "";
-  return none + familyFolds(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === sel ? "checked" : ""}>`, t, t.name, t.name === sel),
-    t => t.name === sel, sel ? [sel] : []) + moreLooks(sel ? [sel] : []);
+  const none = dflt ? tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel) : "";
+  const base = sel && String(RETIRED[sel] || sel).split(":")[0];
+  loadFonts(DATA.fonts);
+  return `<div class="tgrid">${none}${usable(base ? [base] : []).map(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === base ? "checked" : ""}>`, t, t.name, t.name === base)).join("")}</div>` + moreLooks(base ? [base] : []);
 }
 export function bindChips(el, onPick = null) {
   if (!el) return;

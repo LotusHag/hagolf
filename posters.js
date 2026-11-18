@@ -341,7 +341,7 @@ export function bothBoards(M, T) {
 
 /**
  * How the holes played. The three panels share one x axis -- the hole number -- so they are one block and
- * never split across columns; what the family changes here is the paper, the headline numbers and the
+ * never split across columns; what the theme changes here is the paper, the headline numbers and the
  * words. The width comes from the hole count, as it always has.
  */
 export function holesPoster(M, T) {

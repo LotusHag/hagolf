@@ -20,6 +20,17 @@ export async function loadFonts(fonts) {
   await Promise.all(jobs);
 }
 
+/**
+ * A theme from the build's list: `name:dark` for its dark version, a retired name for the theme it became. `dark`
+ * forces a version; otherwise a pinned one holds, and an unpinned name takes `phoneDark`.
+ */
+export function pickTheme(data, ref, dark = null, phoneDark = false) {
+  const [name, pinned] = String((data.retired && data.retired.themes[ref]) || ref).split(":");
+  const base = data.themes.find(t => t.name === name);
+  if (!base) return null;
+  return dark ?? (pinned ? pinned === "dark" : phoneDark) ? { ...base, ...base.dark, mode: "dark" } : base;
+}
+
 export function makeTheme(t) {
   const T = { ...t };
   T.OUTCOMES = [["Birdie or better", T.UNDER], ["Par", T.PAR], ["Bogey", T.BOGEY], ["Double or worse", T.DOUBLE]];
@@ -61,7 +72,7 @@ function fromHsl(hue, sat, l) {
 }
 
 /**
- * The tokens a theme file does not write down, mixed from the ones it does, so all hundred looks have them
+ * The tokens a theme file does not write down, mixed from the ones it does, so every theme has them
  * in their own colours rather than in a colour borrowed from somewhere else. A theme that names any of
  * these keeps what it named: this only fills the gaps, exactly as build.py fills the screen's `ui` palette.
  *
@@ -99,79 +110,42 @@ function derive(T) {
   put("SERIES", [T.ACCENT, T.BAR, mix(T.BAR, T.BG, 0.42), mix(T.ACCENT, T.BG, 0.45), mix(T.BAR, T.INK, 0.38)]);
 }
 
+// The hand-operated board's own colours, the same in both versions of the theme that draws on it
+const BOARD = { cell: "#FBFAF4", ink: "#1A1A1A", under: "#C8102E", over: "#006747" };
+
 export function on(T, fill) {
   return lum(fill) > 0.30 ? T.TEXT_ON_LIGHT : T.TEXT_ON_DARK;
 }
 
-// ---------------------------------------------------------------- the house style of a family
-/**
- * A theme brings colour and type; its family brings a house style. The same poster, drawn by the same code, wears
- * a different rule under the title, a different podium chip, its own corner radius and its own way of separating
- * rows, so the ten collections are told apart at a glance without any of them stopping being the same poster.
- * Everything here is chrome: no number, no column and no scorecard glyph changes with the family.
- */
-const CHROME = {
-  club:      { rule: "double", chip: "pill",   radius: 1.3,  band: "tint", kicker: "caps", caps: true,  section: "tick" },
-  broadcast: { rule: "slab",   chip: "square", radius: 0.15, band: "tint", kicker: "tag",  caps: true,  section: "under" },
-  editor:    { rule: "thin",   chip: "box",    radius: 0.35, band: "rule", kicker: "text", caps: false, section: "tick" },
-  seasons:   { rule: "line",   chip: "circle", radius: 1.6,  band: "tint", kicker: "text", caps: false, section: "plain" },
-  print:     { rule: "dashed", chip: "bare",   radius: 0,    band: "rule", kicker: "caps", caps: false, section: "under" },
-  retro:     { rule: "stub",   chip: "circle", radius: 1.9,  band: "tint", kicker: "tag",  caps: true,  section: "tick" },
-  night:     { rule: "glow",   chip: "pill",   radius: 1.4,  band: "edge", kicker: "caps", caps: true,  section: "under" },
-  minimal:   { rule: "hair",   chip: "bare",   radius: 0.25, band: "tint", kicker: "text", caps: true,  section: "plain" },
-  colours:   { rule: "dots",   chip: "box",    radius: 1.7,  band: "tint", kicker: "tag",  caps: true,  section: "tick" },
-  national:  { rule: "flags",  chip: "square", radius: 0.5,  band: "edge", kicker: "caps", caps: true,  section: "plain" },
-};
-
-/**
- * The other half of a family's house style: not how a shape is drawn but where it goes on the page.
- *
- *  `page`     the sheet itself -- how wide, and in how many columns the blocks flow (sheet.js PAGES)
- *  `flow`     the order blocks are laid in: as the poster listed them, charts before tables, or the other way
- *  `tiles`    where the headline numbers sit and what they look like: a row of panels, a thin strip, a list
- *             down the side, or up inside the header band where the summary text would otherwise be
- *  `surface`  what a block sits on: the panel tint, a wash of the accent, or nothing at all
- *  `palette`  one chart colour for every bar, one from SERIES per row, or the two accents alternating
- *  `prose`    how much writing survives: every word, the first two sentences, or none but the labels
- *  `legends`  whether a colour key is drawn next to a chart that has one
- *  `density`  a multiplier on row heights, so a sparse family breathes and a dense one fits more
- */
-const LAYOUT = {
-  club:      { page: "tall",     flow: "asis",        tiles: "row",    surface: "panel", palette: "one",    prose: "full",  legends: true,  density: 1 },
-  broadcast: { page: "wide",     flow: "charts",      tiles: "header", surface: "panel", palette: "duo",    prose: "short", legends: true,  density: 0.95 },
-  editor:    { page: "broad",    flow: "tables",      tiles: "list",   surface: "none",  palette: "series", prose: "full",  legends: true,  density: 0.92 },
-  seasons:   { page: "portrait", flow: "charts",      tiles: "row",    surface: "wash",  palette: "series", prose: "full",  legends: true,  density: 1.08 },
-  print:     { page: "portrait", flow: "tables",      tiles: "list",   surface: "none",  palette: "one",    prose: "full",  legends: true,  density: 1 },
-  retro:     { page: "poster",   flow: "charts",      tiles: "row",    surface: "wash",  palette: "duo",    prose: "short", legends: true,  density: 1.12 },
-  night:     { page: "wide",     flow: "charts",      tiles: "header", surface: "wash",  palette: "series", prose: "none",  legends: true,  density: 1 },
-  minimal:   { page: "tall",     flow: "asis",        tiles: "strip",  surface: "none",  palette: "one",    prose: "none",  legends: false, density: 1.05 },
-  colours:   { page: "broad",    flow: "charts",      tiles: "row",    surface: "wash",  palette: "series", prose: "short", legends: true,  density: 1 },
-  national:  { page: "tall",     flow: "tables",      tiles: "row",    surface: "panel", palette: "duo",    prose: "full",  legends: true,  density: 1 },
-};
-
-const HOUSE = Object.fromEntries(Object.keys(CHROME).map(k => [k, { ...CHROME[k], ...LAYOUT[k] }]));
-const PLAIN = { rule: "line", chip: "box", radius: 1, band: "tint", kicker: "caps", caps: true, section: "plain",
+// ---------------------------------------------------------------- the house style of a theme
+// A theme brings colour, type and a house style, in its file's HOUSE: the rule under the title, the podium chip, the
+// corner radius, how rows are separated, how a score against par is marked, and where everything goes on the page
+// (`page`, `flow`, `tiles`, `surface`, `palette`, `prose`, `legends`, `density`; sheet.js carries those out).
+// STYLEGUIDE.md lists every value. Anything a theme leaves out is drawn the plain way.
+const PLAIN = { rule: "line", chip: "box", radius: 1, band: "tint", kicker: "caps", caps: true, section: "plain", glyph: "classic",
   page: "tall", flow: "asis", tiles: "row", surface: "panel", palette: "one", prose: "full", legends: true, density: 1 };
+const HOUSES = new WeakMap();
 
-/** The house style a theme draws in. A theme with no family, or one this build does not know, gets the plain one. */
 export const house = T => {
-  const h = (T && HOUSE[T.family]) || PLAIN;
-  if (!isPhone(T)) return h;
-  // a phone has no room beside the title for headline figures, nor beside each figure in a strip for its label
-  if (!PHONE_HOUSE.has(h)) PHONE_HOUSE.set(h, { ...h, page: "phone", tiles: h.tiles === "header" || h.tiles === "strip" ? "row" : h.tiles });
-  return PHONE_HOUSE.get(h);
+  const own = (T && T.HOUSE) || PLAIN;
+  if (!HOUSES.has(own)) {
+    const h = { ...PLAIN, ...own };
+    // a phone has no room beside the title for headline figures, nor beside each figure in a strip for its label
+    HOUSES.set(own, [h, { ...h, page: "phone", tiles: h.tiles === "header" || h.tiles === "strip" ? "row" : h.tiles }]);
+  }
+  return HOUSES.get(own)[isPhone(T) ? 1 : 0];
 };
-const PHONE_HOUSE = new Map();
+const isDark = T => lum(T.BG) < 0.2;
 
 // The phone version: 1080 px at the poster DPI, about a CSS pixel per point, so type floors are 9, 11 and 14 pt.
 export const PHONE_W = 5.4;
 export const phone = T => ({ ...T, PHONE: true });
 export const isPhone = T => !!(T && T.PHONE);
-/** Upper case where the family sets its titles in caps, as typed where it does not. */
+/** Upper case where the theme sets its titles in caps, as typed where it does not. */
 export const caps = (T, s) => house(T).caps ? String(s).toUpperCase() : String(s);
 
 /**
- * How much of a written explanation this family keeps. `full` is every word, `short` its first two
+ * How much of a written explanation this theme keeps. `full` is every word, `short` its first two
  * sentences -- the rule and nothing else -- and `none` drops it, leaving the labels to do the work.
  * The first sentence of every footer in this app says the rule, which is what makes the cut safe.
  */
@@ -183,7 +157,7 @@ export function prose(T, text) {
   return m ? m[0].trim() : text;
 }
 
-/** A small note beside a chart or a column head: dropped by the families that keep no prose. */
+/** A small note beside a chart or a column head: dropped by the themes that keep no prose. */
 export const note = (T, s) => house(T).prose === "none" ? "" : s;
 
 /** The colour a chart row takes: one series colour for everything, one each, or the two accents in turn. */
@@ -214,6 +188,11 @@ export class Fig {
     this.ctx.fillStyle = T.BG;
     this.ctx.fillRect(0, 0, W, H);
     this.ctx.lineJoin = "round";
+    if (house(T).grid) {
+      const g = mix(T.BG, T.ACCENT, isDark(T) ? 0.12 : 0.08);
+      for (let x = 0.2; x < wIn; x += 0.2) this.line(x, 0, x, hIn, g, 0.5);
+      for (let y = 0.2; y < hIn; y += 0.2) this.line(0, y, wIn, y, g, 0.5);
+    }
   }
 
   px(v) { return v * this.dpi; }
@@ -315,6 +294,18 @@ export class Fig {
     ctx.setLineDash([]);
   }
 
+  /** A filled (and optionally stroked) polygon through points given in inches. */
+  poly(pts, fc, { ec = null, lw = 0, alpha = 1 } = {}) {
+    const ctx = this.ctx;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => i ? ctx.lineTo(this.px(x), this.px(y)) : ctx.moveTo(this.px(x), this.px(y)));
+    ctx.closePath();
+    if (fc && fc !== "none") { ctx.fillStyle = fc; ctx.fill(); }
+    if (ec && lw) { ctx.strokeStyle = ec; ctx.lineWidth = lw / 72 * this.dpi; ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+
   disc(cx, cy, d, fc) {
     const ctx = this.ctx;
     ctx.beginPath();
@@ -323,13 +314,15 @@ export class Fig {
     ctx.fill();
   }
 
-  circle(cx, cy, d, ec, lw) {
+  circle(cx, cy, d, ec, lw, dash = null) {
     const ctx = this.ctx;
     ctx.beginPath();
     ctx.strokeStyle = ec;
     ctx.lineWidth = lw / 72 * this.dpi;
+    ctx.setLineDash(dash ? dash.map(v => v / 72 * this.dpi) : []);
     ctx.arc(this.px(cx), this.px(cy), this.px(d / 2), 0, Math.PI * 2);
     ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   square(cx, cy, s, ec, lw) {
@@ -417,13 +410,17 @@ export function kicker(fig, x, y, s, maxW = fig.w - x - MARGIN * fig.w) {
   const T = fig.T, k = house(T).kicker;
   s = brandKick(s);
   if (k === "text") return void fig.text(x, y - 0.01, fig.clip(s, maxW, 11), { size: 11, color: T.ACCENT, va: "top" });
-  if (k === "tag") {
-    s = fig.clip(s.toUpperCase(), maxW - 0.17, 9, { family: "display" });
-    const w = fig.measure(s, 9, "display") + 0.17;
-    fig.rbox(x, y - 0.02, w, 0.20, T.ACCENT, 0.03);
-    fig.text(x + 0.085, y + 0.08, s, { size: 9, family: "display", color: on(T, T.ACCENT), va: "center" });
+  if (k === "tag" || k === "tag2" || k === "slant") {
+    const fill = k === "tag2" ? T.ACCENT_2 : T.ACCENT, lean = k === "slant" ? 0.06 : 0;
+    s = fig.clip(s.toUpperCase(), maxW - 0.17 - 2 * lean, 9, { family: "display" });
+    const w = fig.measure(s, 9, "display") + 0.17 + 2 * lean;
+    if (lean) fig.poly([[x + lean, y - 0.02], [x + w, y - 0.02], [x + w - lean, y + 0.18], [x, y + 0.18]], fill);
+    else fig.rbox(x, y - 0.02, w, 0.20, fill, 0.03);
+    fig.text(x + 0.085 + lean, y + 0.08, s, { size: 9, family: "display", color: on(T, fill), va: "center" });
     return;
   }
+  // engraved: spaced capitals in the gilt
+  if (k === "caps2") return void fig.text(x, y, fig.clip([...s.toUpperCase()].join("\u200A"), maxW, 12, { family: "display" }), { size: 12, family: "display", color: T.ACCENT_2, va: "top" });
   fig.text(x, y, fig.clip(s.toUpperCase(), maxW, 12, { family: "display" }), { size: 12, family: "display", color: T.ACCENT, va: "top" });
 }
 
@@ -441,6 +438,42 @@ export function headerRule(fig, y) {
     case "thin": fig.line(M, y, R, y, T.ACCENT, 1.0); break;
     // three bands the width of a flag, in the theme's own three
     case "flags": { const seg = (R - M) / 3; [T.ACCENT, T.INK_3, T.BAR].forEach((c, i) => fig.rbox(M + i * seg, y - 0.03, seg - 0.04, 0.06, c, 0.006)); break; }
+    case "bar2": fig.rbox(M, y - 0.045, R - M, 0.09, T.ACCENT_2, 0); break;
+    case "press": fig.line(M, y - 0.02, R, y - 0.02, T.INK, 3.2); fig.line(M, y + 0.05, R, y + 0.05, T.INK, 0.9); break;
+    case "heavy": fig.rbox(M, y - 0.05, R - M, 0.1, T.INK, 0); break;
+    case "gilt": fig.line(M, y - 0.025, R, y - 0.025, T.ACCENT_2, 0.9); fig.line(M, y + 0.025, R, y + 0.025, T.ACCENT_2, 0.9); break;
+    // three bands, orange, mustard and teal, the clubhouse carpet
+    case "stripes": [T.ACCENT, T.UNDER, T.ACCENT_2].forEach((c, i) => fig.rbox(M, y - 0.085 + i * 0.06, R - M, 0.045, c, 0.01)); break;
+    // a woven sett: the ground, a wide stripe and a fine overcheck, repeated across
+    case "tartan": {
+      fig.rbox(M, y - 0.07, R - M, 0.14, T.ACCENT_2, 0);
+      for (let x = M; x < R; x += 0.24) {
+        fig.rbox(x + 0.06, y - 0.07, Math.min(0.1, R - x - 0.06), 0.14, T.ACCENT, 0);
+        if (x + 0.21 < R) fig.rbox(x + 0.19, y - 0.07, 0.02, 0.14, T.UNDER, 0);
+      }
+      fig.rbox(M, y - 0.012, R - M, 0.024, T.UNDER, 0, { alpha: 0.75 });
+      break;
+    }
+    case "skew": {
+      const e = M + (R - M) * 0.3;
+      fig.poly([[M, y + 0.04], [M + 0.05, y - 0.04], [e + 0.05, y - 0.04], [e, y + 0.04]], T.ACCENT);
+      fig.line(e + 0.1, y + 0.02, R, y + 0.02, T.LINE, 1.0);
+      break;
+    }
+    // a dimension line: ticks at both ends and the architect's slashes where it meets them
+    case "dimension": {
+      fig.line(M, y, R, y, T.INK_3, 0.8);
+      for (const x of [M, R]) { fig.line(x, y - 0.07, x, y + 0.07, T.INK_3, 0.8); fig.line(x - 0.04, y + 0.04, x + 0.04, y - 0.04, T.INK_3, 1.4); }
+      break;
+    }
+    case "neon": {
+      const ctx = fig.ctx, g = ctx.createLinearGradient(fig.px(M), 0, fig.px(R), 0);
+      g.addColorStop(0, T.ACCENT); g.addColorStop(1, T.ACCENT_2);
+      if (isDark(T)) { ctx.shadowColor = T.ACCENT; ctx.shadowBlur = fig.px(0.08); }
+      fig.line(M, y, R, y, g, 2.4);
+      ctx.shadowBlur = 0;
+      break;
+    }
     default: fig.line(M, y, R, y, T.ACCENT, 1.6);
   }
 }
@@ -687,6 +720,31 @@ export function posChip(ax, x, y, place, size = 1.0, fontsize = 13) {
     ax.text(x, y, String(place), { size: fontsize, family: "display", color: T.INK_2, ha: "center", va: "center" });
     return;
   }
+  const cx = ax.X(x), cy = ax.Y(y), fig = ax.fig, d = Math.min(Math.abs(ax.DY(size * 0.76)), Math.abs(ax.DX(size * 0.9)));
+  if (shape === "plain" || shape === "giant") {   // no chip: the number alone, the leader in the accent
+    const big = shape === "giant" ? fontsize * 1.4 : fontsize;
+    return void ax.text(x, y, String(place), { size: big, family: "display", color: place === 1 ? T.ACCENT : T.INK_2, ha: "center", va: "center" });
+  }
+  if (shape === "ordinal") {   // written out, as on an honours board
+    const suf = { 1: "st", 2: "nd", 3: "rd" }[place];
+    return void ax.text(x, y, `${place}${suf}`, { size: fontsize, family: "text", color: place === 1 ? T.ACCENT : T.INK_2, ha: "center", va: "center" });
+  }
+  if (shape === "cell") {   // a white board cell, the medal as a bar along its foot
+    fig.rbox(cx - d / 2, cy - d / 2, d, d, BOARD.cell, 0, { ec: T.LINE, lw: 0.6 });
+    fig.rbox(cx - d / 2, cy + d / 2 - d * 0.14, d, d * 0.14, fc, 0);
+    return void fig.text(cx, cy - d * 0.06, String(place), { size: fontsize, family: "display", color: BOARD.ink, ha: "center", va: "center" });
+  }
+  if (shape === "frame") {
+    fig.rbox(cx - d / 2, cy - d / 2, d, d, null, 0, { ec: fc, lw: 1.3 });
+    return void fig.text(cx, cy, String(place), { size: fontsize - 1, family: "display", color: place === 1 ? T.ACCENT : T.INK_2, ha: "center", va: "center" });
+  }
+  if (shape === "pennant" || shape === "slant") {
+    const w = d * 1.15, h = d * 0.86, l = d * 0.2;
+    const pts = shape === "pennant" ? [[cx - w / 2, cy - h / 2], [cx + w / 2, cy], [cx - w / 2, cy + h / 2]]
+      : [[cx - w / 2 + l, cy - h / 2], [cx + w / 2, cy - h / 2], [cx + w / 2 - l, cy + h / 2], [cx - w / 2, cy + h / 2]];
+    fig.poly(pts, fc);
+    return void fig.text(shape === "pennant" ? cx - w * 0.2 : cx, cy, String(place), { size: fontsize - (shape === "pennant" ? 2 : 0), family: "display", color: on(T, fc), ha: "center", va: "center" });
+  }
   if (shape === "bare") {   // no chip at all: the number itself takes the medal, over a short rule of it
     ax.text(x, y, String(place), { size: fontsize + 1, family: "display", color: fc, ha: "center", va: "center" });
     const w = ax.UX(0.14);
@@ -694,8 +752,6 @@ export function posChip(ax, x, y, place, size = 1.0, fontsize = 13) {
     return;
   }
   if (shape === "circle" || shape === "square") {   // drawn square on paper, so the axes' own scale cannot stretch it
-    const d = Math.min(Math.abs(ax.DY(size * 0.76)), Math.abs(ax.DX(size * 0.9)));
-    const cx = ax.X(x), cy = ax.Y(y);
     if (shape === "circle") ax.fig.disc(cx, cy, d, fc);
     else ax.fig.rbox(cx - d / 2, cy - d / 2, d, d, fc, 0);
   } else {
@@ -711,7 +767,7 @@ export function posChip(ax, x, y, place, size = 1.0, fontsize = 13) {
 export function rowBand(ax, x, y, w, h, i, r = 0.08) {
   const T = ax.fig.T, band = house(T).band;
   if (band === "none") return;
-  if (band === "rule") return void ax.line(x, y, x + w, y, T.LINE, 0.6);
+  if (band === "rule" || band === "dash") return void ax.line(x, y, x + w, y, T.LINE, 0.6, band === "dash" ? [3, 2.5] : null);
   if (i % 2 !== 1) return;
   ax.rbox(x, y, w, h, T.PANEL, r);
   if (band === "edge") ax.rbox(x, y, ax.UX(0.05), h, T.ACCENT, 0, { alpha: 0.7 });
@@ -747,16 +803,39 @@ export function legend(ax, x, y, items, fontsize = 8, sw = 0.028, sh = 0.018, pa
 
 /** Scorecard notation. `cell` is the glyph size in x data units; glyphs are drawn square in inches. */
 export function scoreGlyph(ax, x, y, cell, delta, text, fontsize = 15, lw = 1.6, ink = null, colors = null) {
-  const T = ax.fig.T, fig = ax.fig;
+  const T = ax.fig.T, fig = ax.fig, style = house(T).glyph;
   // `colors` stands in for T.OUTCOMES' four, so a partner's sheet keeps to the partner's own palette
   const col = colors ? colors[outcome(delta)] : T.OUTCOMES[outcome(delta)][1];
-  const cx = ax.X(x), cy = ax.Y(y), cellIn = ax.DX(cell);
-  if (delta < 0) {
-    for (let k = 0; k < (delta <= -2 ? 2 : 1); k++) fig.circle(cx, cy, cellIn * (0.68 + 0.18 * k), col, lw);
-  } else if (delta > 0) {
-    for (let k = 0; k < (delta >= 2 ? 2 : 1); k++) fig.square(cx, cy, cellIn * (0.66 + 0.18 * k), col, lw);
+  const cx = ax.X(x), cy = ax.Y(y), c = ax.DX(cell), two = delta <= -2 || delta >= 2;
+  let color = ink || T.INK;
+  if (style === "board") {   // the hand-hung board: every score in a white cell, red under par and green over
+    fig.rbox(cx - c * 0.42, cy - c * 0.42, c * 0.84, c * 0.84, BOARD.cell, 0, { ec: T.LINE, lw: 0.5 });
+    color = delta < 0 ? BOARD.under : delta > 0 ? BOARD.over : BOARD.ink;
+  } else if (style === "agate") {   // no shapes: the figure in the score's colour under par, a rule under any double
+    if (delta < 0) color = col;
+    if (two) fig.line(cx - c * 0.22, cy + c * 0.3, cx + c * 0.22, cy + c * 0.3, col, lw);
+  } else if (style === "blob" || style === "tile") {   // filled: a disc or a square in the score's own colour
+    if (delta) {
+      const sz = c * (style === "blob" ? 0.74 : 0.7);
+      if (style === "blob") fig.disc(cx, cy, sz, col); else fig.rbox(cx - sz / 2, cy - sz / 2, sz, sz, col, 0);
+      if (two) { if (style === "blob") fig.circle(cx, cy, sz + c * 0.16, col, lw * 0.8); else fig.square(cx, cy, sz + c * 0.16, col, lw * 0.8); }
+      color = on(T, col);
+    }
+  } else if (style === "bar") {   // a bar under the figure, twice as heavy for a double or an eagle
+    if (delta) fig.rbox(cx - c * 0.26, cy + c * 0.28, c * 0.52, c * (two ? 0.1 : 0.05), col, 0);
+  } else if (style === "neon") {   // outlined in the score's colour, a double filled faintly too
+    if (delta) {
+      const sz = c * 0.7;
+      if (two) fig.rbox(cx - sz / 2, cy - sz / 2, sz, sz, col, 0, { alpha: 0.22 });
+      fig.square(cx, cy, sz, col, lw * 0.8);
+      color = col;
+    }
+  } else {   // classic rings and boxes, or drafted ones: the first ring dashed and every line finer
+    const drawn = style === "drawn", w = drawn ? lw * 0.7 : lw;
+    if (delta < 0) for (let k = 0; k < (two ? 2 : 1); k++) fig.circle(cx, cy, c * (0.68 + 0.18 * k), col, w, drawn && !k ? [2.2, 1.6] : null);
+    else if (delta > 0) for (let k = 0; k < (two ? 2 : 1); k++) fig.square(cx, cy, c * (0.66 + 0.18 * k), col, w);
   }
-  if (text) fig.text(cx, cy, text, { size: fontsize, family: "display", color: ink || T.INK, ha: "center", va: "center" });
+  if (text) fig.text(cx, cy, text, { size: fontsize, family: "display", color, ha: "center", va: "center" });
 }
 
 export function glyphLegend(ax, x, y, cell = 0.6, fontsize = 8, step = null, par = 4) {

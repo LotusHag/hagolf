@@ -111,7 +111,7 @@ function drawLines(fig, x, y, t, { color, ha = "center", weight } = {}) {
   fig.text(x, y, t.lines.join("\n"), { size: t.size, family: "display", weight, color: color || fig.T.INK, ha, va: "top", lineSpacing: LINE });
 }
 
-// ---------------------------------------------------------------- shapes the family's corner radius must not touch
+// ---------------------------------------------------------------- shapes the theme's corner radius must not touch
 function rr(fig, x, y, w, h, r, fill, { stroke = null, lw = 0, alpha = 1 } = {}) {
   const c = fig.ctx, X = fig.px(x), Y = fig.px(y), W = fig.px(w), H = fig.px(h), R = Math.min(fig.px(r), W / 2, H / 2);
   c.globalAlpha = alpha;

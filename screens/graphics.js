@@ -4,7 +4,7 @@
 import * as S from "../store.js";
 import * as E from "../entitlements.js";
 import * as B from "../brand.js";
-import { page, bind, esc, go, toast, plural, courseBy, noCourse, themePicker, bindLook, themeNamed, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, sizedLooks, sizedName, shopBtn, app, ICONS } from "../ui.js";
+import { page, bind, esc, go, toast, plural, courseBy, noCourse, themePicker, bindLook, themeNamed, darkNow, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, sizedLooks, sizedName, shopBtn, app, ICONS } from "../ui.js";
 import { compute, leagueStats } from "../model.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster } from "../posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster, statsExtrasPoster } from "../statsposters.js";
@@ -69,6 +69,19 @@ const sized = (jobs, T, label, make) => {
   for (const [Tz, tag] of sizedLooks(T)) jobs.push({ label: sizedName(label, tag), make: () => make(Tz) });
 };
 const sizeCount = () => S.imageSize() === "both" ? 2 : 1;
+// Light, dark or both, for this session: until one is picked, the version the phone is in now. Both names the
+// dark one `_dark`, so the pair sits side by side like a Both pair of sizes.
+let imgMode = null;
+const modeNow = () => imgMode || (darkNow() ? "dark" : "light");
+const modeField = () => `<h2>Light or dark</h2><div class="eseg gsize" role="group" aria-label="Light or dark">${[["light", "Light"], ["dark", "Dark"], ["both", "Both"]].map(([k, l]) =>
+  `<button type="button" data-act="imode" data-m="${k}" class="${modeNow() === k ? "on" : ""}" aria-pressed="${modeNow() === k}">${l}</button>`).join("")}</div>`;
+const pickMode = b => {
+  imgMode = b.dataset.m;
+  b.parentElement.querySelectorAll("button").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); });
+};
+const modeCount = () => modeNow() === "both" ? 2 : 1;
+/** A look in each version asked for, with the tag its files carry. */
+const versionsOf = tn => (modeNow() === "both" ? [false, true] : [modeNow() === "dark"]).map(d => [makeTheme(themeNamed(tn, d)), modeNow() === "both" && d ? "_dark" : ""]);
 
 const bindGrid = (grid, after = null) => grid && grid.addEventListener("change", ev => {
   const t = ev.target.closest(".gtile");
@@ -138,13 +151,14 @@ export function graphics(rid) {
     </div>
     ${missing.length ? shopBtn("More images in the shop", missing) : ""}
     ${sizeField()}
+    ${brand ? "" : modeField()}
     <h2>Look</h2>
     ${brand ? brandLook(brand, brandT || themeForRound(rid)) : themePicker(themes, themeLeague ? `${esc(themeLeague.name)} is set to ${esc(themeLeague.theme)}.` : "")}
     <div id="out"></div>`;
   page("Images", body, { back: `#review/${rid}`, bar: `<button class="btn primary" data-act="generate">Generate images</button>`, sub: r.name });
   let everything = false;   // "every look" is a one-off, not a choice to offer again on the next round
   const count = () => {
-    const want = ticked("g"), looks = Math.max(ticked("theme").length, 1) * sizeCount();
+    const want = ticked("g"), looks = Math.max(ticked("theme").length, 1) * sizeCount() * (brand ? 1 : modeCount());
     const perCard = k => k === "cards" || k.startsWith("bs:personal:");
     return looks * (want.filter(k => !perCard(k)).length + want.filter(perCard).length * ticked("card").length);
   };
@@ -163,6 +177,7 @@ export function graphics(rid) {
       return;
     }
     if (b.dataset.act === "size") { pickSize(b); paint(); return; }
+    if (b.dataset.act === "imode") { pickMode(b); paint(); return; }
     if (b.dataset.act !== "generate") return;
     const want = ticked("g");
     const chosen = brand ? themes : ticked("theme").filter(n => E.canTheme(n) || themes.includes(n));
@@ -175,11 +190,10 @@ export function graphics(rid) {
     if (!chosen.length) return toast("Pick at least one look");
     S.setImageChoice(everything || themeLeague || brand ? { kinds: want } : { kinds: want, themes: chosen });
     const jobs = [];
-    for (const tn of chosen) {
+    for (const tn of chosen) for (const [T, vtag] of brand ? [[makeTheme(themeNamed(tn)), ""]] : versionsOf(tn)) {
       const prefix = chosen.length > 1 ? `${tn}/` : "";
       const tier = boardTier;
-      const T = makeTheme(themeNamed(tn));
-      const add = (label, make) => sized(jobs, T, `${prefix}${label}`, make);
+      const add = (label, make) => sized(jobs, T, `${prefix}${sizedName(label, vtag)}`, make);
       if (want.includes("gross")) add("1_leaderboard_gross.png", Tz => grossLeaderboard(M, Tz, tier));
       if (want.includes("stbl")) add("2_leaderboard_stableford.png", Tz => stablefordLeaderboard(M, Tz, tier));
       if (want.includes("holes") && tier === "full") add("3_holes.png", Tz => holesPoster(M, Tz));
@@ -254,12 +268,13 @@ export function leagueImages(gid) {
     </div>` : `<p class="muted small gsays">The season pack makes the sheets above: how the society scores, the nines walked, and one image a player.</p>
       ${shopBtn("See what the season pack makes", "season")}`}
     ${sizeField()}
+    ${brand ? "" : modeField()}
     <h2>Look</h2>
     ${brand ? brandLook(brand, brandT || themeFor(g)) : themePicker(themes, leagueTheme(g) ? `${esc(g.name)} is set to ${esc(g.theme)}.` : "")}
     <div id="out"></div>`,
     { back: `#league/${gid}`, sub: g.name, bar: `<button class="btn primary" data-act="generate">Generate images</button>` });
   const count = () => {
-    const want = ticked("gi"), looks = Math.max(ticked("theme").length, 1) * sizeCount();
+    const want = ticked("gi"), looks = Math.max(ticked("theme").length, 1) * sizeCount() * (brand ? 1 : modeCount());
     return looks * (want.filter(v => v !== "stats:players" && !v.startsWith("bs:")).length + bsOf(want).length * formats.length + (want.includes("stats:players") ? ticked("sp").length : 0));
   };
   const paint = wireLive(count, whose, () => ticked("gi").includes("stats:players"));
@@ -270,6 +285,7 @@ export function leagueImages(gid) {
     if (!b) return;
     if (b.dataset.act === "tick-all") { tickAll(["gi", "sp", "theme"]); S.setImageChoice({ league: ticked("gi") }); paint(); return; }
     if (b.dataset.act === "size") { pickSize(b); paint(); return; }
+    if (b.dataset.act === "imode") { pickMode(b); paint(); return; }
     if (b.dataset.act !== "generate") return;
     const want = ticked("gi");
     const pids = want.includes("stats:players") ? ticked("sp") : [];
@@ -281,10 +297,9 @@ export function leagueImages(gid) {
     if (want.includes("stats:players") && !pids.length) return toast("Pick at least one player under Whose sheets");
     if (!chosen.length) return toast("Pick at least one look");
     const jobs = [];
-    for (const tn of chosen) {
+    for (const tn of chosen) for (const [T0, vtag] of brand ? [[makeTheme(themeNamed(tn)), ""]] : versionsOf(tn)) {
       const prefix = chosen.length > 1 ? `${tn}/` : "";
-      const T0 = makeTheme(themeNamed(tn));
-      const add = (label, make) => sized(jobs, T0, `${prefix}${label}`, make);
+      const add = (label, make) => sized(jobs, T0, `${prefix}${sizedName(label, vtag)}`, make);
       for (const { style } of bsOf(want)) formats.forEach(f => add(`0_society_${f}_${style}.png`, T => leagueSheet(standingsFor(g, Ms, members, f), g, T, f, style)));
       formats.filter(f => want.includes(`standings:${f}`)).forEach((f, k) =>
         add(`${4 + k}_standings_${f}.png`, T => standingsPoster(standingsFor(g, Ms, members, f), g, T, f)));

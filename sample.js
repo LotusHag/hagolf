@@ -157,13 +157,13 @@ const HALYARD_WORDMARK = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="
 export const SAMPLE_BRANDS = {
   course: {
     id: "sample-course", kind: "course", name: "Heron's Reach Golf Club", logo: HERON_CREST,
-    palette: { base: "fairway", ACCENT: "#E9D18A" },
+    palette: { base: "masters:dark", ACCENT: "#E9D18A" },
     template: { kicker: "Heron's Reach", mark: "heronsreach.golf", foot: "Book your next round at the pro shop or online",
       link: "https://example.com/heronsreach", date: true },
   },
   company: {
     id: "sample-company", kind: "company", name: "Halyard & Finch", logo: HALYARD_WORDMARK,
-    palette: { base: "slate", ACCENT: "#C8553D" },
+    palette: { base: "swiss", ACCENT: "#C8553D" },
     template: { kicker: "Halyard & Finch Golf Day", mark: "halyardfinch.com", foot: "Thank you for playing with us — see you next year",
       date: true },
   },
@@ -171,7 +171,7 @@ export const SAMPLE_BRANDS = {
 
 // ---------------------------------------------------------------- three invented clubs, three looks
 // For the courses page: how far one contract's look can go. Each club is made up, logo and links included, and
-// each takes a quiet palette over a base with its own typeface, its own house rules, sheet styles and words.
+// each takes its own palette over a base with its own typeface, its own house rules, sheet styles and words.
 
 // A heater shield in taupe, a lark in the stone chief, a pin on the downs below.
 const LARKHOLT_SHIELD = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
@@ -207,28 +207,28 @@ const MILLSTONE_SEAL = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="24
   <circle cx="120" cy="120" r="11" fill="#2E3236"/>
 </svg>`);
 
-// A wren cocking its tail on a reed, a hairline, and the name set wide: charcoal and muted brass on ivory.
+// A wren cocking its tail on a reed, a hairline, and the name set wide: Atlantic blue and gorse yellow on sea mist.
 const WRENMERE_WORDMARK = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="140" viewBox="0 0 640 140">
-  <path d="M14 112 H118" stroke="#8C6E43" stroke-width="3" stroke-linecap="round"/>
-  <g fill="#262422">
+  <path d="M14 112 H118" stroke="#1D63A3" stroke-width="3" stroke-linecap="round"/>
+  <g fill="#0F2A3D">
     <ellipse cx="60" cy="82" rx="30" ry="21" transform="rotate(-12 60 82)"/>
     <circle cx="36" cy="66" r="14"/>
     <path d="M76 70 C84 54 92 38 102 24 Q110 24 114 30 C106 46 100 64 94 84 Z"/>
     <path d="M24 64 L8 68 L24 70 Z"/>
   </g>
-  <path d="M50 78 C62 70 76 74 84 84 C70 88 58 86 50 78 Z" fill="#8C6E43"/>
-  <circle cx="33" cy="63" r="2.4" fill="#F7F3EA"/>
-  <path d="M54 101 L52 112 M64 101 L64 112" stroke="#262422" stroke-width="3" stroke-linecap="round"/>
-  <path d="M150 26 V114" stroke="#8C6E43" stroke-width="1.5"/>
-  <text x="182" y="80" font-family="'Century Gothic', Futura, 'Trebuchet MS', Arial, sans-serif" font-size="54" letter-spacing="14" fill="#262422">WRENMERE</text>
-  <text x="185" y="112" font-family="'Century Gothic', Futura, 'Trebuchet MS', Arial, sans-serif" font-size="20" letter-spacing="9" fill="#8C6E43">LINKS  ·  EST. 1904</text>
+  <path d="M50 78 C62 70 76 74 84 84 C70 88 58 86 50 78 Z" fill="#F2B33D"/>
+  <circle cx="33" cy="63" r="2.4" fill="#F5FAFB"/>
+  <path d="M54 101 L52 112 M64 101 L64 112" stroke="#0F2A3D" stroke-width="3" stroke-linecap="round"/>
+  <path d="M150 26 V114" stroke="#1D63A3" stroke-width="1.5"/>
+  <text x="182" y="80" font-family="'Century Gothic', Futura, 'Trebuchet MS', Arial, sans-serif" font-size="54" letter-spacing="14" fill="#0F2A3D">WRENMERE</text>
+  <text x="185" y="112" font-family="'Century Gothic', Futura, 'Trebuchet MS', Arial, sans-serif" font-size="20" letter-spacing="9" fill="#1D63A3">LINKS  ·  EST. 1904</text>
 </svg>`);
 
 /** Three invented clubs, each with the names its sample sheets carry (`showcase`) and the styles it opens on. */
 export const SHOWCASE_CLUBS = [
   {
     id: "showcase-larkholt", kind: "course", name: "Larkholt Golf Club", logo: LARKHOLT_SHIELD,
-    palette: { base: "silverware", BG: "#E8E2D6", PANEL: "#F3EFE7", PANEL_2: "#DDD6C9", LINE: "#C9C0B1", ACCENT: "#6E5F4F",
+    palette: { base: "honours", BG: "#E8E2D6", PANEL: "#F3EFE7", PANEL_2: "#DDD6C9", LINE: "#C9C0B1", ACCENT: "#6E5F4F",
       INK: "#2A2520", INK_2: "#4F4840", INK_3: "#6B635A", SILVER: "#A9A59D", BRONZE: "#A3805F", BAR: "#6E5F4F" },
     template: { kicker: "Members' Section", mark: "Larkholt GC · Est. 1912", foot: "Tee times from the starter's hut or the members' line",
       link: "https://example.com/larkholt", date: true, titles: { stbl: "Monthly Medal", standings: "Order of Merit" } },
@@ -237,7 +237,7 @@ export const SHOWCASE_CLUBS = [
   },
   {
     id: "showcase-millstone", kind: "course", name: "Millstone Heath Golf Club", logo: MILLSTONE_SEAL,
-    palette: { base: "carbon", BG: "#25282B", PANEL: "#2F3337", PANEL_2: "#3A3E43", LINE: "#4C5157", ACCENT: "#D8CBB0",
+    palette: { base: "swiss:dark", BG: "#25282B", PANEL: "#2F3337", PANEL_2: "#3A3E43", LINE: "#4C5157", ACCENT: "#D8CBB0",
       INK: "#F1ECE2", INK_2: "#CBC5BA", INK_3: "#A29C92", SILVER: "#B7BBC0", BRONZE: "#B39470", BAR: "#8E8676" },
     template: { kicker: "On the Heath", mark: "millstoneheath · since 1898", foot: "Winter greens from November · visitors welcome midweek",
       date: false, titles: { stbl: "Heath Points", standings: "The Heath Ladder" } },
@@ -246,8 +246,8 @@ export const SHOWCASE_CLUBS = [
   },
   {
     id: "showcase-wrenmere", kind: "course", name: "Wrenmere Links", logo: WRENMERE_WORDMARK,
-    palette: { base: "typewriter", BG: "#F7F3EA", PANEL: "#FFFDF8", PANEL_2: "#EEE8DC", LINE: "#DCD4C5", ACCENT: "#8C6E43",
-      INK: "#262422", INK_2: "#4A4642", INK_3: "#6E6862", SILVER: "#A7A6A1", BRONZE: "#A87E55", BAR: "#3A3735" },
+    palette: { base: "links", BG: "#E4EFF1", PANEL: "#F5FAFB", PANEL_2: "#D3E4E8", LINE: "#B5CDD3", ACCENT: "#1D63A3",
+      INK: "#0F2A3D", INK_2: "#2F4A5C", INK_3: "#557083", SILVER: "#9FB0BA", BRONZE: "#D9913D", BAR: "#1D63A3" },
     template: { kicker: "The Links Card", mark: "example.com/wrenmere", foot: "Scan to book the links",
       link: "https://example.com/wrenmere", date: false, titles: { stbl: "The Links Stableford", standings: "Links Table" } },
     styles: { league: "ticket", personal: "banner", dayout: "banner" },

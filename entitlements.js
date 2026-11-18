@@ -11,8 +11,12 @@
 import * as A from "./auth.js";
 import { DATA } from "./data.js";
 
-export const FREE_THEMES = ["hagolf", "paper"];
-const familyOf = name => { const t = DATA.themes.find(t => t.name === name); return (t && t.family) || "other"; };
+export const FREE_THEMES = ["paper"];
+// what was bought before the hundred themes became ten: an old theme holds the one it maps to, a collection the
+// ones its old themes map to
+const R = DATA.retired || { themes: {}, collections: {} };
+const heldBefore = (name, s) => [...s].some(k => k.startsWith("theme:") ? (R.themes[k.slice(6)] || "").split(":")[0] === name
+  : k.startsWith("collection:") && (R.collections[k.slice(11)] || []).includes(name));
 export const FORMAT_SKU = { match: "matchplay", matchpts: "matchplay", soccer: "matchplay", soccerpts: "matchplay", gp: "grandprix", gpstroke: "grandprix" };
 
 export const enforced = () => { const a = A.account(); return !!(a && a.shop); };
@@ -24,7 +28,7 @@ export function has(sku) {
   return s.has("pass") || s.has(sku);
 }
 
-export const canTheme = name => FREE_THEMES.includes(name) || has("themes") || has(`collection:${familyOf(name)}`) || has(`theme:${name}`);
+export const canTheme = name => FREE_THEMES.includes(name) || has("themes") || has(`theme:${name}`) || (enforced() && heldBefore(name, skus()));
 export const boardTier = () => has("boards") ? "full" : "basic";
 export const cardTier = () => has("card") ? "full" : "basic";
 export const formatAllowed = f => !FORMAT_SKU[f] || has(FORMAT_SKU[f]);

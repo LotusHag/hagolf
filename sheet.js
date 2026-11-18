@@ -13,17 +13,17 @@ export const PAGES = {
   poster: { w: 13.0, cols: 1, gap: 0 },       // one column, but wide enough to set everything larger
   broad: { w: 14.0, cols: 2, gap: 0.55 },
   wide: { w: 16.5, cols: 2, gap: 0.62 },      // landscape: the clubhouse wall, or a screen
-  phone: { w: PHONE_W, cols: 1, gap: 0 },     // the phone version, whatever the family: one column, upright
+  phone: { w: PHONE_W, cols: 1, gap: 0 },     // the phone version, whatever the theme: one column, upright
 };
 
-// The page a family falls back to when a poster cannot use the one it would have chosen: a single table
+// The page a theme falls back to when a poster cannot use the one it would have chosen: a single table
 // has no business in two columns, and two boards meant to sit side by side have no business in one.
 const AS_ONE = { portrait: "portrait", tall: "tall", poster: "poster", broad: "poster", wide: "poster" };
 const AS_TWO = { portrait: "wide", tall: "wide", poster: "wide", broad: "broad", wide: "wide" };
 
 /**
  * The sheet this poster gets. `minCols`/`maxCols` are the poster's own say in it -- how many columns its
- * content can bear -- and the family chooses freely inside that.
+ * content can bear -- and the theme chooses freely inside that.
  */
 export function pageOf(T, { minCols = 1, maxCols = 9 } = {}) {
   if (isPhone(T)) return PAGES.phone;   // two boards meant to sit side by side stand one above the other
@@ -41,7 +41,7 @@ const HEAD_IN = 0.32;
 /**
  * One piece of a poster.
  *
- *  `kind`  what it is, so a family that wants its charts first can say so without naming them: one of
+ *  `kind`  what it is, so a theme that wants its charts first can say so without naming them: one of
  *          "tiles", "chart", "table", "note".
  *  `minW`  the narrowest column it will survive in. A block wider than the column it was flowed into
  *          takes a full-width row of its own instead, which is how a nine-column table stays readable
@@ -211,7 +211,7 @@ export const headingIn = HEAD_IN;
 const TILE_H = 0.95;
 
 /**
- * The readings a poster should be legible from across the room, in whichever shape the family wears them:
+ * The readings a poster should be legible from across the room, in whichever shape the theme wears them:
  * a row of panels, one thin strip, a list down the column, or -- handled by `sheet` rather than here --
  * up in the header band. `items` are [big, label, colour?].
  */
@@ -261,7 +261,7 @@ export function tilesBlock(T, items) {
 // ---------------------------------------------------------------- the sheet itself
 /**
  * Draws one poster. `head` is { title, kicker, sub, right, foot, tiles }; `tiles` are the headline numbers,
- * which land in the header band or as the first block depending on the family. Blocks may be null, so a
+ * which land in the header band or as the first block depending on the theme. Blocks may be null, so a
  * poster can list a block it does not always have without guarding every entry.
  */
 export function sheet(T, head, blocks, opts = {}) {

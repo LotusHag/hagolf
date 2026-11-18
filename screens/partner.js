@@ -7,7 +7,7 @@ import * as A from "../auth.js";
 import * as B from "../brand.js";
 import { DATA } from "../data.js";
 import { page, bind, esc, go, toast, ui, plural, fmtDate, avatar, sheet, confirmSheet, alertSheet, saveFiles, subtabs, sect, courseTitle, makeTheme,
-  qrHtml, shareLink, appBase, applyBrand, FAMILIES, themesIn, ICONS, app } from "../ui.js";
+  qrHtml, shareLink, appBase, applyBrand, ICONS, app } from "../ui.js";
 import { loadFonts } from "../draw.js";
 import { BRAND_STYLES, dayOutSheet, personalSheet, leagueSheet } from "../brandsheets.js";
 import { showcaseRound, showcaseLeague } from "../sample.js";
@@ -321,7 +321,8 @@ const PANES = {
 
   async look(pane, C) {
     const t = C.template || {}, f = new Set(C.contract.fields), pal = C.palette || {};
-    const base = pal.base || C.theme || "hagolf", baseT = DATA.themes.find(x => x.name === base) || DATA.themes[0];
+    const baseT = B.baseTheme(pal.base) || B.baseTheme(C.theme) || DATA.themes[0], base = baseT.mode === "dark" ? `${baseT.name}:dark` : baseT.name;
+    const houseOf = n => n && (DATA.retired.houses[n] || n);
     const has = k => f.has(k);
     const lock = (what, tiers) => `<p class="muted small lockline">${ICONS.lock} ${esc(what)} come with ${tiers}.</p>`;
     const courses = new Set(C.courses || []);
@@ -330,7 +331,7 @@ const PANES = {
         <div class="btnrow"><label class="btn small">${ICONS.image} ${C.logo ? "Change" : "Upload"}<input type="file" accept="image/*" id="logofile" hidden></label>${C.logo ? `<button type="button" class="btn small" data-act="logo-clear">Remove</button>` : ""}</div></div></div>
         <label>Name<input name="name" value="${esc(C.name)}" maxlength="80"></label></div>
       <div class="card"><div class="name">Colours</div>
-        <label>Start from<select name="base">${FAMILIES.map(fm => `<optgroup label="${esc(fm.name)}">${themesIn(fm.key).map(x => `<option value="${x.name}" ${x.name === base ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</optgroup>`).join("")}</select></label>
+        <label>Start from<select name="base">${DATA.themes.flatMap(x => [[x.name, x.name], [`${x.name}:dark`, `${x.name}, dark`]]).map(([v, l]) => `<option value="${v}" ${v === base ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
         <div class="two"><label>Accent<input type="color" name="ACCENT" value="${esc(pal.ACCENT || baseT.ACCENT)}"></label><label>Background<input type="color" name="BG" value="${esc(pal.BG || baseT.BG)}"></label></div>
         <div class="two"><label>Panels<input type="color" name="PANEL" value="${esc(pal.PANEL || baseT.PANEL)}"></label><label>Writing<input type="color" name="INK" value="${esc(pal.INK || baseT.INK)}"></label></div></div>
       <div class="card"><div class="name">What the sheets say</div>
@@ -343,7 +344,7 @@ const PANES = {
             `<label><input type="checkbox" name="kinds" value="${k}" ${!t.kinds || t.kinds.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>` : lock("A footer line, a QR code, the date and the choice of images", "Clubhouse and Signature")}
         ${has("titles") ? `<label>Own titles <span class="muted">(leave empty for ours)</span></label><div class="two">${[["stbl", "Stableford board"], ["gross", "Gross board"], ["both", "Both boards"], ["holes", "The holes"], ["standings", "Society standings"]].map(([k, l]) =>
             `<label>${l}<input name="title-${k}" maxlength="50" value="${esc((t.titles || {})[k] || "")}"></label>`).join("")}</div>
-          <label>House style<select name="house"><option value="">The look's own</option>${FAMILIES.map(fm => `<option value="${fm.key}" ${t.house === fm.key ? "selected" : ""}>${esc(fm.name)}</option>`).join("")}</select></label>` : has("foot") ? lock("Your own titles and house style", "Signature") : ""}</div>
+          <label>House style<select name="house"><option value="">The look's own</option>${DATA.themes.map(x => `<option value="${x.name}" ${houseOf(t.house) === x.name ? "selected" : ""}>Drawn like ${esc(x.name)}</option>`).join("")}</select></label>` : has("foot") ? lock("Your own titles and house style", "Signature") : ""}</div>
       <div class="card"><div class="name">Your own sheets</div><p class="muted small">Few words and your logo at the centre. The style each one opens on; anyone making images can still pick another.</p>
         <div class="two">${[["dayout", "Day out board"], ["personal", "Personal card"], ["league", "Society table"]].map(([k, l]) =>
           `<label>${l}<select name="style-${k}">${BRAND_STYLES[k].map(s => `<option value="${s.key}" ${(t.styles || {})[k] === s.key ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>`).join("")}</div></div>
@@ -368,7 +369,7 @@ const PANES = {
     const collect = () => {
       const fd = new FormData(form), v = k => String(fd.get(k) || "").trim();
       const palette = { base: v("base") };
-      const bt = DATA.themes.find(x => x.name === palette.base) || baseT;
+      const bt = B.baseTheme(palette.base) || baseT;
       for (const k of ["ACCENT", "BG", "PANEL", "INK"]) if (v(k).toUpperCase() !== String(bt[k]).toUpperCase()) palette[k] = v(k).toUpperCase();
       const template = { kicker: v("kicker"), mark: v("mark"), foot: v("foot"), link: v("link"), date: fd.get("date") === "on", kinds: has("kinds") ? fd.getAll("kinds") : undefined, house: v("house"),
         titles: Object.fromEntries(["stbl", "gross", "both", "holes", "standings"].map(k => [k, v(`title-${k}`)]).filter(([, x]) => x)),
@@ -455,10 +456,8 @@ const DESKS = {
     const pick = (sku, label, extra = "") => `<label><input type="checkbox" name="sku" value="${esc(sku)}"> ${esc(label)}${extra}</label>`;
     pane.innerHTML = `<form id="givef"><div class="dgrid">
       <div class="card"><div class="name">What</div><div class="checks">${cat.skus.map(s => pick(s.sku, s.name, ` <span class="muted small">${esc(s.blurb || "")}</span>`)).join("")}</div>
-        <p class="muted small">Or a collection, or single themes:</p>
-        ${cat.collections.map(c => `<details class="tfam"><summary><span class="fname">${esc(c.name)}</span><span class="muted small">${c.themes.length}</span></summary><div class="checks">
-          ${pick(c.sku, `The whole ${c.name.toLowerCase()} collection`)}
-          ${cat.themes.filter(t => t.family === c.key).map(t => pick(t.sku, t.name)).join("")}</div></details>`).join("")}</div>
+        <p class="muted small">Or single themes:</p>
+        <div class="checks">${cat.themes.map(t => pick(t.sku, t.name)).join("")}</div></div>
       <div class="card"><div class="name">To whom</div>
         <div class="segpick"><button type="button" data-act="mode" data-m="emails" class="${ui.giveMode !== "codes" ? "on" : ""}">Addresses</button><button type="button" data-act="mode" data-m="codes" class="${ui.giveMode === "codes" ? "on" : ""}">Codes</button></div>
         ${ui.giveMode === "codes" ? `<div class="two"><label>How many codes<input name="count" inputmode="numeric" value="1"></label><label>Uses each<input name="uses" inputmode="numeric" value="1"></label></div>

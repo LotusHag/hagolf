@@ -7,7 +7,7 @@
 import * as A from "./auth.js";
 import * as S from "./store.js";
 import { DATA } from "./data.js";
-import { setBrand } from "./draw.js";
+import { setBrand, pickTheme } from "./draw.js";
 
 const KEY = "hagolf.brands";
 let cache = {};
@@ -63,7 +63,7 @@ export function screenPalette(t) {
   const ui = Object.fromEntries(Object.entries(SCREEN_SCORES).map(([k, v]) => [k, dark ? mix(v, ink, 0.32) : v]));
   return Object.assign(ui, {
     bg, card: t.PANEL, card2: t.PANEL_2, line: t.LINE, line2: mix(t.LINE, ink, 0.14), ink, ink2: t.INK_2, ink3: t.INK_3,
-    green: t.ACCENT, "green-dark": mix(t.ACCENT, "#000000", 0.20), "green-soft": mix(t.ACCENT, bg, 0.86), "green-ink": on(t.ACCENT),
+    green: t.ACCENT, green2: t.ACCENT_2 || t.ACCENT, "green-dark": mix(t.ACCENT, "#000000", 0.20), "green-soft": mix(t.ACCENT, bg, 0.86), "green-ink": on(t.ACCENT),
     "green-hi": readable(ui.gold, t.ACCENT, on(t.ACCENT)), bronze: t.BRONZE, "on-bronze": on(t.BRONZE),
     "on-ink": on(ink), "on-double": on(ui.double), "on-gold": on(ui.gold),
     "gold-soft": mix(SCREEN_SCORES.gold, bg, 0.86), "gold-ink": dark ? ui.gold : mix(SCREEN_SCORES.gold, "#000000", 0.55),
@@ -73,15 +73,18 @@ export function screenPalette(t) {
 
 const BUILT = new Map();
 export const brandThemeNamed = n => BUILT.get(n) || null;
+// a partner saved before the hundred themes became ten names an old base, or an old family for its house style
+const R = DATA.retired || { themes: {}, houses: {} };
+export const baseTheme = n => (n && pickTheme(DATA, n)) || null;
 /** The theme a partner wears: its palette over its base, or its chosen theme as it is. Null when it has neither. */
 export function brandTheme(b) {
   if (!b) return null;
-  const base = DATA.themes.find(t => t.name === (b.palette && b.palette.base)) || DATA.themes.find(t => t.name === b.theme);
+  const base = baseTheme(b.palette && b.palette.base) || baseTheme(b.theme);
   if (!base) return null;
   const over = Object.fromEntries(Object.entries(b.palette || {}).filter(([k, v]) => k !== "base" && /^#[0-9A-F]{6}$/i.test(v)));
-  const fam = b.template && b.template.house && (DATA.families || []).some(f => f.key === b.template.house) ? b.template.house : null;
-  if (!Object.keys(over).length && !fam) return base;
-  const t = { ...base, ...over, family: fam || base.family, name: `${base.name}·${b.id}`, blurb: b.name };
+  const hn = b.template && b.template.house, drawn = hn ? baseTheme(R.houses[hn] || hn) : null;
+  if (!Object.keys(over).length && !drawn) return base;
+  const t = { ...base, ...over, HOUSE: (drawn || base).HOUSE, name: `${base.name}·${b.id}`, blurb: b.name, mode: undefined };
   t.ui = screenPalette(t);
   BUILT.set(t.name, t);
   return t;

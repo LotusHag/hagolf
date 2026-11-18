@@ -32,8 +32,8 @@ function load() {
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
   if (!st.settings.deviceId) st.settings.deviceId = uid();
   // `themes` was the last set ticked on a graphics screen. The setting that replaced it dresses the whole app,
-  // so a phone that never chose one starts on hagolf, the look it already had, rather than its last render.
-  if (!st.settings.theme) st.settings.theme = "hagolf";
+  // so a phone that never chose one starts on paper, the default, rather than its last render.
+  if (!st.settings.theme) st.settings.theme = "paper";
   delete st.settings.themes;
   for (const r of st.rounds) {
     r.entries = r.entries || [];
