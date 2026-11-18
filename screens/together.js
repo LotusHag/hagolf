@@ -83,7 +83,7 @@ export async function joinCard(code) {
       <div class="muted small">${esc(c ? courseTitle(c) : r.course)} · ${esc(fmtDate(r.date))}</div></div>
     ${mine ? `<p>You're already on this card as <b>${esc(mine.name)}</b>.</p><button class="btn primary wide" data-act="go">Score it</button>`
       : `<h2>Which one is you?</h2>
-        <div class="list">${free.map(s => `<button data-act="seat" data-seat="${esc(s.id)}"><div><div class="name">${esc(s.name)}</div>${s.proposed ? `<div class="muted small">they think this is you</div>` : ""}</div><span class="chev">›</span></button>`).join("")}</div>
+        <div class="list">${free.map(s => `<button data-act="seat" data-seat="${esc(s.id)}"><div class="name">${esc(s.name)}</div><span class="chev">›</span></button>`).join("")}</div>
         <button class="btn wide" data-act="addme">I'm not on it yet: add me</button>`}
     <p class="muted small center">You'll score this card with them, live, until it's saved.</p>`, { back: "#home", bell: false });
   bind(async ev => {

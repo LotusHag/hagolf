@@ -325,7 +325,7 @@ function roundChartBlock(T, rounds, label, perHole) {
 
 /**
  * The round chart on a phone: columns while every date and figure fits its own column at a size that reads,
- * and one row a round, newest at the foot, once a season has more rounds than the width has columns.
+ * and one row a round, newest at the once a season has more rounds than the width has columns.
  */
 function phoneRoundChart(T, rounds, label, perHole, { val, fld, any, best }) {
   const d = dense(T), n = rounds.length;
@@ -548,17 +548,10 @@ export function statsFieldPoster(St, group, T, { extras = false } = {}) {
     ...Object.keys(F.byPar).sort().map(k => [`Par ${k}`, F.byPar[k].vspar, `${fix(F.byPar[k].pts, 2)} pts  ·  ${F.byPar[k].holes} holes`]),
     ...F.bands.map((b, i) => b.holes ? [BANDS[i], b.vspar, `${fix(b.pts, 2)} pts  ·  ${b.holes} holes`] : null).filter(Boolean),
   ];
-  const foot = `Every hole the society's own players have walked: ${F.holes} holes over ${F.rounds} rounds on ${F.cards} cards. ` +
-    `Points are Stableford, so 2 a hole is playing to handicap. The thirds split the holes by stroke index, so the hardest third of a ` +
-    `nine is its three lowest-index holes; those are also where the strokes are given, which is why they usually pay the most points. ` +
-    (P.cards.length > 1 ? `The season runs left to right, one column a card and one line a player, with the whole field dashed behind them${P.perHole ? `; this society mixes nine- and eighteen-hole rounds, so that chart counts points a hole` : ""}. ` : "") +
-    `Only the society's own players count, so a guest never moves a figure.` +
-    (F.statline.any ? ` The readings along the bottom are only from the players who keep them, over the ${F.statline.holes} holes they kept them for, so they say nothing about the rest of the field.` : "");
   return sheet(T, {
     title: "How this society scores", kicker: group.name,
     sub: `${F.cards} cards  ·  ${F.rounds} rounds  ·  ${dateSpan(St.rounds)}`,
     right: `${F.players} players  ·  ${F.holes} holes walked\nA round is worth ${fix(F.avgPts)} points`,
-    foot,
     tiles: [
       [`${share(parOrBetter(F.counts), F.holes)}%`, "par or better", T.ACCENT],
       [fmtSigned(F.vspar, 2), "a hole against par"],
@@ -589,10 +582,6 @@ export function statsNinesPoster(N, group, T) {
     return { name, cells, cards, avgPts: cards ? played.reduce((a, c) => a + c.avgPts * c.cards, 0) / cards : 0 };
   }).sort((a, b) => b.avgPts - a.avgPts || a.name.localeCompare(b.name));
   const cards = N.reduce((a, l) => a + l.cards, 0);
-  const foot = `Each loop lifted out of its round and scored again on its own stroke index and its own course rating, whether it was ` +
-    `walked on its own or as half of an eighteen, which is the only way an average over both means anything: a loop walked inside an 18 ` +
-    `usually scores a point or so differently from the same loop alone, and that is the point. Points are Stableford, so 18 over nine ` +
-    `holes is playing to handicap; the small figures under each average are the gross and the number of cards it is taken over.`;
 
   // one bar per loop: what a card on it is worth, with what it is gone round in underneath
   const chartIn = 2.35 * dense(T);
@@ -652,7 +641,7 @@ export function statsNinesPoster(N, group, T) {
     title: "The nines walked", kicker: group.name,
     sub: `${N.length} loop${N.length === 1 ? "" : "s"}  ·  ${cards} nine-hole card${cards === 1 ? "" : "s"}`,
     right: "Each loop on its own rating\nand its own stroke index",
-    foot, tiles: null,
+    tiles: null,
   }, [loops, grid]);
 }
 
@@ -732,21 +721,13 @@ export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
   }
   if (p.bands[0].holes >= 6 && R.bands[0] && R.bands[0].holes >= 6) add("Points, hardest third", p.bands[0].pts, R.bands[0].pts, v => fix(v, 2));
 
-  const foot = (vs.length ? `${p.name} on the left of each track, everyone else in ${group.name} on the right, over exactly the ` +
-    `${p.played} round${p.played === 1 ? "" : "s"} they were there for, so neither side is measured on a day the other missed. The track is filled ` +
-    `in the proportion of the two figures, and the accent colour marks ${first}'s side when it is the better one, whichever direction the number runs. `
-    : `${first} has not yet shared a round in this society with anyone else, so there is nothing to measure against. `) +
-    (perHole ? "This society mixes nine- and eighteen-hole rounds, so the round chart counts points a hole. " : "") +
-    "Only the society's own players count, so a guest never moves a figure." +
-    (band.length ? ` The last block is only the holes where ${first} and somebody else both wrote the same thing down, which is why it counts fewer holes than everything above it.`
-      : mineX.length ? ` The last block is ${first}'s own putts and fairways over the ${p.statline.holes} holes that answered them. Nobody else in this society has kept the same readings, so there is nothing to set them against.` : "");
   const right = [`${fix(p.avgPts)} points a round`,
     [p.wins ? `${p.wins} win${p.wins === 1 ? "" : "s"}` : "", p.avgPlace ? `${ordinal(Math.round(p.avgPlace))} on average in this society` : ""].filter(Boolean).join("  ·  ")];
 
   return sheet(T, {
     title: p.name, kicker: group.name,
     sub: `${p.played} round${p.played === 1 ? "" : "s"}  ·  ${p.holes} holes  ·  ${dateSpan(p.rounds)}`,
-    right: right.filter(Boolean).join("\n"), foot,
+    right: right.filter(Boolean).join("\n"), 
     tiles: [
       [p.played, `round${p.played === 1 ? "" : "s"}`],
       [fix(p.avgPts), "points a round", T.ACCENT],
@@ -764,6 +745,33 @@ export function statsPlayerPoster(St, p, group, T, { extras = false } = {}) {
       ? { ...pairRowsBlock(T, band, { title: "Putts, fairways and the rest", noteHead: `${first}  ·  the rest of the society`, labelW: 2.6 }), minW: 99 }
       : mineX.length ? bandBlock(T, "Putts, fairways and the rest", mineX,
         `${first} over ${p.statline.holes} hole${p.statline.holes === 1 ? "" : "s"}`) : null,
+  ]);
+}
+
+/**
+ * One golfer's own numbers across every round they played, in a society or none: the handicap, the average,
+ * the best and the form. There is no field to set them against here, so the sheet says only what is theirs.
+ */
+export function statsMinePoster(St, p, T, { extras = false, hi = null, name = p.name } = {}) {
+  const mineX = extras && p.statline.any ? statReadings(p.statline, { per18: true }).filter(r => !r.deep) : [];
+  const recent = p.rounds.slice(-10).map(r => ({ ...r, fieldPts: null }));
+  const perHole = new Set(recent.map(r => r.n)).size > 1;
+  const first = name.split(" ")[0];
+  return sheet(T, {
+    title: name, kicker: "Every round",
+    sub: `${p.played} round${p.played === 1 ? "" : "s"}  ·  ${p.holes} holes  ·  ${dateSpan(p.rounds)}`,
+    right: [`${fix(p.avgPts)} points a round`, p.bestPts === null ? "" : `best ${p.bestPts}`].filter(Boolean).join("\n"), 
+    tiles: [
+      ...(hi === null ? [] : [[fix(hi), "handicap index", T.ACCENT]]),
+      [fix(p.avgPts), "points a round", hi === null ? T.ACCENT : null],
+      [p.bestPts === null ? "–" : p.bestPts, "best round"],
+      [p.played, `round${p.played === 1 ? "" : "s"}`],
+      [`${share(parOrBetter(p.counts), p.holes)}%`, "par or better"],
+    ],
+  }, [
+    distributionBlock(T, p.counts, "Every hole"),
+    recent.length > 1 ? roundChartBlock(T, recent, `${perHole ? "Points a hole" : "Points"}, ${p.played > recent.length ? `last ${recent.length} rounds` : "round by round"}`, perHole) : null,
+    mineX.length ? bandBlock(T, "Putts, fairways and the rest", mineX, `${first} over ${p.statline.holes} hole${p.statline.holes === 1 ? "" : "s"}`) : null,
   ]);
 }
 
@@ -788,15 +796,10 @@ export function statsExtrasPoster(St, group, T) {
     });
   const deep = statReadings(St.field.statline, opts).filter(r => r.deep).slice(0, 5);
   const F = St.field.statline;
-  const foot = `Only what was actually written down: every figure counts the holes that answered it and no others, so a player who ` +
-    `started keeping putts halfway through a season is measured over the holes they kept them for, and the number under each ` +
-    `reading says which holes those were. A percentage waits for ${RATE_MIN} attempts before it is drawn as one; under that it stays ` +
-    `the fraction it is, and the accent colour marks the best in a column only where enough stands behind it. Greens in regulation, ` +
-    `up and down and sand saves are never asked for on the phone: they fall out of the strokes and the putts.`;
   return sheet(T, {
     title: "Putts, fairways and the rest", kicker: group.name,
     sub: `${who.length} player${who.length === 1 ? "" : "s"} keeping them  ·  ${F.holes} holes  ·  ${dateSpan(St.rounds)}`,
-    right: "Only the holes that answered\nEverything else left blank", foot,
+    right: "Only the holes that answered\nEverything else left blank", 
     tiles: statReadings(F, opts).filter(r => !r.deep).slice(0, 5).map(r => [r.big, r.name, r.key === "putts" ? T.ACCENT : null]),
   }, [
     statTableBlock(T, rows, cols, { title: "Player by player", tail: `${St.field.holes} holes walked in this society` }),

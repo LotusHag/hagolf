@@ -20,8 +20,8 @@ const keep = list => { try { localStorage.setItem(KEY, JSON.stringify(list.slice
 
 /** How many are waiting to be looked at. */
 export const unread = () => held().filter(n => !n.seen).length;
-/** The ones that ask for a tap: an invite, a request, a claim. What the bell's badge counts. */
-export const actionable = () => held().filter(n => !n.seen && ["league_invite", "friend_request", "claim_pending", "seat_proposed"].includes(n.kind)).length;
+/** The ones that ask for a tap: an invite or a request. What the bell's badge counts. */
+export const actionable = () => held().filter(n => !n.seen && ["league_invite", "friend_request"].includes(n.kind)).length;
 export const keyOf = n => `${n.kind}|${n.ref}`;
 
 let listeners = [];

@@ -125,7 +125,7 @@ export function players(rid, only = 0, keep = false) {
   const row = e => {
     const i = r.entries.indexOf(e);
     const info = seatInfo(r, c, e);
-    const sub = [e.accountId && e.accountId === me ? "you" : e.accountId ? "" : e.proposedAccount ? "asked" : "guest",
+    const sub = [e.accountId && e.accountId === me ? "you" : "",
       info.error || match ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", e.trackStats ? "advanced stats" : ""].filter(Boolean).join(" · ");
     const side = sidedMatch(fmt) ? `<div class="eseg sides">${["A", "B"].map(sd => `<button data-act="side" data-i="${i}" data-s="${sd}" class="${e.side === sd ? "on" : ""}">${sd}</button>`).join("")}</div>` : "";
     return `<div class="card who" data-i="${i}">
@@ -319,7 +319,11 @@ export async function addSheet(r, c) {
   const onCard = new Set(r.entries.map(e => e.contactId || e.playerId));
   const onCardAccounts = new Set(r.entries.map(e => e.accountId).filter(Boolean));
   const me = S.me();
-  const friends = F.held().friends.filter(f => !onCardAccounts.has(f.id) && f.id !== S.myAccount());
+  // friends first, whoever I played with last at the top
+  const lastWith = new Map();
+  for (const x of S.rounds()) for (const e of x.entries) if (e.accountId && (x.date || "") > (lastWith.get(e.accountId) || "")) lastWith.set(e.accountId, x.date || "");
+  const friends = F.held().friends.filter(f => !onCardAccounts.has(f.id) && f.id !== S.myAccount())
+    .sort((a, b) => (lastWith.get(b.id) || "").localeCompare(lastWith.get(a.id) || "") || a.name.localeCompare(b.name));
   const roster = S.players().filter(p => !onCard.has(p.id) && !(p.linkedAccount && onCardAccounts.has(p.linkedAccount)) && !friends.some(f => f.id === p.linkedAccount)).sort((a, b) => a.name.localeCompare(b.name));
   const line = (kind, id, name, sub) => `<button class="addrow" data-sheet="${kind}:${esc(id)}" data-q="${esc(name.toLowerCase())}">${avatar(name)}<span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="plus">+</span></button>`;
   const hiSub = hi => hi !== null && hi !== undefined ? `index ${fmtIndex(Number(hi))}` : "no index yet";
@@ -330,7 +334,7 @@ export async function addSheet(r, c) {
       ${friends.length ? `<p class="pickline">Friends</p>${friends.map(f => line("friend", f.id, f.name, hiSub(f.hi))).join("")}` : ""}
       ${roster.filter(p => !me || p.id !== me.id).length ? `<p class="pickline">Played with</p>${roster.filter(p => !me || p.id !== me.id).map(p => line("roster", p.id, p.name, hiSub(S.currentIndex(p)))).join("")}` : ""}
     </div>
-    <button class="addrow new" id="anew" data-sheet="new:" hidden><span class="plus">+</span><span><b id="anewname"></b><small>someone new</small></span></button>`,
+    <button class="addrow new" id="anew" data-sheet="new:" hidden><span class="plus">+</span><span><b id="anewname"></b><small>add to the card</small></span></button>`,
     onOpen: el => {
       const q = el.querySelector("#aq");
       q.addEventListener("input", () => {

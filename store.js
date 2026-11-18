@@ -611,7 +611,7 @@ export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, grou
     trackStats: trackStats === null ? (ghost ? !!ghost.trackStats : cardKeepsStats(round)) : !!trackStats,
     // The account goes on the seat when this contact is that golfer (me, or a friend I added from the list);
     // the server keeps it only with their consent and otherwise holds it as a proposal.
-    accountId: accountId !== undefined ? accountId : (p.linkedAccount || (ghost && ghost.accountId) || null), proposedAccount: null,
+    accountId: accountId !== undefined ? accountId : (p.linkedAccount || (ghost && ghost.accountId) || null),
     contactId: p.id, side, role: "player", members: [],
     penalties: [], updated_at: now() };
   round.entries.push(e);
@@ -637,7 +637,7 @@ export function removeEntry(r, i) {
 export function addTeam(round, n, { name, members = [], tee, courseHandicap = null, hi = 0, gender = "m", group = 1 }) {
   const id = "t" + uid().replace(/-/g, "").slice(0, 15);
   const e = { playerId: id, name, hi, tee, gender, courseHandicap, group, fromHole: 1, scores: new Array(n).fill(null), scoreTs: new Array(n).fill(null),
-    stats: new Array(n).fill(null), statsTs: new Array(n).fill(null), trackStats: false, accountId: null, proposedAccount: null, contactId: null,
+    stats: new Array(n).fill(null), statsTs: new Array(n).fill(null), trackStats: false, accountId: null, contactId: null,
     side: null, role: "team", members: [...members], penalties: [], updated_at: now() };
   round.entries.push(e);
   mark("round_entries", `${round.id}|${id}`, e.updated_at);
@@ -723,7 +723,10 @@ export function currentIndex(p) {
   return p && p.hiLinked !== null && p.hiLinked !== undefined ? p.hiLinked : (p ? p.hi : null);
 }
 
-/** What the backend says the linked golfers' own indexes are, by account id; kept on the contact, never pushed. */
+/**
+ * What the backend says the linked golfers' own indexes and names are, by account id. The index is kept on the
+ * contact and never pushed; the name becomes the contact's, so my cards stop fighting the server's copy of it.
+ */
 export function applyLinkedIndexes(byAccount) {
   let changed = 0;
   for (const p of state.players) {
@@ -731,6 +734,7 @@ export function applyLinkedIndexes(byAccount) {
     const a = byAccount[p.linkedAccount];
     const hi = a && a.hi !== null && a.hi !== undefined ? Number(a.hi) : null;
     if (p.hiLinked !== hi) { p.hiLinked = hi; changed++; }
+    if (a && a.name && a.name.trim() && a.name.trim() !== p.name && p.owner === myAccount() && !p.deleted) { renamePlayer(p, a.name); changed++; }
   }
   if (changed) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* full */ } mirror(); }
   return changed;
@@ -809,7 +813,7 @@ export function myMembership(leagueId) {
 }
 
 export const FORMATS = ["stableford", "stroke", "match", "matchpts", "soccer", "soccerpts", "gp", "gpstroke", "elo", "elopts", "elostroke", "elomatch"];
-export const cleanFormats = f => { const x = FORMATS.filter(k => Array.isArray(f) && f.includes(k)); return x.length ? x : ["stableford"]; };
+export const cleanFormats = f => { const x = Array.isArray(f) ? [...new Set(f)].filter(k => FORMATS.includes(k)) : []; return x.length ? x : ["stableford"]; };
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
   const g = { id: uid(), owner: myAccount(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null, icon: null, brand: null };

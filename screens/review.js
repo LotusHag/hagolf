@@ -1,21 +1,20 @@
 // The card: every player in Stableford order, a tap to correct any hole, who it counts for, who changed what,
 // and -- once it is saved -- the ways to hand it to somebody.
-import * as B from "../brand.js";
 import { partnerRow } from "./partner.js";
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, saveFiles, slugFile, ICONS, makeTheme, loadFonts, sizedLooks, sizedName, themeForRound } from "../ui.js";
-import { DATA } from "../data.js";
+import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, ICONS } from "../ui.js";
 import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat, onPoints, matchWith } from "../model.js";
 import { runsCard } from "./event.js";
 import { formatLabel } from "./home.js";
-import { renderCards } from "../cards.js";
+import { sendRound, roundDoor } from "../images.js";
 import { statTap, statStep, statLine, seedStats } from "./extras.js";
 import { mark, scoreStepper, extrasRows } from "../pad.js";
 import { dropBtn, dropRound } from "./players.js";
 import { nineName } from "./play.js";
+import { sendTheirRounds } from "./people.js";
 
 // ---------------------------------------------------------------- what changed on a card, and who changed it
 const FIELD_WORDS = {
@@ -67,41 +66,30 @@ export function nineLine(M, p) {
   return `<div class="nines">${H.map(h => `<span><b>${esc(nineName(h.slug))}</b> ${h.gross === null ? "–" : `${h.gross} ${fmtToPar(h.topar)}`} · ${h.pts} pts</span>`).join("")}</div>`;
 }
 
-/** Your own card in the round's look, straight to the camera roll, in the size the Images screen last made. */
-export async function myCard(rid, pid = null) {
-  const me = pid ? S.state.players.find(x => x.id === pid) : S.me(), r = S.getRound(rid);
-  const c = r ? courseBy(r.course) : null;
-  let M = null;
-  try { M = c ? compute(c, S.toModelRound(r)) : null; } catch (e) { M = null; }
-  if (!me || !M || !M.players.some(p => p.id === me.id)) return toast("No card to make");
-  toast("Making your card…", 3000);
-  await loadFonts(DATA.fonts);
-  const files = [];
-  await B.withBrand(B.brandOfRound(rid), r.date, async () => {
-    for (const [T, tag] of sizedLooks(makeTheme(themeForRound(rid)))) {
-      const fig = renderCards(M, T, [me.name], "full", { extras: S.statsOnImages() })[0];
-      files.push(new File([await fig.fig.toBlob()], `${slugFile(r.name)}_${sizedName(fig.file.split("/").pop(), tag)}`, { type: "image/png" }));
-    }
-  });
-  await saveFiles(files, r.name);
-}
+/** A card on its own, drawn and shown before it goes: mine, or the player `pid`'s. */
+export const myCard = (rid, pid = null) => sendRound(rid, "cards", pid);
 
 // ---------------------------------------------------------------- sharing a card: the one door to images
-/** ⤴: send to friends, a link anyone can open, the image in one tap, or the poster studio. */
+/** ⤴: the round's image first, then sending it in Hagolf, a link anyone can open, and every other image. */
 export async function shareSheet(r) {
   const canShare = S.iPlayed(r) || S.isScorer(r);
   const done = r.status === "done";
-  const me = S.mySeat(r);
+  const door = done ? roundDoor(r.id) : null;
+  // the names on this card who are not on Hagolf yet, and are mine to send a link to
+  const names = done && A.signedIn() ? r.entries.filter(e => !e.accountId && e.role !== "team")
+    .map(e => S.players().find(p => p.id === (e.contactId || e.playerId) && p.owner === S.myAccount() && !p.linkedAccount)).filter(Boolean) : [];
   const v = await sheet({ title: "Share", lead: `${r.name}`,
     body: `<div class="list">
+      ${door ? `<button data-sheet="image"><span class="lead">${ICONS.image}<div><div class="name">${esc(door)}</div><div class="muted small">An image for the group chat, seen before it goes</div></div></span><span class="chev">›</span></button>` : ""}
+      ${names.map(p => `<button data-sheet="send:${esc(p.id)}"><span class="lead">${ICONS.share}<div><div class="name">Send ${esc(firstName(p.name))} their rounds</div><div class="muted small">This card and every other you kept for them</div></div></span><span class="chev">›</span></button>`).join("")}
       ${canShare && A.signedIn() ? `<button data-sheet="friends"><span class="lead">${ICONS.friend}<div><div class="name">Send to friends</div><div class="muted small">They see the whole card in their own app</div></div></span><span class="chev">›</span></button>` : ""}
       ${canShare && A.signedIn() ? `<button data-sheet="link"><span class="lead">${ICONS.link}<div><div class="name">${r.token ? "Copy the link" : "Copy a link anyone can open"}</div><div class="muted small">${done ? "No sign-in needed to look" : "Once the round is saved"}</div></div></span><span class="chev">›</span></button>` : ""}
-      ${me ? `<button data-sheet="image"><span class="lead">${ICONS.image}<div><div class="name">Save image</div><div class="muted small">Your card, in this round's look</div></div></span></button>` : ""}
-      <button data-sheet="more"><span class="lead">${ICONS.chart}<div><div class="name">More images…</div><div class="muted small">Leaderboards, how the holes played, every player's card</div></div></span><span class="chev">›</span></button>
+      <button data-sheet="more"><span class="lead">${ICONS.chart}<div><div class="name">Other images…</div><div class="muted small">Every board and card, in any look and size</div></div></span><span class="chev">›</span></button>
       ${r.token && canShare ? `<button data-sheet="unlink"><span class="lead">${ICONS.x}<div><div class="name">Turn the link off</div></div></span></button>` : ""}
     </div>` });
   if (!v) return;
-  if (v === "image") return myCard(r.id, me ? (me.contactId || me.playerId) : null);
+  if (v.startsWith("send:")) return sendTheirRounds(names.find(p => p.id === v.slice(5)));
+  if (v === "image") return sendRound(r.id);
   if (v === "more") return go(`#graphics/${r.id}`);
   if (v === "friends") return friendsSheet(r);
   if (v === "link") {
@@ -160,18 +148,6 @@ async function historySheet(r, c) {
 }
 
 // ---------------------------------------------------------------- the round page
-/**
- * The theme signs the board the moment the round is saved: its seal plays once, and stays, settled, through the
- * redraws that follow until the card is left.
- */
-function sealed(rid, done, html) {
-  const j = ui.justSaved;
-  if (!done || !j || j.rid !== rid || !location.hash.startsWith(`#review/${rid}`)) return html;
-  const settled = j.played;
-  j.played = true;
-  return `<div class="saved run ${settled ? "settled" : ""}">${html.replace('<div class="ranking">', '<div class="ranking sealcard">').replace(/<\/div>$/, '<i class="seal" aria-hidden="true"></i></div>')}</div>`;
-}
-
 export function review(rid, keep = false) {
   const r = S.getRound(rid);
   if (!r) return go("#home");
@@ -184,6 +160,11 @@ export function review(rid, keep = false) {
   const scorer = S.isScorer(r);
   if (scorer) S.settleDay(r);
   const done = r.status === "done";
+  const door = done ? roundDoor(rid) : null;
+  // straight after saving, the bar that held Save holds the image instead; coming back to the card it is gone
+  if (ui.justSaved && (ui.justSaved.rid !== rid || (!keep && ui.justSaved.shown))) ui.justSaved = null;
+  const fresh = done && door && ui.justSaved && ui.justSaved.rid === rid;
+  if (fresh) ui.justSaved.shown = true;
   const fmt = r.format || "stableford";
   const unfinished = S.scoringSeats(r).filter(e => M.unfinished.includes(e.name));
   // on a card of several groups, each hands in its own: mine is the one I am in, or the one I was looking at
@@ -235,8 +216,8 @@ export function review(rid, keep = false) {
     ${noPar.length ? `<div class="card row warnrow"><div><div class="name">No par yet</div><div class="muted small">hole${noPar.length === 1 ? "" : "s"} ${noPar.map(h => c.first_hole + h).join(", ")}</div></div>
       ${scorer ? `<a class="btn small" href="#score/${rid}/${noPar[0]}">Fill in</a>` : ""}</div>` : ""}
     ${missing ? `<h2>Not finished</h2>${missing}` : ""}
-    <h2>${esc(formatLabel(fmt))}${done ? "" : " · as it stands"}</h2>
-    ${ranking ? sealed(rid, done, `<div class="ranking">${ranking}</div>`) : `<p class="muted center">No complete scorecards yet.</p>`}
+    ${done && door ? `<div class="sendhead"><h2>${esc(formatLabel(fmt))}</h2><button class="sendlink" data-act="send-img">${esc(door)}</button></div>` : `<h2>${esc(formatLabel(fmt))}${done ? "" : " · as it stands"}</h2>`}
+    ${ranking ? `<div class="ranking">${ranking}</div>` : `<p class="muted center">No complete scorecards yet.</p>`}
     ${order.length ? `<h2>Cards</h2>${scorer ? `<p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score.</p>` : ""}${order.map(detail).join("")}` : ""}
     ${partnerRow(rid) ? `<div class="list" style="margin-top:16px">${partnerRow(rid)}</div>` : ""}`;
   const canSave = M.field && !noPar.length && !conflicts.length;
@@ -244,7 +225,7 @@ export function review(rid, keep = false) {
     : S.mySeat(r) && !S.groupIn(r, myGroup) ? `<button class="btn primary" data-act="sign-group" ${canSave ? "" : "disabled"}>Group ${myGroup}: we're in</button>`
     : runsCard(r) ? `<button class="btn primary" data-act="close-day">Close the day</button>`
     : `<button class="btn" disabled>Waiting for ${plural(new Set(r.entries.filter(x => !x.signed).map(S.groupOf)).size, "group")}</button>`;
-  const bar = done ? "" : scorer ? `<a class="btn" href="#score/${rid}/${c.n - 1}">‹ Scoring</a>${handIn}` : "";
+  const bar = done ? (fresh ? `<button class="btn primary" data-act="send-img">${esc(door)}</button>` : "") : scorer ? `<a class="btn" href="#score/${rid}/${c.n - 1}">‹ Scoring</a>${handIn}` : "";
   page(done ? "Card" : "Check the card", body, { back: done ? "#stats/rounds" : `#score/${rid}/${S.holeOf(r)}`, bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep, bell: false,
     actions: `${iconBtn("share", "share", "Share")}${iconBtn("menu", "more", "More")}` });
   if (scorer && !done && Y.enabled() && !(ui.conflictsChecked || {})[rid]) checkConflicts(r).then(n => { if (n && location.hash.startsWith(`#review/${rid}`)) review(rid, true); });
@@ -254,6 +235,7 @@ export function review(rid, keep = false) {
     const act = b.dataset.act;
     const e = r.entries.find(x => x.playerId === (b.dataset.pid || ui.expanded));
     if (act === "share") return shareSheet(r);
+    if (act === "send-img") return sendRound(rid);
     if (act === "menu") return roundMenu(r, c);
     if (act === "expand") { ui.expanded = ui.expanded === e.playerId ? null : e.playerId; ui.selHole = null; return review(rid, true); }
     if (!scorer) return;
@@ -274,16 +256,16 @@ export function review(rid, keep = false) {
     if (act === "save-round" || act === "sign-group") {
       if (mineOut.length && !await confirmSheet("Holes with no score", `${plural(mineOut.length, "player")} ${mineOut.length === 1 ? "has" : "have"} holes with no score, which count ${NO_SCORE} strokes each.`, { label: act === "sign-group" ? "Hand it in anyway" : "Save anyway" })) return;
       if (act === "sign-group") S.signGroup(r, myGroup); else { r.status = "done"; S.saveRound(r); }
-      toast(r.status === "done" ? "Saved. ⤴ to share it" : `Group ${myGroup} is in. The day ends when every group is.`, 3500);
-      if (r.status === "done") ui.justSaved = { rid, played: false };
+      toast(r.status === "done" ? "Saved" : `Group ${myGroup} is in. The day ends when every group is.`, 3500);
+      if (r.status === "done") ui.justSaved = { rid, shown: false };
       return review(rid);
     }
     if (act === "close-day") {
       const out = [...new Set(r.entries.filter(x => !x.signed).map(S.groupOf))];
       if (out.length && !await confirmSheet("Close the day?", `${out.length === 1 ? `Group ${out[0]} has` : `Groups ${out.join(", ")} have`} not handed in. Their cards count as they stand.`, { label: "Close the day" })) return;
       r.status = "done"; S.saveRound(r);
-      toast("The day is closed. ⤴ to share it", 3500);
-      ui.justSaved = { rid, played: false };
+      toast("The day is closed", 3500);
+      ui.justSaved = { rid, shown: false };
       return review(rid);
     }
   });

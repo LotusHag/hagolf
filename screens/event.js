@@ -150,7 +150,8 @@ export function createEvent(slug, leagueId) {
 
 // ---------------------------------------------------------------- the organiser's sheets
 // stroke play and Stableford are one card to play, but an event's board ranks on one of them
-const EVENT_BLURB = { stableford: "the board ranked on Stableford points", stroke: "the board ranked on net score" };
+const EVENT_KINDS = { stableford: ["Stableford", "the board ranked on points"], stroke: ["Stroke play", "the board ranked on net score"] };
+const eventLabel = k => (EVENT_KINDS[k] || [formatLabel(k)])[0];
 
 async function detailsSheet(r) {
   const match = Mo.isMatchFormat(r.format);
@@ -158,7 +159,7 @@ async function detailsSheet(r) {
     <label>Name<input name="name" value="${esc(r.name)}"></label>
     <label>Date<input name="date" type="date" value="${esc(r.date || "")}"></label>
     <p class="pickline">How it is played</p>
-    <div class="card radios">${Mo.FORMATS_ROUND.map(x => `<label class="radiorow"><input type="radio" name="fmt" value="${x.key}" ${r.format === x.key ? "checked" : ""}><span><b>${esc(x.label)}</b><small>${esc(EVENT_BLURB[x.key] || x.blurb)}</small></span></label>`).join("")}</div>
+    <div class="card radios">${Mo.FORMATS_ROUND.map(x => `<label class="radiorow"><input type="radio" name="fmt" value="${x.key}" ${r.format === x.key ? "checked" : ""}><span><b>${esc(eventLabel(x.key))}</b><small>${esc((EVENT_KINDS[x.key] || [])[1] || x.blurb)}</small></span></label>`).join("")}</div>
     ${match ? "" : `<label>Handicap allowance<select name="allow">${[100, 95, 90, 85, 75].map(a => `<option value="${a}" ${Number(r.allowance) === a ? "selected" : ""}>${a}%</option>`).join("")}</select></label>`}`,
     actions: [{ label: "Done", value: "ok", kind: "primary" }] });
   if (v !== "ok" || !f) return;
@@ -329,7 +330,7 @@ export function event(rid) {
   const field = ps.length ? teeSheet(r, c, { matches: ms, tap: runs && !done }) : `<p class="muted">Nobody yet.${runs ? " Add the field below, or send the invite link." : ""}</p>`;
   const row = (act, title, sub) => `<button class="hrow" data-act="${act}"><span class="t"><b>${esc(title)}</b><span>${esc(sub)}</span></span><span class="chev">›</span></button>`;
   const run = runs && !done ? `<h2>Run it</h2><div class="rows">
-      ${row("details", "The event", `${formatLabel(r.format)}${Mo.isMatchFormat(r.format) || r.allowance === 100 ? "" : ` · ${r.allowance}%`}`)}
+      ${row("details", "The event", `${eventLabel(r.format)}${Mo.isMatchFormat(r.format) || r.allowance === 100 ? "" : ` · ${r.allowance}%`}`)}
       ${row("add", "Add to the field", "friends, people you played with, guests")}
       ${row("invite", "Invite by link", lg ? `members of ${lg.name} can also tap I'm in` : "whoever opens it takes a seat")}
       ${row("times", "Tee times", P.times.length ? `${P.times[0].t || "–"}${P.times.length > 1 ? ` · ${plural(P.times.length, "group")}` : ""}${P.times.length > 1 && P.times.every(x => x.t === P.times[0].t) ? " · shotgun" : ""}` : "not set")}
@@ -339,7 +340,7 @@ export function event(rid) {
       ${row("live", "Live board", r.live ? "on: anyone with the link follows it" : "a link for the clubhouse screen and home")}
       ${r.status !== "setup" ? row("close", "Close the day", "every card counts as it stands") : ""}
     </div>${r.status === "setup" ? `<p class="center" style="margin-top:18px"><button class="btn small danger" data-act="drop">Cancel the event</button></p>` : ""}` : "";
-  const sub = [fmtDate(r.date), courseTitle(c), formatLabel(r.format), lg ? lg.name : ""].filter(Boolean).join(" · ");
+  const sub = [fmtDate(r.date), courseTitle(c), eventLabel(r.format), lg ? lg.name : ""].filter(Boolean).join(" · ");
   const desk = onDesk() && run;
   page(r.name, desk ? `<div class="evgrid"><div>${me}${teams}${sheetHead}${field}</div><div>${run}</div></div>` : `${me}${teams}${sheetHead}${field}${run}`,
     { back: lg ? `#league/${lg.id}/days` : "#home", sub, bell: false, wide: !!desk });
@@ -390,5 +391,5 @@ export function eventRow(r) {
   const t = new Date(`${r.date}T12:00:00`);
   const when = sl && sl.t ? `you're off ${sl.t}` : mine ? "you're in" : plural(people(r).length, "player");
   return `<a class="hrow lead" href="#event/${esc(r.id)}"><span class="dblock"><b>${isNaN(t) ? "–" : t.getDate()}</b><small>${isNaN(t) ? "" : t.toLocaleDateString("en-GB", { month: "short" })}</small></span>
-    <span class="t"><b>${esc(r.name)}</b><span>${esc([c ? courseTitle(c) : r.course, formatLabel(r.format), P.teams.length ? P.teams.join(" v ") : "", when].filter(Boolean).join(" · "))}</span></span><span class="chev">›</span></a>`;
+    <span class="t"><b>${esc(r.name)}</b><span>${esc([c ? courseTitle(c) : r.course, eventLabel(r.format), P.teams.length ? P.teams.join(" v ") : "", when].filter(Boolean).join(" · "))}</span></span><span class="chev">›</span></a>`;
 }

@@ -9,6 +9,7 @@ import * as A from "./auth.js";
 import * as N from "./notify.js";
 import { loadFonts, makeTheme, pickTheme, phone } from "./draw.js";
 import { isNative } from "./native.js";
+import { charts } from "./charts.js";
 
 export const app = document.getElementById("app");
 export const scrollPos = () => app.scrollTop;
@@ -282,6 +283,7 @@ export const ICONS = {
   qr: I(`<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-3"/>`),
   check: I(`<path d="m5 12 5 5 9-10"/>`),
   x: I(`<path d="M6 6l12 12"/><path d="M18 6 6 18"/>`),
+  up: I(`<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>`),
   camera: I(`<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>`),
   flag: I(`<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>`),
   card: I(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>`),
@@ -360,6 +362,7 @@ export function page(title, body, { back = "#home", bar = "", sub = "", tabs = n
   if (dir && !bare && app.firstElementChild) swapScreens(write, dir);
   else { const was = !dir && !stillPlease() ? flipSpots() : null; write(); if (was) slideMoved(was); }
   cueTabs();
+  charts(app.querySelector("main"), dir && !bare ? 240 : 0);
 }
 /** Friend requests waiting, for the People tab's badge. */
 function pendingPeople() { try { return (JSON.parse(localStorage.getItem("hagolf-friends")) || {}).incoming?.length || 0; } catch (e) { return 0; } }
@@ -613,6 +616,10 @@ const clubTheme = () => {
 };
 // light or dark picked in Appearance beats the version an old theme name pins; left to the phone, the pin holds
 export const appTheme = () => clubTheme() || themeNamed(S.state.settings.theme, lookMode() === "auto" ? null : darkNow()) || themeNamed("paper");
+/** The light or dark a theme name pins, if it pins one. */
+export const themePin = n => (n && String(RETIRED[n] || n).split(":")[1]) || null;
+/** A society's look in words: the theme, and the version it pins. */
+export const leagueLookName = g => { const t = leagueTheme(g), pin = themePin(g && g.theme); return t ? `${lookTitle(t)}${pin ? `, ${pin}` : ""}` : ""; };
 export const leagueTheme = g => (g && (B.brandTheme(B.brandOfLeague(g)) || themeNamed(g.theme))) || null;
 export const themeFor = g => leagueTheme(g) || appTheme();
 export const themeForRound = rid => B.brandTheme(B.brandOfRound(rid)) || S.leaguesOfRound(rid).map(leagueTheme).find(Boolean) || appTheme();
@@ -732,6 +739,18 @@ export async function saveFiles(files, title) {
     // iOS can leave "Save Image" out of the sheet when the share carries words, so images go alone
     try { await navigator.share(photos ? { files } : { files, title }); return; } catch (err) { if (err.name === "AbortError") return; console.warn(err); }
   }
+  await download(files);
+}
+/** To whoever the phone's own share sheet reaches, on Android too, so the group chat is one tap away; a download where there is no sheet. */
+export async function sendFiles(files) {
+  if (canShareFiles() && navigator.canShare({ files })) {
+    try { await navigator.share({ files }); return true; } catch (err) { if (err.name === "AbortError") return false; console.warn(err); }
+  }
+  await download(files);
+  return true;
+}
+async function download(files) {
+  const photos = allImages(files);
   for (const f of files) {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(f);
@@ -758,10 +777,13 @@ const thumbImg = (x, i) => {
   const img = `<img src="${x.thumbUrl}" alt="${esc(x.label)}" data-act="open" data-i="${i}">`;
   return x.h > x.w * TALL ? `<span class="tthumb">${img}</span>` : img;
 };
-const toFile = (x, prefix) => new File([x.blob], `${prefix}_${x.label.replace(/\//g, "_")}`, { type: "image/png" });
+const toFile = x => new File([x.blob], x.file, { type: "image/png" });
 
-/** Renders jobs one by one with a progress line into #out, then shows thumbnails with save buttons. */
-export async function runJobs(jobs, prefix) {
+/**
+ * Renders jobs one by one with a progress line into #out, then shows thumbnails with save buttons. A job is
+ * { label, file, make }: the label is what a person calls it, the file what it is saved as.
+ */
+export async function runJobs(jobs) {
   const out = document.getElementById("out");
   out.innerHTML = `<div class="progress">Loading fonts…</div><div class="thumbs"></div>`;
   const making = out.querySelector(".thumbs");
@@ -770,13 +792,13 @@ export async function runJobs(jobs, prefix) {
   await loadFonts(DATA.fonts);
   const results = [];
   for (let i = 0; i < jobs.length; i++) {
-    out.querySelector(".progress").textContent = `Rendering ${i + 1} of ${jobs.length}: ${jobs[i].label}`;
+    out.querySelector(".progress").textContent = `Drawing ${jobs[i].label}, ${i + 1} of ${jobs.length}`;
     await new Promise(res => setTimeout(res, 0));
     try {
       const fig = jobs[i].make();
       const blob = await fig.toBlob();
       const thumb = await thumbnail(fig);
-      results.push({ label: jobs[i].label, blob, thumbUrl: URL.createObjectURL(thumb), w: fig.canvas.width, h: fig.canvas.height });
+      results.push({ label: jobs[i].label, file: jobs[i].file, blob, thumbUrl: URL.createObjectURL(thumb), w: fig.canvas.width, h: fig.canvas.height });
       making.insertAdjacentHTML("beforeend", `<figure>${thumbImg(results[i], i)}<figcaption><span class="tname">${esc(jobs[i].label)}</span></figcaption></figure>`);
     } catch (err) {
       console.error(err);
@@ -785,27 +807,78 @@ export async function runJobs(jobs, prefix) {
   }
   ui.blobs = results;
   const ok = results.filter(x => x.blob);
+  const one = ok.length === 1;
   out.innerHTML = `
-    <h2>${plural(ok.length, "image")} ready</h2>
-    <div class="saveall"><button class="btn primary" data-act="save-all">${sheetForPhotos() ? "Save all to Photos" : onPhone() ? "Save all to phone" : "Download all"}</button>
-      <div class="muted small">${sheetForPhotos() ? "Tap “Save Images” in the sheet. " : onPhone() ? "They go straight to your photos. " : ""}Or save one at a time below.</div></div>
+    <div class="saveall"><button class="btn primary" data-act="save-all">${sheetForPhotos() ? (one ? "Save to Photos" : `Save all ${ok.length} to Photos`) : onPhone() ? (one ? "Save to phone" : `Save all ${ok.length} to phone`) : one ? "Download" : `Download all ${ok.length}`}</button>
+      ${canShareFiles() ? `<button class="btn" data-act="send-all">Send</button>` : ""}</div>
     <div class="thumbs done">${results.map((x, i) => x.blob ? `
-      <figure>${thumbImg(x, i)}<figcaption><span class="tname">${esc(x.label).replace(/([/_])/g, "$1<wbr>")} <span class="muted">${x.w}×${x.h}</span></span>
-        <button class="btn small" data-act="save-one" data-i="${i}">Save</button></figcaption></figure>`
+      <figure>${thumbImg(x, i)}<figcaption><span class="tname">${esc(x.label)}</span>
+        ${one ? "" : `<button class="btn small" data-act="save-one" data-i="${i}">Save</button>`}</figcaption></figure>`
       : `<figure class="err"><figcaption>${esc(x.label)}: ${esc(x.error)}</figcaption></figure>`).join("")}</div>`;
   out.onclick = async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
-    if (b.dataset.act === "save-all") await saveFiles(ok.map(x => toFile(x, prefix)), prefix);
-    if (b.dataset.act === "save-one") await saveFiles([toFile(results[Number(b.dataset.i)], prefix)], prefix);
+    if (b.dataset.act === "save-all") await saveFiles(ok.map(toFile));
+    if (b.dataset.act === "send-all") await sendFiles(ok.map(toFile));
+    if (b.dataset.act === "save-one") await saveFiles([toFile(results[Number(b.dataset.i)])]);
     if (b.dataset.act === "open") viewer(ok.map(x => ({ url: x.thumbUrl, blob: x.blob, label: x.label, w: x.w, h: x.h })), ok.indexOf(results[Number(b.dataset.i)]));
   };
   out.scrollIntoView({ behavior: stillPlease() ? "auto" : "smooth" });
 }
 export { makeTheme, loadFonts, phone };
-/** A look in the sizes this phone last chose, each with what goes before `.png` in its file name. */
+
+/**
+ * The one sheet behind every "Send the …". The image is drawn first and shown, so the tap that sends it is a
+ * tap of its own -- an iPhone opens its share sheet only straight from one -- and nobody posts a sheet unseen.
+ * `choices` are [{ label, sub, render: () => [{ fig, file }] }]: the first is drawn on opening, the others only
+ * when picked. Resolves "more" when every image and look is asked for, otherwise null.
+ */
+export function previewSheet({ title, lead = "", choices, more = true }) {
+  const made = new Map();
+  const drawing = c => `<p class="muted small pvwait">Drawing ${esc(c.label.charAt(0).toLowerCase() + c.label.slice(1))}…</p>`;
+  const body = `<div class="pv"><div class="pvimg">${drawing(choices[0])}</div>
+    ${choices.length > 1 ? `<div class="list pvalts" role="radiogroup" aria-label="Which image">${choices.map((c, i) =>
+      `<button type="button" role="radio" aria-checked="${i === 0}" data-pv="${i}" class="${i === 0 ? "on" : ""}"><span class="lead"><div><div class="name">${esc(c.label)}</div>${c.sub ? `<div class="muted small">${esc(c.sub)}</div>` : ""}</div></span><span class="tick" aria-hidden="true">${ICONS.check}</span></button>`).join("")}</div>` : ""}
+    <div class="acts pvacts"><button class="btn primary" data-pv-send disabled>${canShareFiles() ? "Send" : "Download"}</button>${isAndroid() && canShareFiles() ? `<button class="btn" data-pv-save disabled>Save to photos</button>` : ""}</div></div>`;
+  const draw = async c => {
+    await loadFonts(DATA.fonts);
+    await new Promise(res => setTimeout(res, 0));   // let the sheet paint before the canvas work starts
+    const out = await c.render();
+    const files = await Promise.all(out.map(async o => new File([await o.fig.toBlob()], o.file, { type: "image/png" })));
+    const fig = out[0].fig, w = fig.canvas.width, h = fig.canvas.height;
+    return { files, url: URL.createObjectURL(await thumbnail(fig)), w, h };
+  };
+  let files = null, shown = null;
+  return sheet({ title, lead, body, actions: more ? [{ label: "Other images…", value: "more" }] : [], onOpen: (el, close) => {
+    const box = el.querySelector(".pvimg"), send = el.querySelector("[data-pv-send]"), save = el.querySelector("[data-pv-save]");
+    const ready = on => { send.disabled = !on; if (save) save.disabled = !on; };
+    const show = async i => {
+      shown = i; files = null; ready(false);
+      el.querySelectorAll("[data-pv]").forEach(b => { const on = Number(b.dataset.pv) === i; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); });
+      if (!made.has(i)) { box.innerHTML = drawing(choices[i]); made.set(i, draw(choices[i])); }
+      let r;
+      try { r = await made.get(i); } catch (e) { console.error(e); made.delete(i); if (shown === i) box.innerHTML = `<p class="muted small pvwait">${esc(e.message)}</p>`; return; }
+      if (shown !== i) return;
+      files = r.files;
+      box.innerHTML = `<img src="${r.url}" alt="${esc(choices[i].label)}" class="${r.h > r.w * TALL ? "tall" : ""}" data-pv-open>`;
+      ready(true);
+    };
+    el.addEventListener("click", async ev => {
+      const alt = ev.target.closest("[data-pv]");
+      if (alt) return show(Number(alt.dataset.pv));
+      if (ev.target.closest("[data-pv-open]")) {
+        const r = await made.get(shown);
+        return viewer([{ url: r.url, blob: r.files[0], label: choices[shown].label, w: r.w, h: r.h }]);
+      }
+      if (!files) return;
+      if (ev.target.closest("[data-pv-send]") && await sendFiles(files)) close(null);
+      else if (ev.target.closest("[data-pv-save]")) { await download(files); close(null); }
+    });
+    show(0);
+  } }).then(v => { made.forEach(p => p.then(r => URL.revokeObjectURL(r.url), () => {})); return v; });
+}
+/** A look in the sizes this phone last chose, each with "_phone" on the phone one. */
 export const sizedLooks = T => ({ full: [[T, ""]], phone: [[phone(T), "_phone"]], both: [[T, ""], [phone(T), "_phone"]] })[S.imageSize()];
-export const sizedName = (file, tag) => file.replace(/\.png$/, `${tag}.png`);
 
 // ---------------------------------------------------------------- rounds: small shared readers
 export function safeCompute(compute, r, collapse = false) {

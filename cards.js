@@ -100,7 +100,9 @@ export function story(M, p, { extras = true } = {}) {
     const bestpts = Math.max(...p.hpts);
     const besth = [...Array(n).keys()].filter(h => p.hpts[h] === bestpts).map(h => L[h]);
     const blobs = p.hpts.filter(x => x === 0).length;
-    out.push(`Most common score ${common[0]} (${common[1]} times). Best Stableford hole${plural(besth.length)} ${besth.join(", ")} with ${bestpts} points` +
+    // a match is played off the strokes taken, so its card says nothing about points nobody played for
+    if ((M.matches || []).length) out.push(`Most common score ${common[0]} (${common[1]} times).`);
+    else out.push(`Most common score ${common[0]} (${common[1]} times). Best Stableford hole${plural(besth.length)} ${besth.join(", ")} with ${bestpts} points` +
       (blobs ? `, ${blobs} hole${plural(blobs)} without points.` : ", points on every hole."));
   }
   if (p.penalties.length) {
@@ -190,19 +192,54 @@ const cardFile = p => `players/${p.gplace !== null ? String(p.gplace).padStart(2
 
 /** The line under the name: the handicap the round was played off and the tees. */
 function metaBits(M, p) {
-  const bits = [`Handicap index ${fmtIndex(p.hi)}`, `course handicap ${fmtHcp(p.ch)}`];
-  if (M.allowance !== 100) bits.push(`playing handicap ${fmtHcp(p.ph)} at ${M.allowance}%`);
+  const m = matchOf(M, p);
+  const bits = m ? ["Match play, no handicap"] : [`Handicap index ${fmtIndex(p.hi)}`, `course handicap ${fmtHcp(p.ch)}`];
+  if (!m && M.allowance !== 100) bits.push(`playing handicap ${fmtHcp(p.ph)} at ${M.allowance}%`);
   if (Object.keys(M.course.tees).length > 1) bits.push(`${p.tee} tees` + (p.gender === "f" ? ", women's rating" : ""));
-  if (p.ph < 0) bits.push(`plus handicap: gives ${-p.ph} stroke${p.ph !== -1 ? "s" : ""} back`);
+  if (!m && p.ph < 0) bits.push(`plus handicap: gives ${-p.ph} stroke${p.ph !== -1 ? "s" : ""} back`);
   const B = brandNow();
   if (B && B.date) bits.push(B.date);
   return bits;
 }
 
+/** The match this player's side played on a match card, with which side that is; null on any other card. */
+function matchOf(M, p) {
+  const m = (M.matches || []).find(x => x.ids.A.includes(p.id ?? p.name) || x.ids.B.includes(p.id ?? p.name));
+  return m ? { m, side: m.ids.A.includes(p.id ?? p.name) ? "A" : "B" } : null;
+}
+
+/** A match card's two rows in place of net and points: each hole won, halved or lost, and how the match stood. */
+function matchRows(M, p) {
+  const mm = matchOf(M, p);
+  if (!mm) return null;
+  const { m, side } = mm;
+  let up = 0;
+  const res = m.holes.map(h => !h.counted ? "" : h.winner === "halved" ? "H" : h.winner === side ? "W" : "L");
+  const state = m.holes.map(h => { if (h.counted) up += h.winner === side ? 1 : h.winner === "halved" ? 0 : -1; return h.counted ? up : null; });
+  return { res, state };
+}
+const matchState = s => s === 0 ? "AS" : s > 0 ? `+${s}` : `−${-s}`;
+
 /** The headline tiles, [caption, figure, line under it]. */
 function cardTiles(M, p, basic) {
   const n = M.n, N = M.field, L = M.labels, PAR = p.par;
   const vsTotal = sum(p.vsrest.filter(v => v !== null));
+  const mm = matchOf(M, p);
+  if (mm) {
+    // a match card is read as the match: the strokes are there, but nobody played for net or points
+    const { m, side } = mm, other = side === "A" ? "B" : "A";
+    const won = m.holes.filter(h => h.counted && h.winner === side).length;
+    const result = !m.result ? (m.leader ? `${Math.abs(m.up)} ${m.leader === side ? "up" : "down"}` : "All square")
+      : !m.leader ? "Halved" : `${m.leader === side ? "Won" : "Lost"} ${m.margin}`;
+    const first = s => String(s).trim().split(/\s+/)[0];
+    const tiles = [
+      ["Match", result, `v ${m.sides[other].map(first).join(" & ")}`],
+      ["Holes won", String(won), `of ${m.thru} played`],
+      p.nr ? ["Gross", "NR", `${p.holes_played} of ${n} holes`] : ["Gross", String(p.gross), `${fmtToPar(p.topar)} to par`],
+    ];
+    if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
+    return tiles;
+  }
   let grossTile, netTile;
   if (p.nr) {
     grossTile = ["Gross", "NR", `from hole ${L[p.from_hole - 1]}, ${p.holes_played} of ${n} holes`];
@@ -292,7 +329,8 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   section(axs, 0, 0.2, "Scorecard");
   const ROWS = { hole: [0.55, 1.0], strokes: [1.55, 0.5], score: [2.05, 1.35], net: [3.4, 0.6], points: [4.0, 0.6] };
   const cell = k => ROWS[k][0] + ROWS[k][1] / 2;
-  for (const [k, label] of [["strokes", "Strokes"], ["score", "Score"], ["net", "Net"], ["points", "Points"]]) {
+  const mp = matchRows(M, p);
+  for (const [k, label] of mp ? [["score", "Score"], ["net", "Hole"], ["points", "Match"]] : [["strokes", "Strokes"], ["score", "Score"], ["net", "Net"], ["points", "Points"]]) {
     axs.text(0, cell(k), caps(T, label), { size: 8.5, family: "display", color: T.INK_3, va: "center" });
   }
   const [y0, h0] = ROWS.score;
@@ -308,17 +346,23 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
       axs.text(x, ROWS.hole[0] + 0.32, L[h], { size: 15, family: "display", color: T.INK, ha: "center", va: "center" });
       axs.text(x, ROWS.hole[0] + 0.78, holeLine(h), { size: small, color: T.INK_3, ha: "center", va: "center" });
       const k_ = p.strokes[h];
-      axs.text(x, cell("strokes"), String(k_), { size: 9.5, color: k_ ? T.INK_2 : T.INK_3, ha: "center", va: "center" });
+      if (!mp) axs.text(x, cell("strokes"), String(k_), { size: 9.5, color: k_ ? T.INK_2 : T.INK_3, ha: "center", va: "center" });
       if (p.scores[h] === null) {
         axs.text(x, cell("score"), "–", { size: big, family: "display", color: T.INK_3, ha: "center", va: "center" });
-        axs.text(x, cell("net"), "–", { size: mid, color: T.INK_3, ha: "center", va: "center" });
+        if (!mp) axs.text(x, cell("net"), "–", { size: mid, color: T.INK_3, ha: "center", va: "center" });
       } else {
         scoreGlyph(axs, x, cell("score"), 0.86, p.deltas[h], String(p.scores[h]), big, 1.7);
         if (p.penalty[h]) {
           axs.rbox(x + 0.08, y0 + 0.04, 0.4, 0.24, T.BRONZE, 0.03);
           axs.text(x + 0.28, y0 + 0.16, `+${p.penalty[h]}`, { size: 7.5, family: "display", color: on(T, T.BRONZE), ha: "center", va: "center" });
         }
-        axs.text(x, cell("net"), String(p.nets[h]), { size: mid, color: T.INK_2, ha: "center", va: "center" });
+        if (!mp) axs.text(x, cell("net"), String(p.nets[h]), { size: mid, color: T.INK_2, ha: "center", va: "center" });
+      }
+      if (mp) {
+        const r = mp.res[h], s = mp.state[h];
+        axs.text(x, cell("net"), r || "", { size: 11, family: "display", color: r === "W" ? T.ACCENT : r === "L" ? T.INK_2 : T.INK_3, ha: "center", va: "center" });
+        axs.text(x, cell("points"), s === null ? "" : matchState(s), { size: 10, family: "display", color: s > 0 ? T.ACCENT : T.INK_3, ha: "center", va: "center" });
+        return;
       }
       const pts = p.hpts[h];
       axs.text(x, cell("points"), String(pts), { size: 11, family: "display", color: pts >= 3 ? T.ACCENT : pts === 2 ? T.INK : T.INK_3, ha: "center", va: "center" });
@@ -328,22 +372,29 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
       axs.text(x, ROWS.hole[0] + 0.32, title, { size: 9, family: "display", color: T.INK_3, ha: "center", va: "center" });
       axs.text(x, ROWS.hole[0] + 0.78, `par ${sum(PAR.slice(a, b))}`, { size: small, color: T.INK_3, ha: "center", va: "center" });
       const st = sum(p.strokes.slice(a, b));
-      axs.text(x, cell("strokes"), st ? String(st) : "", { size: 9, color: T.INK_2, ha: "center", va: "center" });
+      if (!mp) axs.text(x, cell("strokes"), st ? String(st) : "", { size: 9, color: T.INK_2, ha: "center", va: "center" });
       const complete = p.scores.slice(a, b).every(v => v !== null);
       if (complete) {
         const gross = sum(p.scores.slice(a, b));
         axs.text(x, cell("score") - 0.16, String(gross), { size: kind === "total" ? 20 : 16, family: "display", color: T.INK, ha: "center", va: "center" });
         axs.text(x, cell("score") + 0.42, fmtToPar(gross - sum(PAR.slice(a, b))), { size: 9, family: "display", color: T.INK_2, ha: "center", va: "center" });
-        axs.text(x, cell("net"), String(sum(p.nets.slice(a, b))), { size: 11, family: "display", color: T.INK, ha: "center", va: "center" });
+        if (!mp) axs.text(x, cell("net"), String(sum(p.nets.slice(a, b))), { size: 11, family: "display", color: T.INK, ha: "center", va: "center" });
       } else {
         axs.text(x, cell("score"), "NR", { size: 14, family: "display", color: T.INK_3, ha: "center", va: "center" });
-        axs.text(x, cell("net"), "NR", { size: 10, family: "display", color: T.INK_3, ha: "center", va: "center" });
+        if (!mp) axs.text(x, cell("net"), "NR", { size: 10, family: "display", color: T.INK_3, ha: "center", va: "center" });
+      }
+      if (mp) {
+        const won = mp.res.slice(a, b).filter(r => r === "W").length;
+        axs.text(x, cell("net"), `${won} W`, { size: 11, family: "display", color: T.INK, ha: "center", va: "center" });
+        const last = mp.state.slice(0, b).filter(s => s !== null);
+        if (kind === "total" && last.length) axs.text(x, cell("points"), matchState(last[last.length - 1]), { size: 12, family: "display", color: T.ACCENT, ha: "center", va: "center" });
+        return;
       }
       axs.text(x, cell("points"), String(sum(p.hpts.slice(a, b))), { size: 12, family: "display", color: T.ACCENT, ha: "center", va: "center" });
     }
   });
   glyphLegend(axs, LX + 0.3, 5.0, n <= 9 ? 0.4 : 0.5, 7.5);
-  let note = "strokes = handicap strokes received on that hole";
+  let note = mp ? "hole: W won, H halved, L lost  ·  match: holes up (+) or down (−) after it" : "strokes = handicap strokes received on that hole";
   if (p.penalty_total) note = "amber +n = penalty strokes, counted in the score  ·  " + note;
   if (p.filled.some(Boolean)) note = `a hole with no score counts ${NO_SCORE}  ·  ` + note;
   if (p.skipped.some(Boolean)) note = "– = not played (joined late)  ·  " + note;
@@ -375,8 +426,6 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
     }
     axb.text(h + 1, lo - span * 0.3, L[h], { size: 8.5, color: T.INK_3, ha: "center", va: "center" });
   });
-  fig.text(Mx, MID_TOP + colIn + 0.12, "Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.",
-    { size: 7.5, color: T.INK_3, va: "top" });
 
   // where the strokes went: beside the chart, or under it on a narrow card
   const blockTop = stacked ? MID_TOP + SIDE_IN + CAP_IN : MID_TOP;
@@ -473,7 +522,8 @@ function phoneCard(M, p, T, tier, { extras }) {
   const blocks = nines.map(([a, b, sub], i) => [...range(a, b).map(h => ["hole", h]),
     ...(sub ? [["sub", [a, b], sub]] : []), ...(i === nines.length - 1 ? [["total", [0, n], "TOTAL"]] : [])]);
   const slots = Math.max(...blocks.map(c => c.length));
-  const labels = [["par", "Par"], ...(listed ? [["si", "SI"]] : []), ["strokes", "Strokes"], ["score", "Score"], ["net", "Net"], ["points", "Points"]];
+  const mp = matchRows(M, p);
+  const labels = [["par", "Par"], ...(listed ? [["si", "SI"]] : []), ...(mp ? [] : [["strokes", "Strokes"]]), ["score", "Score"], ["net", mp ? "Hole" : "Net"], ["points", mp ? "Match" : "Points"]];
   const LX = Math.max(...labels.map(([, l]) => probe.measure(caps(T, l), 9.5, "display"))) + 0.1;
   const cw = (W - LX) / slots;
   const R = { hole: 0.17, par: 0.44, si: 0.66 };
@@ -497,10 +547,10 @@ function phoneCard(M, p, T, tier, { extras }) {
         ax.text(x, R.hole, L[h], { size: 14, family: "display", color: T.INK, ...ctr });
         ax.text(x, R.par, String(PAR[h]), { size: 11, color: T.INK_2, ...ctr });
         if (listed) ax.text(x, R.si, String(SI[h]), { size: 9.5, color: T.INK_3, ...ctr });
-        ax.text(x, R.strokes, String(st), { size: 10.5, color: st ? T.INK_2 : T.INK_3, ...ctr });
+        if (!mp) ax.text(x, R.strokes, String(st), { size: 10.5, color: st ? T.INK_2 : T.INK_3, ...ctr });
         if (p.scores[h] === null) {
           ax.text(x, R.score, "–", { size: big, family: "display", color: T.INK_3, ...ctr });
-          ax.text(x, R.net, "–", { size: 11, color: T.INK_3, ...ctr });
+          if (!mp) ax.text(x, R.net, "–", { size: 11, color: T.INK_3, ...ctr });
         } else {
           scoreGlyph(ax, x, R.score, cw * 0.82, p.deltas[h], String(p.scores[h]), big, 1.6);
           if (p.penalty[h]) {
@@ -508,7 +558,13 @@ function phoneCard(M, p, T, tier, { extras }) {
             ax.rbox(x - bw / 2, bandTop + 0.025, bw, 0.165, T.BRONZE, 0.03);
             ax.text(x, bandTop + 0.025 + 0.0825, s, { size: 9, family: "display", color: on(T, T.BRONZE), ...ctr });
           }
-          ax.text(x, R.net, String(p.nets[h]), { size: 11, color: T.INK_2, ...ctr });
+          if (!mp) ax.text(x, R.net, String(p.nets[h]), { size: 11, color: T.INK_2, ...ctr });
+        }
+        if (mp) {
+          const r = mp.res[h], s = mp.state[h];
+          ax.text(x, R.net, r, { size: 12, family: "display", color: r === "W" ? T.ACCENT : r === "L" ? T.INK_2 : T.INK_3, ...ctr });
+          if (s !== null) ax.text(x, R.points, matchState(s), { size: 11, family: "display", color: s > 0 ? T.ACCENT : T.INK_3, ...ctr });
+          return;
         }
         ax.text(x, R.points, String(pts), { size: 12, family: "display", color: pts >= 3 ? T.ACCENT : pts === 2 ? T.INK : T.INK_3, ...ctr });
         return;
@@ -516,15 +572,21 @@ function phoneCard(M, p, T, tier, { extras }) {
       const [a, b] = ref, scores = p.scores.slice(a, b), st = sum(p.strokes.slice(a, b));
       ax.text(x, R.hole, kind === "total" ? total : title, { size: 10, family: "display", color: T.INK_3, ...ctr });
       ax.text(x, R.par, String(sum(PAR.slice(a, b))), { size: 11, color: T.INK_2, ...ctr });
-      if (st) ax.text(x, R.strokes, String(st), { size: 10.5, color: T.INK_2, ...ctr });
+      if (st && !mp) ax.text(x, R.strokes, String(st), { size: 10.5, color: T.INK_2, ...ctr });
       if (scores.every(v => v !== null)) {
         const gross = String(sum(scores));
         ax.text(x, R.score - 0.09, gross, { size: probe.fitOne(gross, cw - 0.03, kind === "total" ? sub0 + 2 : sub0, 12, { family: "display" }), family: "display", color: T.INK, ...ctr });
         ax.text(x, R.score + 0.2, fmtToPar(sum(scores) - sum(PAR.slice(a, b))), { size: 9.5, family: "display", color: T.INK_2, ...ctr });
-        ax.text(x, R.net, String(sum(p.nets.slice(a, b))), { size: 12, family: "display", color: T.INK, ...ctr });
+        if (!mp) ax.text(x, R.net, String(sum(p.nets.slice(a, b))), { size: 12, family: "display", color: T.INK, ...ctr });
       } else {
         ax.text(x, R.score, "NR", { size: 13, family: "display", color: T.INK_3, ...ctr });
-        ax.text(x, R.net, "NR", { size: 10, family: "display", color: T.INK_3, ...ctr });
+        if (!mp) ax.text(x, R.net, "NR", { size: 10, family: "display", color: T.INK_3, ...ctr });
+      }
+      if (mp) {
+        ax.text(x, R.net, `${mp.res.slice(a, b).filter(r => r === "W").length} W`, { size: 11, family: "display", color: T.INK, ...ctr });
+        const last = mp.state.slice(0, b).filter(s => s !== null);
+        if (kind === "total" && last.length) ax.text(x, R.points, matchState(last[last.length - 1]), { size: 12, family: "display", color: T.ACCENT, ...ctr });
+        return;
       }
       ax.text(x, R.points, String(sum(p.hpts.slice(a, b))), { size: 13, family: "display", color: T.ACCENT, ...ctr });
     });
@@ -557,7 +619,7 @@ function phoneCard(M, p, T, tier, { extras }) {
   if (p.skipped.some(Boolean)) notes.push("– = not played (joined late)");
   if (p.filled.some(Boolean)) notes.push(`a hole with no score counts ${NO_SCORE}`);
   if (p.penalty_total) notes.push("amber +n = penalty strokes, counted in the score");
-  notes.push("strokes = handicap strokes received on that hole");
+  notes.push(mp ? "hole: W won, H halved, L lost; match: holes up (+) or down (−) after it" : "strokes = handicap strokes received on that hole");
   const noteLines = notes.flatMap(s => probe.wrap(s, W, 9.5));
   add(noteLines.length * 9.5 / 72 * 1.45, (fig, y) =>
     fig.text(Mx, y, noteLines.join("\n"), { size: 9.5, color: T.INK_3, va: "top", lineSpacing: 1.45 }), 0.34);
@@ -589,11 +651,8 @@ function phoneCard(M, p, T, tier, { extras }) {
           }
           fig.text(Mx + x * pitch, y + plot + 0.11, L[h], { size: 10, color: T.INK_3, ...ctr });
         });
-      }, i < nines.length - 1 ? 0.16 : 0.08);
+      }, i < nines.length - 1 ? 0.16 : 0.34);
     });
-    const cap = probe.wrap("Minus and below the line = fewer strokes than everyone else's average on that hole. Plus and above = more, as on any leaderboard.", W, 9.5);
-    add(cap.length * 9.5 / 72 * 1.45, (fig, y) =>
-      fig.text(Mx, y, cap.join("\n"), { size: 9.5, color: T.INK_3, va: "top", lineSpacing: 1.45 }), 0.34);
 
     // where the strokes went
     const rows = sectionRows(M, p), ROW = 0.33;

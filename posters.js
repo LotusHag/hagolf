@@ -7,9 +7,10 @@
 // stand side by side or one under the other. What a column contains and how a row is ranked never varies.
 import { house, caps, note, posChip, outcomeBar, legend, on, rowBand, isPhone, brandTitle, brandDate } from "./draw.js";
 import { sheet, block, blockAxes, heading, headingIn, dense } from "./sheet.js";
-import { fmtToPar, fmtSigned, fmtHcp, fix, NO_SCORE, ELO } from "./model.js";
+import { fmtToPar, fmtSigned, fmtHcp, fix, netBoard } from "./model.js";
 
 const ROW_IN = 0.5;
+const sum = xs => xs.reduce((a, b) => a + b, 0);
 
 export function presentOutcomes(T, rows) {
   return T.OUTCOMES.filter((o, k) => rows.reduce((a, r) => a + r.counts[k], 0) > 0);
@@ -146,8 +147,6 @@ const PHONE_ROWS = { rowH: 1.55, head: 1.75 };
 const sub = c => ({ ...c, line: 1 });
 const mid = c => ({ ...c, line: "mid" });
 
-const courseNote = M => (M.course && (M.course.notes || []).length) ? ` Course file: ${M.course.notes.join("; ")}.` : "";
-
 function dPos(key) {
   return (ax, c, y, r) => posChip(ax, cx(c), y, r[key + "place"], 0.8, 12);
 }
@@ -179,16 +178,6 @@ function pointsMeter(scaleMax, level, key = "pts") {
   };
 }
 
-const countbackText = n => n === 18 ? "last 9, 6 and 3 holes, then hole by hole from the last" : "last 6 and 3 holes, then hole by hole from the last";
-
-function notes(rows) {
-  let out = "";
-  if (rows.some(r => r.penalty_total)) out += " Pen badge: penalty strokes handed out after the round, counted on their hole.";
-  if (rows.some(r => r.filled && r.filled.some(Boolean))) out += ` A hole with no score, picked up or never entered, counts ${NO_SCORE} strokes.`;
-  if (rows.some(r => r.skipped && r.skipped.some(Boolean))) out += " A player who joined late has no gross and scores points from the holes played.";
-  if (rows.some(r => r.ph < 0)) out += " A plus handicap (+1) gives a stroke back, so net can be higher than gross.";
-  return out;
-}
 
 // ---------------------------------------------------------------- posters
 /**
@@ -203,7 +192,6 @@ const BASIC_W = 6.4;
 export function grossLeaderboard(M, T, tier = "full") {
   const rows = M.gross_board, n = M.n, N = M.field;
   const finished = rows.filter(p => p.gross !== null).map(p => p.gross);
-  const foot = `Lowest gross wins. Equal scores are separated on countback (${countbackText(n)}).`;
   if (tier === "basic") {
     const cols = [
       col("Pos", 0.15, 0.95, dPos("g")),
@@ -213,7 +201,7 @@ export function grossLeaderboard(M, T, tier = "full") {
     return sheet(T, {
       title: brandTitle("gross", "Gross leaderboard"), kicker: M.name, sub: brandDate(M.sub),
       right: `Stroke play, no handicap\nField ${N}${finished.length ? `  ·  best ${Math.min(...finished)}` : ""}`,
-      foot: foot + notes(rows) + courseNote(M), tiles: null,
+      tiles: null,
     }, [tableBlock(T, cols, rows, BASIC_W, { minW: 5.6 })], { maxCols: 1, minInner: 6.6 });
   }
   const W = 10;
@@ -228,7 +216,6 @@ export function grossLeaderboard(M, T, tier = "full") {
   return sheet(T, {
     title: brandTitle("gross", "Gross leaderboard"), kicker: M.name, sub: brandDate(M.sub),
     right: "Stroke play, no handicap",
-    foot: foot + " The round bar has one block per hole, grouped by result against par, best results first." + notes(rows) + courseNote(M),
     tiles: [[N, "in the field"], [finished.length ? Math.min(...finished) : "–", "best gross", T.ACCENT],
       [avg === null ? "–" : fix(avg), "average"], [n, "holes"]],
   }, [tableBlock(T, cols, rows, W, { minW: 8.4, ...opts })], { maxCols: 1, minInner: 9.4 });
@@ -262,7 +249,6 @@ export function stablefordLeaderboard(M, T, tier = "full") {
   const rows = M.stbl_board, n = M.n, N = M.field;
   const level = 2 * n, best = Math.max(...rows.map(p => p.pts));
   const scaleMax = Math.max(level + 6, 3 * Math.ceil((best + 2) / 3));
-  const foot = `Most points wins. Equal points are separated on countback (${countbackText(n)}).`;
   if (tier === "basic") {
     const cols = [
       col("Pos", 0.15, 0.95, dPos("s")),
@@ -272,7 +258,7 @@ export function stablefordLeaderboard(M, T, tier = "full") {
     return sheet(T, {
       title: brandTitle("stbl", "Stableford leaderboard"), kicker: M.name, sub: brandDate(M.sub),
       right: `Net, course handicap\nField ${N}  ·  best ${best} pts`,
-      foot: `${foot} ${level} points is playing to handicap.` + notes(rows) + courseNote(M), tiles: null,
+      tiles: null,
     }, [tableBlock(T, cols, rows, BASIC_W, { minW: 5.6 })], { maxCols: 1, minInner: 6.6 });
   }
   const hcpTitle = M.allowance === 100 ? "Hcp" : `Hcp (${M.allowance}%)`;
@@ -292,11 +278,144 @@ export function stablefordLeaderboard(M, T, tier = "full") {
   return sheet(T, {
     title: brandTitle("stbl", "Stableford leaderboard"), kicker: M.name, sub: brandDate(M.sub),
     right: `Net, course handicap${allowance}${tees.length > 1 ? `\nTees: ${tees.join(", ")}` : ""}`,
-    foot: `${foot} ${level} points is playing to handicap: 2 points per hole for a net par, 3 for a net birdie, ` +
-      "1 for a net bogey, nothing for worse." + notes(rows) + courseNote(M),
     tiles: [[N, "in the field"], [best, "best", T.ACCENT], [fix(avg), "average"], [level, "is level"]],
   }, [tableBlock(T, cols, rows, W, { minW: 8.4, ...opts })], { maxCols: 1, minInner: 9.4 });
 }
+
+/** A stroke-play card is settled on net, so its board is ranked on net, the way the card itself ranks it. */
+export function netLeaderboard(M, T) {
+  const rows = netBoard(M), n = M.n, N = M.field;
+  const toPar = r => r.net === null ? null : r.net - sum(r.par);
+  const finished = rows.filter(p => p.net !== null).map(p => p.net);
+  const hcpTitle = M.allowance === 100 ? "Hcp" : `Hcp (${M.allowance}%)`;
+  const W = 10;
+  const [cols, opts] = isPhone(T) ? [[
+    col("Pos", 0.15, 0.95, dPos("n")),
+    col("Player", 1.25, 6.5, dName, "left"),
+    mid(col("Net", 6.75, 8.35, dVal(r => r.net === null ? "NR" : String(r.net), 26, (r, T) => T.ACCENT, "display"))),
+    mid(col("To par", 8.4, 9.9, dVal(r => toPar(r) === null ? "–" : fmtToPar(toPar(r)), 15, (r, T) => toparColor(toPar(r), T), "display"))),
+    sub(col("", 1.25, 6.5, dPairs(r => [["hcp", fmtHcp(r.ph)], ["gross", r.gross === null ? "NR" : r.gross]]))),
+  ], { ...PHONE_ROWS, head: 1.25 }] : [[
+    col("Pos", 0.15, 0.95, dPos("n")),
+    col("Player", 1.15, 5.0, dName, "left"),
+    col(hcpTitle, 5.0, 5.9, dVal(r => fmtHcp(r.ph), 11, (r, T) => T.INK_3)),
+    col("Gross", 6.0, 6.9, dVal(r => r.gross === null ? "NR" : String(r.gross), 12)),
+    col("Net", 7.0, 8.3, dVal(r => r.net === null ? "NR" : String(r.net), 22, (r, T) => T.ACCENT, "display")),
+    col("To par", 8.4, 9.9, dVal(r => toPar(r) === null ? "–" : fmtToPar(toPar(r)), 14, (r, T) => toparColor(toPar(r), T), "display")),
+  ], {}];
+  const avg = finished.length ? finished.reduce((a, b) => a + b, 0) / finished.length : null;
+  const tees = [...new Set(rows.map(p => p.tee))].sort();
+  const allowance = M.allowance === 100 ? "" : `, ${M.allowance}% allowance`;
+  return sheet(T, {
+    title: brandTitle("net", "Net leaderboard"), kicker: M.name, sub: brandDate(M.sub),
+    right: `Net, course handicap${allowance}${tees.length > 1 ? `\nTees: ${tees.join(", ")}` : ""}`,
+    tiles: [[N, "in the field"], [finished.length ? Math.min(...finished) : "–", "best net", T.ACCENT],
+      [avg === null ? "–" : fix(avg), "average"], [n, "holes"]],
+  }, [tableBlock(T, cols, rows, W, { minW: 8.4, ...opts })], { maxCols: 1, minInner: 9.4 });
+}
+
+const firstOf = s => String(s || "").trim().split(/\s+/)[0];
+const sideShort = names => names.map(firstOf).join(" & ");
+/** A match in one line, the way it would be read out: "Isabel & Daan win 6&5", or how it stands. */
+const matchHeadline = m => !m.result ? `${m.leader ? `${sideShort(m.sides[m.leader])} ${Math.abs(m.up)} up` : "All square"}, thru ${m.thru}`
+  : !m.leader ? "Halved" : `${sideShort(m.sides[m.leader])} ${m.sides[m.leader].length > 1 || / & /.test(m.sides[m.leader][0]) ? "win" : "wins"} ${m.margin}`;
+
+/**
+ * A match card: the result as the headline, then each side's score hole by hole with the holes it won filled
+ * in its colour, and under them how the match stood. Holes after the match was decided are drawn faint.
+ */
+function matchBlock(T, m, n, title) {
+  const ph = isPhone(T), per = ph && n > 9 ? 9 : n, bands = Math.ceil(n / per);
+  const HEAD = 0.62, NAMES = 0.27, ROW = { hole: 0.34, side: 0.44, state: 0.34 }, BAND = ROW.hole + 2 * ROW.side + ROW.state, GAPB = 0.22;
+  const hIn = (title ? headingIn : 0) + HEAD + 2 * NAMES + 0.12 + bands * BAND + (bands - 1) * GAPB;
+  return block("chart", 0, () => hIn, (fig, x, top, w) => {
+    let y = top;
+    if (title) { heading(fig, x, y, w, title, ""); y += headingIn; }
+    const colr = { A: T.ACCENT, B: T.BAR };
+    fig.fitText(x, y + HEAD / 2, matchHeadline(m), w, 24, 13, { family: "display", color: T.INK, va: "center" });
+    y += HEAD;
+    for (const k of ["A", "B"]) {
+      fig.rbox(x, y + NAMES / 2 - 0.07, 0.14, 0.14, colr[k], 0.02);
+      fig.fitText(x + 0.24, y + NAMES / 2, m.sides[k].join(" & "), w - 0.24, 11, 8.5, { color: T.INK_2, va: "center" });
+      y += NAMES;
+    }
+    y += 0.12;
+    const labW = ph ? 1.05 : 2.1, cw = (w - labW) / per;
+    let up = 0;
+    const state = m.holes.map(hh => { if (hh.counted) up += hh.winner === "A" ? 1 : hh.winner === "B" ? -1 : 0; return hh.counted ? up : null; });
+    for (let b = 0; b < bands; b++) {
+      const h0 = b * per, h1 = Math.min(n, h0 + per), yb = y + b * (BAND + GAPB);
+      const yA = yb + ROW.hole, yB = yA + ROW.side, yS = yB + ROW.side;
+      fig.text(x, yb + ROW.hole / 2, caps(T, "Hole"), { size: 9, family: "display", color: T.INK_3, va: "center" });
+      for (const k of ["A", "B"]) fig.fitText(x, (k === "A" ? yA : yB) + ROW.side / 2, sideShort(m.sides[k]), labW - 0.12, 12, 8.5, { family: "display", color: T.INK, va: "center" });
+      fig.text(x, yS + ROW.state / 2, caps(T, "Match"), { size: 9, family: "display", color: T.INK_3, va: "center" });
+      fig.line(x, yA, x + w, yA, T.LINE, 0.8);
+      fig.line(x, yS, x + w, yS, T.LINE, 0.8);
+      for (let h = h0; h < h1; h++) {
+        const hh = m.holes[h], cx0 = x + labW + (h - h0) * cw, mid = cx0 + cw / 2;
+        fig.text(mid, yb + ROW.hole / 2, String(h + 1), { size: 10, family: "display", color: T.INK_2, ha: "center", va: "center" });
+        for (const k of ["A", "B"]) {
+          const v = hh[k], cy = (k === "A" ? yA : yB), won = hh.counted && hh.winner === k;
+          if (won) fig.rbox(cx0 + cw * 0.12, cy + ROW.side * 0.12, cw * 0.76, ROW.side * 0.76, colr[k], 0.04);
+          fig.text(mid, cy + ROW.side / 2, v === null ? "–" : String(v), { size: 13, family: "display",
+            color: won ? on(T, colr[k]) : hh.counted ? T.INK : T.INK_3, ha: "center", va: "center" });
+        }
+        const s = state[h];
+        if (s !== null) fig.text(mid, yS + ROW.state / 2, s === 0 ? "AS" : String(Math.abs(s)), { size: 10, family: "display",
+          color: s === 0 ? T.INK_3 : s > 0 ? colr.A : colr.B, ha: "center", va: "center" });
+      }
+    }
+  });
+}
+
+export function matchPoster(M, T) {
+  const ms = M.matches || [];
+  if (!ms.length) throw new Error("There is no match on this card.");
+  const pts = ms[0].basis === "points";
+  return sheet(T, {
+    title: brandTitle("match", ms.length > 1 ? "The matches" : "The match"), kicker: M.name, sub: brandDate(M.sub),
+    right: `Match play, no handicap\n${pts ? "Stableford points a hole" : "Strokes taken a hole"}`, tiles: null,
+  }, ms.map(m => matchBlock(T, m, M.n, ms.length > 1 ? `Group ${m.group}` : "")), { maxCols: 1, minInner: M.n <= 9 ? 8.4 : 9.4 });
+}
+
+/**
+ * A society's day: the field in the society's own currency, then what the day did to the table. `D` is plain
+ * data, so the screen decides who counts and how the day is settled: { title, kicker, sub, right, unit, rows:
+ * [{ place, name, value, sub }], moved: [{ name, from, to }], matches: [line], table }.
+ */
+export function dayPoster(D, T) {
+  const W = 10, rows = D.rows.map(r => ({ ...r, penalty_total: 0 }));
+  const cols = isPhone(T) ? [
+    col("Pos", 0.15, 0.95, dPos("")),
+    col("Player", 1.25, 7.4, dName, "left"),
+    mid(col(D.unit, 7.6, 9.9, dVal(r => r.value, 24, (r, T) => T.ACCENT, "display"))),
+    sub(col("", 1.25, 7.4, dPairs(r => [["", r.sub]]))),
+  ] : [
+    col("Pos", 0.15, 0.95, dPos("")),
+    col("Player", 1.15, 4.9, dName, "left"),
+    col("", 5.0, 8.2, (ax, c, y, r) => ax.fitText(c.x0, y, r.sub, c.x1 - c.x0, { size: 11, color: ax.fig.T.INK_2, va: "center", min: 8 }), "left"),
+    col(D.unit, 8.3, 9.9, dVal(r => r.value, 22, (r, T) => T.ACCENT, "display")),
+  ];
+  const blocks = rows.length ? [tableBlock(T, cols, rows, W, { minW: 8.4, ...(isPhone(T) ? { ...PHONE_ROWS, head: 1.25 } : {}) })] : [];
+  if (D.matches && D.matches.length) {
+    const lines = D.matches;
+    blocks.push(block("note", 0, () => headingIn + lines.length * 0.34, (fig, x, top, w) => {
+      heading(fig, x, top, w, "Match play", "");
+      lines.forEach((s, i) => fig.fitText(x, top + headingIn + (i + 0.5) * 0.34, s, w, 12, 9, { color: T.INK, va: "center" }));
+    }));
+  }
+  if (D.moved && D.moved.length) {
+    const mv = D.moved.map(r => ({ ...r, penalty_total: 0, d: r.from - r.to }));
+    const mcols = [
+      col("Player", 0.15, isPhone(T) ? 6.2 : 5.4, dName, "left"),
+      col("Before, after", isPhone(T) ? 6.2 : 5.5, 8.4, dVal(r => `${ordinalOf(r.from)} to ${ordinalOf(r.to)}`, 12, (r, T) => T.INK_2)),
+      col("", 8.5, 9.9, dVal(r => `${r.d > 0 ? "▲" : "▼"}${Math.abs(r.d)}`, 15, (r, T) => r.d > 0 ? T.UNDER : T.INK_3, "display")),
+    ];
+    blocks.push(tableBlock(T, mcols, mv, W, { title: "What it changed", tail: note(T, D.table || ""), minW: 8.4 }));
+  }
+  return sheet(T, { title: D.title, kicker: D.kicker, sub: D.sub, right: D.right, tiles: null }, blocks, { maxCols: 1, minInner: 9.4 });
+}
+const ordinalOf = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
 
 /** One sheet with both boards, for the clubhouse wall. Two columns wherever the family will allow them. */
 export function bothBoards(M, T) {
@@ -328,9 +447,6 @@ export function bothBoards(M, T) {
   return sheet(T, {
     title: brandTitle("both", "Both boards"), kicker: M.name, sub: brandDate(M.sub),
     right: `Stroke play and net Stableford${tees.length > 1 ? `\nTees: ${tees.join(", ")}` : ""}`,
-    foot: `The same round finished two ways. Lowest gross wins on one board, most points wins on the other, and equal scores are ` +
-      `separated on countback (${countbackText(n)}). ${level} points is playing to handicap. The round bar has one block per hole, ` +
-      `grouped by result against par, best results first.` + notes(gRows) + courseNote(M),
     tiles: [[N, "in the field"], [finished.length ? Math.min(...finished) : "–", "best gross"], [bestPts, "best points", T.ACCENT]],
     tilesWide: true,
   }, [
@@ -351,8 +467,6 @@ export function holesPoster(M, T) {
   const hardest = holes.reduce((a, h) => h.difficulty < a.difficulty ? h : a);
   const easiest = holes.reduce((a, h) => h.difficulty > a.difficulty ? h : a);
   const fieldAvg = holes.reduce((a, h) => a + h.vspar, 0) / n;
-  const tot = [0, 1, 2, 3].map(k => holes.reduce((a, h) => a + h.counts[k], 0));
-  const played = holes.reduce((a, h) => a + h.n, 0);
   const inner = n <= 9 ? 10.9 : 17.4;
   const d = dense(T);
   const P = [[0, 0.95], [1.10 * d, 2.5 * d], [3.90 * d, 2.55 * d]];
@@ -411,12 +525,9 @@ export function holesPoster(M, T) {
     ax.line(xlim[0], 0, xlim[1], 0, T.LINE, 0.8);
   });
 
-  const teeNote = (new Set(M.players.map(p => p.tee)).size > 1 ? ` Par and lengths from the ${M.defaultTee} tees.` : "") + courseNote(M);
   return sheet(T, {
     title: brandTitle("holes", "How the holes played"), kicker: M.name, sub: brandDate(M.sub),
     right: `Field ${N} players`,
-    foot: `Across the round: ${tot[0]} birdies or better, ${tot[1]} pars, ${tot[2]} bogeys, ${tot[3]} doubles or worse ` +
-      `from ${played} holes played. Stacks read bottom up from worst result to best.${teeNote}`,
     tiles: [[N, "in the field"], [avgGross === null ? "–" : fix(avgGross), "course average"],
       [fmtSigned(fieldAvg, 2), "a hole against par", T.ACCENT],
       [hardest.label, "hardest hole"], [easiest.label, "easiest hole"]],
@@ -495,6 +606,15 @@ function holesPhone(M, T, fieldAvg, hardest, easiest) {
   }));
 }
 
+const dayMonth = d => { const t = new Date(`${d}T12:00:00`); return isNaN(t) ? d : t.toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
+/** "10 May to 21 Jun 2026", or "21 Jun 2026" for one day: dates as people write them, not as a database does. */
+function dateSpan(dates) {
+  if (!dates.length) return "";
+  const a = dates[0], b = dates[dates.length - 1], year = String(b).slice(0, 4);
+  if (a === b) return `${dayMonth(a)} ${year}`;
+  return `${dayMonth(a)}${String(a).slice(0, 4) === year ? "" : ` ${String(a).slice(0, 4)}`} to ${dayMonth(b)} ${year}`;
+}
+
 /** Season standings for a group: `S` from model.standings, `group` the group record. */
 export const STANDINGS_TITLES = {
   stableford: "Season standings", stroke: "Stroke play standings", match: "Matchplay standings",
@@ -513,15 +633,12 @@ export function standingsPoster(S, group, T, kind = "stableford") {
   const W = 10;
   const rounds = S.rounds || [];
   const dates = rounds.map(r => r.date).filter(Boolean).sort();
-  const span = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} to ${dates[dates.length - 1]}`) : "";
+  const span = dateSpan(dates);
   const sub = [`${rounds.length} round${rounds.length === 1 ? "" : "s"}`, span].filter(Boolean).join("  ·  ");
-  const bestRule = S.bestN > 0 ? `The best ${S.bestN} rounds count towards the total; every round counts for the average.`
-    : "Every round counts towards the total.";
-  const onlyMembers = " Only rounds with at least one society member count, and only members' results.";
   const pos = col("Pos", 0.15, 0.95, (ax, c, y, r) => posChip(ax, cx(c), y, r.place, 0.8, 12));
   const num = (title, x0, x1, fn) => col(title, x0, x1, dVal(fn, 12, (r, T) => T.INK_2));
   const players = `${rows.length} player${rows.length === 1 ? "" : "s"}`;
-  let cols, right, foot, tiles, total, pairs;
+  let cols, right, tiles, total, pairs;
 
   if (kind === "stroke") {
     const lead = rows.length ? rows[0].counted : 0;
@@ -535,13 +652,10 @@ export function standingsPoster(S, group, T, kind = "stableford") {
       ["avg", r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"]];
     right = "Net strokes against par";
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [fmtToPar(lead), "the leader", T.ACCENT]];
-    foot = `Net score against par in every round added up, lowest total wins, so a 9 and an 18 compare. ${bestRule} ` +
-      `A round without a return does not count for that player. Wins: best net against par among the society's players on the day.` + onlyMembers;
   } else if (kind.startsWith("match") || kind.startsWith("soccer")) {
     const maxPts = Math.max(1, ...rows.map(r => r.points));
     const scaleMax = 5 * Math.ceil((maxPts + 1) / 5);
     const w = S.win ?? (kind.startsWith("soccer") ? 3 : 2), d = S.draw ?? 1;
-    const basis = S.basis === "points" ? "the higher Stableford points" : "the fewest strokes taken, no handicap";
     cols = [pos, col("Player", 1.15, 4.2, dName, "left"),
       num("P", 4.2, 4.8, r => String(r.played)), num("W", 4.9, 5.5, r => String(r.won)),
       num("D", 5.6, 6.2, r => String(r.drawn)), num("L", 6.3, 6.9, r => String(r.lost)),
@@ -550,9 +664,6 @@ export function standingsPoster(S, group, T, kind = "stableford") {
       col(`Points, 0 to ${scaleMax}`, 8.9, 9.95, pointsMeter(scaleMax, null, "points"), "left")];
     right = `${w} points a win, ${d} a draw\n${S.basis === "points" ? "Stableford" : "strokes taken"}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [maxPts, "the leader", T.ACCENT]];
-    foot = `Every pair of society players who shared a round played a match, hole by hole, each hole going to ${basis}; ` +
-      `a hole only one of them returned goes to the other. ${w} points for winning a match, ${d} for halving it. ` +
-      `Holes up is the running margin across every match.` + onlyMembers;
   } else if (kind.startsWith("elo")) {
     const elo = r => String(Math.round(r.score));
     const moved = r => r.last === null ? "–" : (Math.round(r.last) > 0 ? "+" : "") + Math.round(r.last);
@@ -568,9 +679,6 @@ export function standingsPoster(S, group, T, kind = "stableford") {
     right = `Elo rating
 ${how}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [lead, "the leader", T.ACCENT]];
-    foot = `Everyone starts on 0 and nobody goes below it: at 0 a bad day costs nothing and a good one counts at once. Each day every pair of society players on the card played a game, settled on ${how}; `
-      + `beating a stronger player gains more than beating a weaker one, and a bigger margin moves both further. `
-      + `A day moves a score by at most about ${ELO.k * 2}, twice that in a player's first ${ELO.provisionalDays}. Missing a day costs nothing.` + onlyMembers;
   } else if (kind === "gp" || kind === "gpstroke") {
     const net = S.basis === "net";
     const maxPts = Math.max(1, ...rows.map(r => r.counted));
@@ -584,10 +692,6 @@ ${how}`;
     pairs = r => [["rounds", r.played], ["wins", r.wins], ["best", r.best], ["avg", fix(r.avg)]];
     right = `Points by finishing position\n${net ? "net against par" : "Stableford"}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [maxPts, "the leader", T.ACCENT]];
-    foot = `Every card hands out points by finishing position: ${(S.table || []).join(", ")} down the board, nothing after that. `
-      + `The day is finished on ${net ? "net score against par, lowest wins, with countback on net strokes" : "Stableford points, with countback"}. `
-      + (net ? "A player who did not return a full card has no position and scores nothing. " : "")
-      + `Position is taken among the society's own players on the day, so a guest cannot take the win. ${bestRule}` + onlyMembers;
   } else {
     const maxPts = Math.max(1, ...rows.map(r => r.counted));
     const scaleMax = 10 * Math.ceil((maxPts + 1) / 10);
@@ -600,12 +704,11 @@ ${how}`;
     pairs = r => [["rounds", r.played], ["wins", r.wins], ["best", r.best], ["avg", fix(r.avg)]];
     right = "Stableford points across rounds";
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [maxPts, "the leader", T.ACCENT]];
-    foot = `Most Stableford points wins. ${bestRule} Wins: most points among the society's players on the day, shared when equal.` + onlyMembers;
   }
   const [tc, to] = isPhone(T) ? standingsPhone(kind, total, pairs) : [cols, {}];
   return sheet(T, {
     title: brandTitle("standings", STANDINGS_TITLES[kind] || STANDINGS_TITLES.stableford), kicker: group.name, sub,
-    right: `${right}\n${players}`, foot, tiles,
+    right: `${right}\n${players}`, tiles,
   }, [tableBlock(T, tc, rows.map(r => ({ ...r, penalty_total: 0 })), W, { minW: 8.4, ...to })], { maxCols: 1, minInner: 9.4 });
 }
 

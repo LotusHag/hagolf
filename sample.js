@@ -75,6 +75,12 @@ export function showcaseRound() {
   return Object.assign(compute(SHOWCASE_COURSE, round), { id: "showcase-round" });
 }
 
+/** The same four as a fourball match, the first pair against the second, for the match image's example. */
+export function showcaseMatch() {
+  const entries = SHOWCASE_PLAYERS.map((p, i) => ({ ...entryOf(p), side: i < 2 ? "A" : "B" }));
+  return Object.assign(compute(SHOWCASE_COURSE, { name: SHOWCASE_NAME, date: DATES[3], defaultTee: "yellow", allowance: 100, final: true, format: "match", entries }), { id: "showcase-match" });
+}
+
 /** The three Sundays before it, dealt, then the Cup itself. */
 export function showcaseLeague() {
   const Ms = DATES.slice(0, 3).map((date, i) => {

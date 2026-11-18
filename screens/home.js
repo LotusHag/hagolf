@@ -90,7 +90,7 @@ function societyDays() {
 }
 
 /** Someone wants me on a card, or a seat on one may be mine. */
-const asks = () => N.held().filter(n => !n.seen && ["round_seated", "seat_proposed", "league_invite"].includes(n.kind));
+const asks = () => N.held().filter(n => !n.seen && ["round_seated", "league_invite"].includes(n.kind));
 
 export function home() {
   const rounds = S.rounds();
@@ -177,7 +177,7 @@ export async function haveLink() {
   window.__linkV = null;
   if (v !== "ok" || !text) return;
   const hash = text.includes("#") ? text.slice(text.indexOf("#")) : null;
-  if (hash && /^#(j|join|add|board|card)\//.test(hash)) return go(hash);
+  if (hash && /^#(j|join|add|you|board|card)\//.test(hash)) return go(hash);
   if (/^[a-z0-9]{10}$/i.test(text)) return go(`#j/${text.toLowerCase()}`);
   if (/^[A-Za-z0-9_-]{20,}$/.test(text)) return go(`#join/${text}`);
   toast("That doesn't look like a Hagolf link or code");

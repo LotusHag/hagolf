@@ -177,7 +177,7 @@ function fieldStats(St, nines = "", who = null) {
     </div></div>`;
 }
 
-function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
+function playerStats(St, p, nines = "", gid = "", cards = [], only = null, named = false) {
   const want = k => !only || only.includes(k);
   const R = p.rest, one = p.played === 1, first = firstName(p.name);
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
@@ -189,8 +189,9 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
   const enough = (a, b) => a && b && a.holes >= 6 && b.holes >= 6;
   const mixed = mixedLengths(p.rounds);
   const f = mixed ? p.per18 : { avg: p.avgPts, spread: p.consistency, form: p.form, trend: p.trend };
-  // My own page is built from my rounds alone, so "the rest" and "where I finish" would only ever be me
-  const society = !!gid;
+  // My own page is built from my rounds alone, so "the rest" and "where I finish" would only ever be me; a friend's
+  // likewise, but told in their name
+  const society = !!gid, third = society || named;
   const vsField = !society ? "" : `${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this society on the right, over the ${plural(p.played, "round")} they played together. The green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixed ? " This society mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
     ${!R.holes ? `<p class="muted small" style="margin:0 4px">${esc(first)} has not yet shared a round in this society with anyone else, so there is nothing to measure against.</p>` : `
     <div class="card tapes mine">
@@ -206,9 +207,9 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
     <p class="muted small" style="margin:6px 4px 0">${p.vsField === null ? "" : (p.beatOf === 1
         ? `${esc(first)} ${p.beat ? "beat" : "did not beat"} the rest of the field in the one round they have shared.`
         : `${esc(first)} beat them in ${p.beat} of those ${p.beatOf} rounds, ${p.vsField >= 0 ? `${fix(p.vsField)} points up overall` : `${fix(-p.vsField)} points behind overall`}.`)}</p>`}`;
-  const who = society ? esc(first) : "you";
+  const who = third ? esc(first) : "you";
   const form = one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear after a second round${society ? " here" : ""}.</p>`
-    : `${h2tip("Habits", `<p><b>Either side</b> is how far a typical round sits from the average: the smaller, the steadier. ${society ? " <b>Last three</b> is form, the average of the latest three rounds. <b>Trend</b> compares the first half of the rounds with the second; plus means the second half was better. <b>Streak</b> counts the latest rounds in a row above the rest of the field." : " How each part of your game has moved over time is under Trends."}</p>
+    : `${h2tip("Habits", `<p><b>Either side</b> is how far a typical round sits from the average: the smaller, the steadier. ${society ? " <b>Last three</b> is form, the average of the latest three rounds. <b>Trend</b> compares the first half of the rounds with the second; plus means the second half was better. <b>Streak</b> counts the latest rounds in a row above the rest of the field." : ` How each part of ${named ? "their" : "your"} game has moved over time is under Trends.`}</p>
       <p><b>Points a hole</b> splits a round in two, front half and back half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>${mixed ? "<p>These rounds mix nines and eighteens, so the points are put on an eighteen-hole footing first: a nine counts double.</p>" : ""}`)}
     <div class="card"><div class="sleads grid">
       ${fig(`±${fix(f.spread)}`, "points either side", `of ${fix(f.avg)} ${mixed ? "per 18" : "on average"}`)}
@@ -224,7 +225,7 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
     </div></div>`;
   return `${want("core") ? `
     ${want("notiles") && only ? "" : `<div class="mecard"><div class="stats">${tile(p.played, plural(p.played, "round").split(" ")[1])}${tile(fix(p.avgPts), "avg pts")}${one ? "" : tile(p.bestPts, "best")}${p.returns ? tile(fmtToPar(Math.round(p.avgTopar)), "avg to par") : ""}${p.wins ? tile(p.wins, plural(p.wins, "win").split(" ")[1]) : ""}</div></div>`}
-    <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(`Every hole ${society ? `${esc(first)} has played in this society` : "you have played"}: ${plural(p.holes, "hole")} over ${plural(p.played, "round")}. ${society ? esc(first) : "You"} ${birdies ? `make${society ? "s" : ""} ${fix(birdies / p.played)} birdies or better` : `${society ? "has" : "have"} yet to make a birdie`} and ${fix(per(2))} pars a round.`), "corner")}
+    <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(`Every hole ${third ? `${esc(first)} has played${society ? " in this society" : ""}` : "you have played"}: ${plural(p.holes, "hole")} over ${plural(p.played, "round")}. ${third ? esc(first) : "You"} ${birdies ? `make${third ? "s" : ""} ${fix(birdies / p.played)} birdies or better` : `${third ? "has" : "have"} yet to make a birdie`} and ${fix(per(2))} pars a round.`), "corner")}
       <div class="dwrap">${donut(p.counts, `${pct(parOrBetter(p), p.holes)}%`, "par or better")}${donutKey(p.counts, p.played, "round")}</div>
       <p class="muted small" style="margin:10px 0 0">${plural(p.holes, "hole")} · ${fmtSigned(p.vspar, 2)} a hole against par</p></div>
     ${one || !society ? "" : `${h2tip("Round by round", `One bar a round, oldest on the left: ${society ? `${esc(first)}'s` : "your"} points ${mixed ? "a hole, because the rounds mix nines and eighteens" : "in each round"}.${society ? " The grey column behind a bar is what everyone else in the society scored that day." : ""} Tap a bar for that card.`)}${formChart(p.rounds)}`}
@@ -247,27 +248,30 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
 }
 
 // ---------------------------------------------------------------- my own game, across every round I played
+/** One golfer's numbers from computed rounds: what both Mine and a friend's page draw. */
+export function gameOf(Ms, id, rounds = []) {
+  const St = leagueStats(Ms, id ? [id] : []);
+  return { rounds, Ms, St, p: St.players.find(x => x.id === id) || null };
+}
+
 /** Every finished round with my seat on it, computed so my seat answers to my identity. */
 export function myGame() {
   const meId = S.myAccount() || S.state.settings.meId;
   const rounds = S.myRounds().filter(r => r.status === "done" && !isTeamFormat(r.format));
-  const Ms = rounds.map(r => safeCompute(compute, r, true)).filter(Boolean);
-  const St = leagueStats(Ms, meId ? [meId] : []);
-  const p = St.players.find(x => x.id === meId) || null;
-  return { meId, rounds, Ms, St, p };
+  return { meId, ...gameOf(rounds.map(r => safeCompute(compute, r, true)).filter(Boolean), meId, rounds) };
 }
 
-/** One topic of my game: scoring, shots, trends or nines. */
-export function myGameBody(topic) {
-  const { rounds, Ms, St, p } = myGame();
-  if (!p) return `<p class="muted center" style="margin:30px 0">Finish a round and your numbers start here.</p>`;
+/** One topic of a golfer's game: scoring, shots, trends or nines. `them` is a friend's first name; mine has none. */
+export function gameBody({ rounds, Ms, St, p }, topic, them = null) {
+  if (!p) return `<p class="muted center" style="margin:30px 0">${them ? `${esc(them)} has no finished rounds yet.` : "Finish a round and your numbers start here."}</p>`;
   if (topic === "shots") return `<div class="statsbody">${shotsBody(p.statline, leagueCards(Ms), p.id, "everyone you played with")}</div>`;
-  if (topic === "trends") return `<div class="statsbody">${trendsBody(p, St.holes, leagueCards(Ms))}</div>`;
+  if (topic === "trends") return `<div class="statsbody">${trendsBody(p, St.holes, leagueCards(Ms), them || "you")}</div>`;
   const parts = { scoring: ["core", "notiles"], nines: ["nines"] }[topic] || ["core", "notiles"];
   const nines = topic === "nines" ? ninesPlayerBlock(rounds, p.id, "You") || `<p class="muted center">No loop walked yet.</p>` : "";
-  const body = playerStats(St, p, nines, "", leagueCards(Ms), parts);
+  const body = playerStats(St, p, nines, "", leagueCards(Ms), parts, !!them);
   return `<div class="statsbody">${body.trim() || `<p class="muted center" style="margin:30px 0">Nothing here yet.</p>`}</div>`;
 }
+export const myGameBody = topic => gameBody(myGame(), topic);
 
 function rivalVerdict(r, me, them) {
   const bits = [];

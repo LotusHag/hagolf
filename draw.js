@@ -193,6 +193,11 @@ export class Fig {
       for (let x = 0.2; x < wIn; x += 0.2) this.line(x, 0, x, hIn, g, 0.5);
       for (let y = 0.2; y < hIn; y += 0.2) this.line(0, y, wIn, y, g, 0.5);
     }
+    if (house(T).pattern === "hearts") {   // small hearts strewn over the page, a row offset by half
+      const g = mix(T.BG, T.ACCENT, isDark(T) ? 0.11 : 0.08);
+      for (let y = 0.25, row = 0; y < hIn; y += 0.38, row++)
+        for (let x = row % 2 ? 0.22 : 0.03; x < wIn; x += 0.42) this.heart(x, y, 0.1, g);
+    }
   }
 
   px(v) { return v * this.dpi; }
@@ -341,6 +346,18 @@ export class Fig {
     ctx.arc(this.px(cx), this.px(cy), this.px(d / 2), 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+  }
+
+  /** A heart `s` inches wide, centred on (cx, cy): filled with `fc`, outlined in `ec`, or both. */
+  heart(cx, cy, s, fc, ec = null, lw = 1) {
+    const ctx = this.ctx, k = s / 72, P = (x, y) => [this.px(cx + (x - 60) * k), this.px(cy + (y - 42) * k)];
+    ctx.beginPath();
+    ctx.moveTo(...P(60, 72));
+    [[33, 55, 24, 41, 24, 29], [24, 19, 31.5, 12, 41, 12], [49, 12, 55, 16.5, 60, 24], [65, 16.5, 71, 12, 79, 12],
+      [88.5, 12, 96, 19, 96, 29], [96, 41, 87, 55, 60, 72]].forEach(([a, b, c, d, e, f]) => ctx.bezierCurveTo(...P(a, b), ...P(c, d), ...P(e, f)));
+    ctx.closePath();
+    if (fc) { ctx.fillStyle = fc; ctx.fill(); }
+    if (ec) { ctx.strokeStyle = ec; ctx.lineWidth = lw / 72 * this.dpi; ctx.stroke(); }
   }
 
   square(cx, cy, s, ec, lw, dash = null) {
@@ -511,6 +528,12 @@ export function headerRule(fig, y) {
         fig.rbox(x, y - s / 2, s, s, T.ACCENT_2, 0.012);
         fig.disc(x + s / 2, y, s * 0.62, T.BG);
       }
+      break;
+    }
+    // a string of small hearts, in the theme's two pinks
+    case "hearts": {
+      const step = 0.24, n = Math.floor((R - M) / step), x0 = M + (R - M - (n - 1) * step) / 2;
+      for (let i = 0; i < n; i++) fig.heart(x0 + i * step, y, 0.11, i % 2 ? T.ACCENT_2 : T.ACCENT);
       break;
     }
     case "neon": {
@@ -766,6 +789,10 @@ export function posChip(ax, x, y, place, size = 1.0, fontsize = 13) {
     fig.rbox(cx - d / 2, cy + d / 2 - d * 0.14, d, d * 0.14, fc, 0);
     return void fig.text(cx, cy - d * 0.06, String(place), { size: fontsize, family: "display", color: BOARD.ink, ha: "center", va: "center" });
   }
+  if (shape === "heart") {   // the medal is a heart, the place written on it
+    fig.heart(cx, cy, d * 1.15, fc);
+    return void fig.text(cx, cy - d * 0.06, String(place), { size: fontsize - 2, family: "display", color: on(T, fc), ha: "center", va: "center" });
+  }
   if (shape === "patch") {   // a sewn-on badge: the medal colour with a stitched ring inside its edge
     fig.disc(cx, cy, d, fc);
     fig.stroke(ringPts(cx, cy, d * 0.8), on(T, fc), 0.9, { dash: [1.6, 1.3] });
@@ -946,6 +973,12 @@ export function scoreGlyph(ax, x, y, cell, delta, text, fontsize = 15, lw = 1.6,
       if (two) { ctx.fillStyle = col; ctx.fill(); }
       ctx.strokeStyle = col; ctx.lineWidth = lw / 72 * fig.dpi; ctx.stroke();
       if (two) color = on(T, col);
+    }
+  } else if (style === "heart") {   // a heart round a birdie and two round an eagle; soft boxes over par, as ever
+    if (delta < 0) for (let k = 0; k < (two ? 2 : 1); k++) fig.heart(cx, cy + c * 0.05, c * (0.9 + 0.24 * k), null, col, lw * 0.9);
+    else if (delta > 0) for (let k = 0; k < (two ? 2 : 1); k++) {
+      const s2 = c * (0.64 + 0.18 * k);
+      fig.rbox(cx - s2 / 2, cy - s2 / 2, s2, s2, null, s2 * 0.12, { ec: col, lw: lw * 0.9 });
     }
   } else if (style === "neon") {   // outlined in the score's colour, a double filled faintly too
     if (delta) {

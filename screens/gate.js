@@ -7,12 +7,13 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, isAndroid, ICONS } from "../ui.js";
 import { fmtIndex } from "../model.js";
+import { buildRound, courseOf } from "./public.js";
 import { isNative, plugin } from "../native.js";
 
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
 export function landed() {
   const intent = takeIntent();
-  go(intent && /^#(join|add|card|board|league|review)\//.test(intent) ? intent : "#home");
+  go(intent && /^#(join|add|you|card|board|league|review)\//.test(intent) ? intent : "#home");
 }
 
 /** A signed-in account with a name becomes a contact in its own book, and what this phone means by "me". */
@@ -331,39 +332,76 @@ export async function join(arg) {
   go(`#league/${r.league.id}`);
 }
 
-/** "Which one is you?" after joining a league whose cards already carry names. */
+/**
+ * "Which one are you?" after joining a society whose cards already carry names. The name that is the account's
+ * own comes first. A pick stands at once; the organisers can undo a wrong one.
+ */
 export async function claimSheet(leagueId, candidates) {
   const free = candidates.filter(c => !c.claimedBy);
   if (!free.length) return;
-  const v = await sheet({ title: "Which one is you?", lead: "These names are on this society's cards. Pick yours and those rounds become yours.",
+  const mine = S.nameKey((A.account() || {}).name || "");
+  free.sort((x, y) => (y.key === mine) - (x.key === mine));
+  const v = await sheet({ title: "Which one are you?", lead: "Your rounds in this society come with your name.",
     body: `<div class="list">${free.map(c => `<button data-act="${esc(c.key)}" data-sheet-act><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${plural(c.rounds, "round")}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`,
-    actions: [{ label: "None of these, I'm new here", value: "none" }] });
+    actions: [{ label: "I'm not on a card yet", value: "none" }] });
   if (!v || v === "none") return;
   const c = free.find(x => x.key === v);
   try {
-    const r = await F.claim(leagueId, c.name);
-    toast(r.state === "pending" ? "Claim sent to the organiser" : `You are ${c.name} here`);
+    await F.claim(leagueId, c.name);
+    toast(`You are ${c.name} here`);
     await Y.pull();
   } catch (e) { toast(e.message, 5000); }
 }
 
-/** `#add/<handle>`: somebody's friend link. */
+/** `#add/<handle>`: somebody's friend link. Handing it out was their yes, so opening it makes you friends. */
 export async function add(handle) {
   if (!handle) return go("#people");
-  if (!A.signedIn()) {
-    page("Add a friend", `<p class="muted center">Looking…</p>`, { bare: true });
-    let p;
-    try { p = await F.previewHandle(handle); } catch (e) { return previewPage("Add a friend", `<h3>Nobody by that link</h3>`, "#people"); }
-    return previewPage("Add a friend", `<div class="person">${avatar(p.person.name, "big")}<div class="who"><div class="name">${esc(p.person.name)}</div><div class="handle">wants to add you on Hagolf</div></div></div>`, `#add/${handle}`);
-  }
-  let r;
-  try { r = await F.resolve(handle); } catch (e) { toast("Nobody by that link", 4000); return go("#people"); }
-  const p = r.person;
-  if (p.state === "accepted") { toast(`${firstName(p.name)} is already a friend`); return go("#people"); }
-  const v = await sheet({ title: `Add ${p.name}?`, body: `<div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">@${esc(p.handle || "")}</div></div></div>`,
-    actions: [{ label: p.state === "requested" && !p.byMe ? "Accept" : "Add as a friend", value: "ok", kind: "primary" }, { label: "Not now", value: "no" }] });
-  if (v === "ok") { try { await F.request(p.id); toast(p.state === "requested" && !p.byMe ? `You and ${firstName(p.name)} are friends` : "Request sent"); } catch (e) { toast(e.message, 5000); } }
+  page("Add a friend", `<p class="muted center">Looking…</p>`, { bare: !A.signedIn() });
+  let p;
+  try { p = (await F.previewHandle(handle)).person; } catch (e) { if (!A.signedIn()) return previewPage("Add a friend", `<h3>Nobody by that link</h3>`, "#people"); toast("Nobody by that link", 4000); return go("#people"); }
+  const who = `<div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">wants to be your friend on Hagolf</div></div></div>`;
+  if (!A.signedIn()) return previewPage("Add a friend", who, `#add/${handle}`);
+  if (F.held().friends.some(f => f.handle === p.handle)) { toast(`${firstName(p.name)} is already a friend`); return go("#people"); }
+  const v = await sheet({ title: `Add ${firstName(p.name)}?`, body: who, actions: [{ label: "Add as a friend", value: "ok", kind: "primary" }, { label: "Not now", value: "no" }] });
+  if (v === "ok") { try { await F.linkFriend(handle); toast(`You and ${firstName(p.name)} are friends`); } catch (e) { toast(e.message, 5000); } }
   go("#people");
+}
+
+/** The cards on a golfer's link, each with that golfer's points on it. */
+function golferCards(P) {
+  return P.cards.map(card => {
+    const course = courseOf(card.round.course, card.course ? [card.course] : []);
+    let pts = null;
+    try { const M = course && buildRound(card, card.round, card.entries, card.scores, course); const me = M && M.players.find(x => x.id === card.you); pts = me ? me.pts : null; } catch (e) { /* the card still lists */ }
+    const others = card.entries.filter(e => e.id !== card.you).map(e => firstName(e.name));
+    return `<div><div><div class="name">${esc(course ? course.name : card.round.name)}</div><div class="muted small">${esc(card.round.date || "")}${others.length ? ` · with ${esc(others.join(", "))}` : ""}</div></div>${pts !== null ? `<span class="num"><b>${pts}</b> pts</span>` : ""}</div>`;
+  }).join("");
+}
+
+/** `#you/<token>`: the link a scorer sent with your cards on it. "These are mine" makes them yours. */
+export async function you(token) {
+  if (!token) return go("#home");
+  page("Your rounds", `<p class="muted center">Looking…</p>`, { bare: !A.signedIn() });
+  let P;
+  try { P = await F.previewGolfer(token); }
+  catch (e) { const gone = `<h3>This link has been used</h3><p class="muted">Ask for a new one, or sign in: rounds already yours are waiting.</p>`; return A.signedIn() ? (toast("This link has been used", 5000), go("#home")) : previewPage("Your rounds", gone, "#home"); }
+  const head = `<h3>${P.by ? `${esc(P.by)} kept your score` : "Your scores"}</h3><p class="muted">${plural(P.cards.length, "round")} as ${esc(P.name)}</p>`;
+  const list = `<div class="list">${golferCards(P)}</div>`;
+  if (!A.signedIn()) return previewPage("Your rounds", `${head}${list}`, `#you/${token}`);
+  page("Your rounds", `<div class="card">${head}</div>${list}
+    <div class="btnrow"><button class="btn primary" data-act="mine">These are mine</button><button class="btn" data-act="not">Not me</button></div>`, { back: "#home" });
+  bind(async ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    if (b.dataset.act === "not") return go("#home");
+    b.disabled = true;
+    try {
+      const r = await F.openGolfer(token);
+      await Y.pull();
+      toast(`${plural(r.rounds, "round")} added to yours`);
+      go("#stats/rounds");
+    } catch (e) { b.disabled = false; toast(e.message, 5000); }
+  });
 }
 
 /** A phone pointed at a backend by an old-style join link. */

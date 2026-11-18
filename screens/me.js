@@ -9,7 +9,7 @@ import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, s
 import { fmtIndex, STAT_SWITCHES, STAT_SWITCH_KEYS } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
-import { keepPage, seatsPage } from "./mine.js";
+import { keepPage } from "./mine.js";
 
 const row = (href, icon, title, sub = "") => `<a href="${href}"><span class="lead">${ICONS[icon]}<div><div class="name">${esc(title)}</div>${sub ? `<div class="muted small">${sub}</div>` : ""}</div></span><span class="chev">›</span></a>`;
 
@@ -31,20 +31,19 @@ export function me(section) {
   const clubs = S.bag().length;
   page("Me", `
     ${acct ? `<div class="person">${avatar(acct.name || "?", "big")}<div class="who"><div class="name">${esc(acct.name || "No name yet")}</div>
-      <div class="handle">${[acct.handle ? `@${esc(acct.handle)}` : "", acct.hi !== null && acct.hi !== undefined ? `index ${esc(fmtIndex(Number(acct.hi)))}` : "no index yet"].filter(Boolean).join(" · ")}</div></div><a class="btn small" href="#me/account">Edit</a></div>`
+      <div class="handle">${[acct.hi !== null && acct.hi !== undefined ? `index ${esc(fmtIndex(Number(acct.hi)))}` : "no index yet"].filter(Boolean).join(" · ")}</div></div><a class="btn small" href="#me/account">Edit</a></div>`
       : `<div class="card"><div class="muted small">Not signed in.</div><a class="btn primary" href="#welcome" style="margin-top:8px">Sign in</a></div>`}
     <div class="list">
       ${row("#bag", "bag", "My bag", clubs ? `${plural(clubs, "club")} with distances` : "Your club distances, on every hole")}
       ${acct ? row("#people", "people", "Friends", held.incoming.length ? `${plural(held.incoming.length, "request")} waiting` : `${plural(held.friends.length, "friend")}`) : ""}
       ${row("#me/keep", "chart", "Stats I keep", esc(keepWord))}
-      ${acct ? row("#me/seats", "check", "Were you on these cards?", "Cards with your name that need a yes or no") : ""}
       ${acct ? row("#partners", "users", "Courses and companies", (acct.clubs || []).length ? esc(acct.clubs.map(c => c.name).join(", ")) : "Have a code? Use it here") : ""}
       ${acct && acct.admin ? row("#admin", "settings", "Operator desk", "Partners and enquiries") : ""}
     </div>
     <h2>Settings</h2>
     <div class="list">
       ${row("#me/updates", "bell", "Notifications", N.pushState() === "granted" && S.state.settings.push ? "Push on" : "Push off")}
-      ${row("#me/privacy", "shield", "Privacy", acct ? `Found by ${acct.discoverable === "everyone" ? "everyone" : acct.discoverable === "nobody" ? "nobody" : "people in your societies"}` : "")}
+      ${row("#me/privacy", "shield", "Privacy", acct && acct.hidePublic ? "Initials on shared boards" : "")}
       ${row("#me/look", "sun", "Appearance", `${esc(lookTitle(appTheme()))} theme`)}
       ${row("#me/courses", "flag", "Courses", `${S.courses().length} courses`)}
       ${row("#me/data", "db", "Data and backup", "Export, import, download or delete")}
@@ -73,7 +72,6 @@ function account() {
       <label style="margin-top:0">Name<input name="name" value="${esc(a.name || "")}" autocapitalize="words" required></label>
       <div class="two"><label>Handicap index<input name="hi" inputmode="decimal" value="${a.hi !== null && a.hi !== undefined ? esc(fmtIndex(Number(a.hi))) : ""}" placeholder="18,4"></label>
       <label>Rating<select name="gender"><option value="m" ${a.gender !== "f" ? "selected" : ""}>Men's</option><option value="f" ${a.gender === "f" ? "selected" : ""}>Women's</option></select></label></div>
-      <label>Handle <span class="muted">(your friend link)</span><input name="handle" value="${esc(a.handle || "")}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. maurits-h"></label>
       <div class="linkbox">${esc(myLink())}</div>
       <button class="btn primary wide" type="submit" style="margin-top:14px">Save</button>
     </form>
@@ -86,7 +84,7 @@ function account() {
     if (!f.name.value.trim()) return toast("A name is needed");
     if (raw && !hiOk(hi)) return toast("Handicap index between +10 and 54");
     try {
-      const acct = await A.update({ name: f.name.value.trim(), hi, gender: f.gender.value, handle: f.handle.value.trim() || a.handle });
+      const acct = await A.update({ name: f.name.value.trim(), hi, gender: f.gender.value });
       S.linkMe(acct);
       const p = S.me();
       if (p && (p.name !== acct.name || p.hi !== acct.hi || p.gender !== acct.gender)) { p.hi = acct.hi; p.gender = acct.gender; if (p.name !== acct.name) S.renamePlayer(p, acct.name); else { S.touch("players", p); S.save(); } }
@@ -131,17 +129,9 @@ function privacySettings() {
   const a = A.account();
   if (!a) return go("#me");
   sub("Privacy", `
-    <div class="card"><h2 style="margin-top:0">Who can find you by name</h2>
-      <p class="muted small" style="margin:0 0 6px">Your friend link always works. This is only about the search box.</p>
-      <div class="segpick">${[["leagues", "People in my societies"], ["everyone", "Everyone"], ["nobody", "Nobody"]].map(([v, l]) => `<button data-act="disc" data-v="${v}" class="${(a.discoverable || "leagues") === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
     <div class="card"><label class="switch"><span>Keep me off shared boards<small>Initials instead of your name on any board or card that is not private.</small></span><input type="checkbox" id="hidepub" ${a.hidePublic ? "checked" : ""}></label></div>
     <div class="list">${row("#legal/privacy", "shield", "Privacy policy", "What is kept, who sees it, and your rights")}${row("#legal/terms", "info", "Terms")}</div>
     <p class="muted small" style="margin:14px 4px">Blocked people are under People. Your data, and deleting your account, are under Data and backup.</p>`);
-  bind(async ev => {
-    const b = ev.target.closest("[data-act=disc]");
-    if (!b) return;
-    try { await A.update({ discoverable: b.dataset.v }); privacySettings(); } catch (e) { toast(e.message, 5000); }
-  });
   document.getElementById("hidepub").addEventListener("change", async ev => {
     try { await A.update({ hidePublic: ev.target.checked }); toast(ev.target.checked ? "You are initials on shared boards from now on" : "Your name is back on shared boards"); } catch (e) { toast(e.message, 5000); }
   });
@@ -267,4 +257,4 @@ function about() {
     <div class="list">${row("#legal/privacy", "shield", "Privacy policy")}${row("#legal/terms", "info", "Terms")}</div>`);
 }
 
-const SECTIONS = { account, updates: updatesSettings, privacy: privacySettings, look, scoring: () => go("#me/keep"), keep: keepPage, seats: seatsPage, courses, data, club: () => go("#partners"), backend, about };
+const SECTIONS = { account, updates: updatesSettings, privacy: privacySettings, look, scoring: () => go("#me/keep"), keep: keepPage, courses, data, club: () => go("#partners"), backend, about };

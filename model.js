@@ -678,17 +678,22 @@ export function roundRanking(courseIn, round) {
   const entryOf = p => (round.entries || []).find(e => p.id !== null ? e.id === p.id : String(e.name || "").trim() === p.name) || {};
   const team = p => (entryOf(p).members || []).join(" · ");
   if (format === "stableford" || format === "scramblepts") return { format, rows: M.stbl_board.map(p => row(p, p.splace, `${p.pts} pts`, format === "scramblepts" ? team(p) : null)) };
+  const n = M.n;
+  const sub = p => format === "scramble" ? team(p) : p.nr ? `${p.holes_played} of ${n} holes` : `gross ${p.gross}`;
+  return { format, rows: netBoard(M).map(p => row(p, p.nplace, p.nr ? "NR" : `net ${p.net}`, sub(p))) };
+}
+
+/** The players in net order, each with `nplace`: ties split by the gross board's countback on net strokes, no return last. */
+export function netBoard(M) {
   const n = M.n, back = [...Array(n).keys()].reverse();
-  // net ties split by the same countback as the gross board: back nine, six, three, then hole by hole
   const keyNet = p => [p.net, ...M.segments.map(k => sum(p.nets.slice(n - k))), ...back.map(h => p.nets[h])];
   const finished = M.players.filter(p => !p.nr).sort((a, b) => cmpTuple(keyNet(a), keyNet(b)));
   const noReturn = M.players.filter(p => p.nr).sort((a, b) => b.holes_played - a.holes_played);
-  const sub = p => format === "scramble" ? team(p) : p.nr ? `${p.holes_played} of ${n} holes` : `gross ${p.gross}`;
-  return { format, rows: [
-    ...finished.map((p, i) => row(p, i + 1, `net ${p.net}`, sub(p))),
-    ...noReturn.map(p => row(p, null, "NR", sub(p))),
-  ] };
+  return [...finished.map((p, i) => Object.assign(p, { nplace: i + 1 })), ...noReturn.map(p => Object.assign(p, { nplace: null }))];
 }
+
+/** How a card is settled, as the image of its result: "match", "net" or "stbl". */
+export const resultKind = format => isMatchFormat(format) ? "match" : onPoints(format) ? "stbl" : "net";
 
 // ---------------------------------------------------------------- formatting, as golf/theme.py
 /** Fixed decimals with Python's round-half-even on exact ties, so 0.25 prints 0.2 as on the desktop. */

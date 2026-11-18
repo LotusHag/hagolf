@@ -1,12 +1,12 @@
-// What is mine: the Stats tab (my numbers, and every round I can see), my bag of club distances, which extras I
-// keep, and the cards that may be mine. Stats is one row of tabs over the same numbers.
+// What is mine: the Stats tab (my numbers, and every round I can see), my bag of club distances, and which extras I
+// keep. Stats is one row of tabs over the same numbers.
 import * as S from "../store.js";
 import * as A from "../auth.js";
-import * as Y from "../sync.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, confirmSheet, subtabs } from "../ui.js";
 import { compute, fix, fmtToPar, STAT_SWITCHES, matchWith } from "../model.js";
 import { myGame, myGameBody } from "./stats.js";
 import { dayBlock, nowCard, formatLabel } from "./home.js";
+import { sendMine } from "../images.js";
 
 const TOPICS = [
   ["scoring", "Scoring"],
@@ -48,6 +48,7 @@ export function stats(view, topic) {
   page("Stats", `
     ${tabRow(on)}
     ${p ? `${on === "scoring" ? tiles(p) : ""}${myGameBody(on)}
+        ${on === "scoring" ? `<div class="sendrow"><button class="sendlink" data-act="send-mine">Send your season</button></div>` : ""}
         ${on === "shots" && !anyExtras ? `<p class="muted small center">Keep putts and fairways on your card and greens, the spread off the tee and your putting appear here. <a href="#me/keep">Choose what you keep ›</a></p>` : ""}`
       : emptyState("chart", "No numbers yet", "Play a round, or scan an old card, and they start here.")}`,
     { back: "", tabs: "stats", keepScroll: ui.statsTab === on });
@@ -57,6 +58,7 @@ export function stats(view, topic) {
 
 function bindTabs() {
   bind(ev => {
+    if (ev.target.closest("[data-act=send-mine]")) { const { St, p } = myGame(); return p && sendMine(St, p); }
     const b = ev.target.closest("[data-act=stab]");
     if (!b) return;
     go(b.dataset.t === "rounds" ? "#stats/rounds" : b.dataset.t === "scoring" ? "#stats" : `#stats/t/${b.dataset.t}`);
@@ -195,30 +197,5 @@ export function keepPage() {
     } else return;
     if (A.signedIn()) A.update({ keep: S.myKeep() }).catch(e => toast(e.message));
     keepPage();
-  });
-}
-
-// ---------------------------------------------------------------- cards that may be mine
-export async function seatsPage() {
-  page("Were you on these cards?", `<p class="muted center">Looking…</p>`, { back: "#me", bell: false });
-  let seats = [];
-  try { seats = (await A.api("/account/seats")).seats || []; } catch (e) { return page("Were you on these cards?", `<div class="banner warn">${esc(e.message)}</div>`, { back: "#me" }); }
-  const draw = () => page("Were you on these cards?", seats.length ? `
-    <p class="muted small">Someone put your name or your account on these cards. Say yes and they count as yours, and you can correct them; say no and they're taken off.</p>
-    <div class="list">${seats.map((x, i) => `<div class="seatrow"><div><div class="name">${esc(x.roundName || "A round")}</div><div class="muted small">${esc(fmtDate(x.date))} · as ${esc(x.name)}</div></div>
-      <div class="btnrow"><button class="btn small primary" data-act="yes" data-i="${i}">That's me</button><button class="btn small" data-act="no" data-i="${i}">Not me</button></div></div>`).join("")}</div>`
-    : emptyState("check", "Nothing to answer", "Every card with your name on it is settled."), { back: "#me", bell: false });
-  draw();
-  bind(async ev => {
-    const b = ev.target.closest("[data-act]");
-    if (!b) return;
-    const x = seats[Number(b.dataset.i)];
-    try {
-      await A.api("/account/seats/answer", { round: x.round, seat: x.seat, yes: b.dataset.act === "yes" });
-      seats = seats.filter(y => y !== x);
-      toast(b.dataset.act === "yes" ? "Counted as yours" : "Taken off");
-      draw();
-      Y.resync().catch(() => {});
-    } catch (e) { toast(e.message, 5000); }
   });
 }

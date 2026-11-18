@@ -1009,10 +1009,6 @@ a.kv:active { background: var(--card2); }
 .gtile.on .gcheck { display: grid; }
 .gtile:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; }
 .gmore { margin-top: 8px; }
-/* ticking the lot is a second thought, not a second button: a quiet line under the grid it acts on */
-.gbulk { display: flex; justify-content: flex-end; margin-top: 2px; }
-.gbulk .btn { border: 0; background: none; color: var(--ink2); font-weight: 600; font-size: 13px; padding: 8px 4px; min-height: 40px; }
-.gbulk .btn:active { color: var(--green); }
 .gsays { display: block; margin: -2px 4px 8px; }
 /* the size is the same segmented control as an entry's fields, as tall as the look row under it, each choice
    drawn as the shape of the sheet it makes */
@@ -1030,6 +1026,29 @@ a.kv:active { background: var(--card2); }
 .lookfold[open] > summary::after { transform: rotate(-90deg); }
 .lookfold > .themes { gap: 0; padding-bottom: 6px; }
 .lookwhy { margin: -2px 2px 8px; }
+/* size, light or dark and the look: one row that says what they are set to, opened only to change them */
+.optsfold { margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 0 10px; }
+.optsfold .opts { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 12px; }
+.optsfold .optlab { display: block; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--ink2); }
+.optsfold .lookfold { background: var(--bg); }
+
+/* "Send the board": the action named after the thing, at the end of the heading over it, in words not a pill */
+.sendhead { display: flex; align-items: center; margin: 22px 0 4px; }
+.sendhead h2 { flex: 1; margin: 0; }
+.sendlink { border: 0; background: none; color: var(--green); font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 2px 0 12px; cursor: pointer; }
+.sendlink:active { opacity: .7; }
+.sendrow { display: flex; justify-content: flex-end; margin: 4px 0 0; }
+
+/* the image about to be sent, drawn before the button that sends it; a tall phone sheet shows its top */
+.pv .pvimg { display: grid; place-items: center; min-height: 160px; max-height: 50dvh; overflow: hidden; border-radius: var(--r-s); background: var(--card); }
+.pv .pvimg img { display: block; width: 100%; height: auto; max-height: 50dvh; object-fit: contain; cursor: zoom-in; }
+.pv .pvimg img.tall { height: 50dvh; object-fit: cover; object-position: top; mask-image: linear-gradient(to bottom, black 82%, transparent); }
+.pv .pvwait { margin: 0; padding: 24px; text-align: center; }
+.pv .pvalts { margin-top: 10px; }
+.pv .pvalts .tick { visibility: hidden; color: var(--green); display: grid; place-items: center; }
+.pv .pvalts .on .tick { visibility: visible; }
+.pv .pvalts .tick svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: calc(2.4px * var(--isw)); stroke-linecap: var(--icap); stroke-linejoin: var(--ijoin); }
+.pv .pvacts { margin-top: 12px; }
 
 /* ---------------------------------------------------------------- a league, as ruled rows
    Three things across: where they are, who they are, and the one number the league is decided on.
@@ -1100,6 +1119,28 @@ a.dayl:active { color: var(--green); }
 .arow > a.t { display: block; min-width: 0; color: var(--ink); }
 .arow > a.t b { display: block; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arow > a.t span { display: block; margin-top: 2px; font-size: 12px; color: var(--ink3); }
+/* a society's settings: spacing between groups, no boxes, and every control saves when touched */
+.lset > label:first-child { margin-top: 18px; }
+.lset .says { margin: 8px 2px 0; }
+.iconrow { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.iconrow .t { flex: 1; min-width: 0; }
+.iconrow .t b { display: block; font-size: 15px; font-weight: 600; }
+.iconrow .t span { display: block; margin-top: 2px; font-size: 12px; color: var(--ink3); }
+.iconrow .btn { flex: none; }
+.fmtrow { align-items: center; gap: 6px; padding: 6px 2px; }
+.fmtrow .lp { flex: none; width: 22px; font-family: var(--fd); font-size: 15px; font-weight: 500; color: var(--ink3); }
+.fmtrow .t b { font-weight: 600; }
+.fmtrow .opens { flex: none; padding: 0 4px; font-size: 11px; color: var(--green); }
+.fmtrow .iconbtn svg { width: 20px; height: 20px; }
+.fmtrows .hrow.more { padding-left: 30px; }
+.fmtrows .hrow.more b { color: var(--green); font-weight: 600; }
+.lset .lookfold { margin-top: 12px; }
+.lset .lookfold .themes { margin-top: 10px; }
+.lset .lookfold .lmode { padding-bottom: 12px; }
+.lset .rows + .switch, .lset .says + .switch { margin-top: 6px; }
+.segpick[aria-busy=true] { opacity: .6; }
+.lfoot { margin-top: 32px; }
+.btn.ghost.quietdanger { color: var(--danger); }
 .fold { padding: 0 16px; }
 .fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 48px; font-weight: 600; color: var(--ink2); }
 .fold > summary::-webkit-details-marker { display: none; }
@@ -1362,6 +1403,15 @@ main.bare:has(.tvboard) { display: block; }
   background: radial-gradient(circle, var(--bg) 0 3.5px, transparent 4px) 0 0 / 14px 12px, var(--green2); }
 [data-theme="palmsprings"] .btn { border-radius: 999px; }
 [data-theme="starter"] .top { border-bottom: 3px solid var(--green); }
+/* Sweetheart: small hearts all over the page, a heart round a birdie (two round an eagle) in place of the ring */
+[data-theme="sweetheart"] :is(#app, .vt-old) { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='84' height='76' viewBox='0 0 84 76'%3E%3Cg fill='%23F8D3DE'%3E%3Cpath transform='translate(4 6) scale(.17)' d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z'/%3E%3Cpath transform='translate(46 44) scale(.17)' d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z'/%3E%3C/g%3E%3C/svg%3E"); background-size: 84px 76px; }
+[data-theme="sweetheart"][data-mode="dark"] :is(#app, .vt-old) { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='84' height='76' viewBox='0 0 84 76'%3E%3Cg fill='%233A1C2C'%3E%3Cpath transform='translate(4 6) scale(.17)' d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z'/%3E%3Cpath transform='translate(46 44) scale(.17)' d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z'/%3E%3C/g%3E%3C/svg%3E"); }
+[data-theme="sweetheart"] .top { border-bottom: 2px solid var(--green2); }
+[data-theme="sweetheart"] .btn { border-radius: 999px; }
+[data-theme="sweetheart"] .mk:is(.c1, .c2) { border-color: transparent; box-shadow: none; }
+[data-theme="sweetheart"] .mk:is(.c1, .c2)::before, [data-theme="sweetheart"] .mk.c2::after { content: ""; position: absolute; inset: -5px -5px -3px;
+  background: var(--UNDER, var(--under)); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='20 8 80 68'%3E%3Cpath d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z' fill='none' stroke='%23000' stroke-width='5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='20 8 80 68'%3E%3Cpath d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z' fill='none' stroke='%23000' stroke-width='5'/%3E%3C/svg%3E") center / contain no-repeat; pointer-events: none; }
+[data-theme="sweetheart"] .mk.c2::after { inset: -10px -10px -7px; }
 
 /* ---- motion. Each theme's own moments are in themes/<name>.motion.css (built into motion.css); these are the
    stage they play on, and the quiet motion every theme shares. DESIGN-RULES.md (Motion) sets the limits. */
@@ -1369,9 +1419,6 @@ main.bare:has(.tvboard) { display: block; }
 /* a screen change: the old screen, frozen, laid over or under the new one while the theme moves them */
 .vt-old { position: fixed; inset: 0; z-index: 1; overflow: hidden; background-color: var(--bg); pointer-events: none; }
 #app.vt-new { position: relative; z-index: 2; background-color: var(--bg); }
-/* the saved seal sits on the board it signs, and a redraw after it shows it already in place */
-.saved .sealcard { position: relative; }
-.saved.settled .seal, .saved.settled .seal::before, .saved.settled .seal::after, .saved.settled .sealcard { animation-duration: 0s !important; animation-delay: 0s !important; }
 /* another scorer's number arriving: its cell takes a breath of the accent, then lets it go */
 .sval.fresh { animation: fresh .6s var(--ease-out); }
 @keyframes fresh { from { background-color: var(--green-soft); } }
@@ -1380,3 +1427,28 @@ main.bare:has(.tvboard) { display: block; }
 .moved { transition: transform .25s var(--ease-out); }
 /* each finished image arrives as it is made */
 .thumbs:not(.done) > * { animation: fade .12s var(--ease-out); }
+
+/* ---- charts draw themselves once a session, the first time they are seen (charts.js). Every theme sets its own
+   timing and which way a mark arrives in its motion file; these are the defaults and the ways it may choose:
+   grow from the baseline, shade in along the mark, or gild in place. Numbers never count up: they are the content. */
+:root { --chart-dur: 420ms; --chart-ease: cubic-bezier(0.2, 0.8, 0.2, 1); --chart-sweep: 220ms;
+  --chart-x: chart-x; --chart-xr: chart-x; --chart-y: chart-y; --chart-wipe: chart-wipe; --chart-fan: chart-fan; --chart-ring: chart-ring; }
+:is(.chart-wait, .chart-in) .cg-x { transform-origin: 0 50%; animation: var(--chart-x) var(--chart-dur) var(--chart-ease) var(--d, 0ms) both; }
+:is(.chart-wait, .chart-in) .cg-xr { transform-origin: 100% 50%; animation: var(--chart-xr) var(--chart-dur) var(--chart-ease) var(--d, 0ms) both; }
+:is(.chart-wait, .chart-in) .cg-y { transform-origin: 50% 100%; animation: var(--chart-y) var(--chart-dur) var(--chart-ease) var(--d, 0ms) both; }
+:is(.chart-wait, .chart-in) .cg-wipe { animation: var(--chart-wipe) var(--chart-dur) var(--chart-ease) var(--d, 0ms) both; }
+/* a fan grows out from the tee it is drawn from: teeFan() in shots.js stands it at (150, 160) */
+:is(.chart-wait, .chart-in) .cg-fan { transform-box: view-box; transform-origin: 150px 160px; animation: var(--chart-fan) var(--chart-dur) var(--chart-ease) var(--d, 0ms) both; }
+:is(.chart-wait, .chart-in) .cg-ring { animation: var(--chart-ring) var(--dur, 120ms) linear var(--d, 0ms) both; }
+.chart-wait :is(.cg-x, .cg-xr, .cg-y, .cg-wipe, .cg-fan, .cg-ring) { animation-play-state: paused; }
+@keyframes chart-x { from { transform: scaleX(0); } }
+@keyframes chart-y { from { transform: scaleY(0); } }
+@keyframes chart-wipe { from { clip-path: inset(0 100% 0 0); } }
+@keyframes chart-fan { from { transform: scale(0); } }
+@keyframes chart-ring { from { stroke-dasharray: 0 999; } }
+/* shaded in along the mark rather than stretched, as a pencil, chalk or a press would lay it down */
+@keyframes chart-shade-x { from { clip-path: inset(0 100% 0 0); } }
+@keyframes chart-shade-xr { from { clip-path: inset(0 0 0 100%); } }
+@keyframes chart-shade-y { from { clip-path: inset(100% 0 0 0); } }
+/* gilded where it stands: nothing travels */
+@keyframes chart-gild { from { opacity: 0.15; } }

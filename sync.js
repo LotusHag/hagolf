@@ -77,7 +77,7 @@ const TABLES = {
         if (!keys.has(`${r.id}|${e.playerId}`)) continue;
         rows.push({ round_id: r.id, player_id: e.playerId, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender || "m", course_handicap: e.courseHandicap ?? null,
           grp: e.group || 1, from_hole: e.fromHole || 1, penalties: e.penalties || [], track_stats: !!e.trackStats,
-          account_id: e.accountId || null, proposed_account: e.proposedAccount || null, contact_id: e.contactId || e.playerId, side: e.side || null, role: e.role || "player", members: e.members || [], squad: e.squad || 0, signed: !!e.signed,
+          account_id: e.accountId || null, contact_id: e.contactId || e.playerId, side: e.side || null, role: e.role || "player", members: e.members || [], squad: e.squad || 0, signed: !!e.signed,
           deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() });
       }
       return rows;
@@ -87,15 +87,15 @@ const TABLES = {
       const { e, i, j } = findEntry(r, row.player_id);
       // Who holds a seat is the server's to say (it checks consent), so it is taken even from a row that is not newer.
       if (e && !newer(row, e)) {
-        const acct = row.account_id || null, prop = row.proposed_account || null;
-        if ((e.accountId || null) === acct && (e.proposedAccount || null) === prop) return false;
-        e.accountId = acct; e.proposedAccount = prop;
+        const acct = row.account_id || null;
+        if ((e.accountId || null) === acct) return false;
+        e.accountId = acct;
         return true;
       }
       const n = holesOf(S.courseBy(r.course));
       const rec = { playerId: row.player_id, name: row.name, hi: row.hi === null ? null : Number(row.hi), tee: row.tee, gender: row.gender || "m",
         courseHandicap: row.course_handicap, group: row.grp || 1, fromHole: row.from_hole || 1, penalties: row.penalties || [], trackStats: !!row.track_stats,
-        accountId: row.account_id || null, proposedAccount: row.proposed_account || null, contactId: row.contact_id || row.player_id, side: row.side || null,
+        accountId: row.account_id || null, contactId: row.contact_id || row.player_id, side: row.side || null,
         role: row.role || "player", members: row.members || [], squad: row.squad || 0, signed: !!row.signed,
         deleted: !!row.deleted, updated_at: iso(row.updated_at), dev: row.device_id, scores: e ? e.scores : new Array(n).fill(null), scoreTs: e ? e.scoreTs : new Array(n).fill(null),
         stats: e ? e.stats : new Array(n).fill(null), statsTs: e ? e.statsTs : new Array(n).fill(null) };
@@ -161,7 +161,7 @@ const TABLES = {
     collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
       created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, brand: g.brand || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
     apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null, brand: r.brand || null,
-      kind: r.kind || "friendly", visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0,
+      visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0,
       deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_rounds: {
