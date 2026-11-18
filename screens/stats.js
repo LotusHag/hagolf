@@ -1,7 +1,7 @@
 // What a pile of rounds says: the field, one player, their rivals, and the nines they walked.
 import * as S from "../store.js";
-import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip as tipHead, infoBtn, subtabs, safeCompute, ui, ICONS } from "../ui.js";
-import { compute, computeNine, leagueStats, leagueProgress, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, STRIP_KEYS, NO_SCORE, isTeamFormat, isMatchFormat } from "../model.js";
+import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip as tipHead, infoBtn, safeCompute, ui, ICONS } from "../ui.js";
+import { compute, computeNine, leagueStats, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, STRIP_KEYS, NO_SCORE, isTeamFormat, isMatchFormat } from "../model.js";
 import { sgWords } from "./extras.js";
 import { H2H_BASES, basisUnit } from "./formats.js";
 import { nineName } from "./play.js";
@@ -10,7 +10,7 @@ import { trendsBody } from "./trends.js";
 
 const BUCKET_KEY = SCORE_BUCKETS.map(b => b.key);
 // every stats heading carries its picture; a heading not named here goes without
-const HEAD_ICONS = { "The season, card by card": "chart", "Round by round": "chart", "Form and consistency": "rank", "Habits": "habits",
+const HEAD_ICONS = { "Round by round": "chart", "Form and consistency": "rank", "Habits": "habits",
   "Par 3s, 4s and 5s": "holes", "Easy holes and hard ones": "index", "Match play": "vs", "Who scores what": "scorecard",
   "Player by player": "users", "Against the field": "vs", "Against each player": "users", "The nines walked": "loop", "Nines walked": "loop" };
 const h2tip = (title, text) => tipHead(title, text, HEAD_ICONS[title] || "");
@@ -73,66 +73,6 @@ function formChart(rs) {
         ${f === null ? "" : `<i class="fghost" style="height:${f}%"></i>`}<i class="fbar" style="height:${h}%"></i></div><small>${esc(shortDate(r.date))}</small></a>`;
   }).join("");
   return `<div class="card"><div class="fchart">${cols}</div>${mixed ? `<p class="muted small center" style="margin:8px 0 0">points a hole</p>` : ""}</div>`;
-}
-
-// ---------------------------------------------------------------- the season, left to right
-const SEASON_TIP = `<p>Every card this society has played, oldest on the left, and what each player scored on it. This is the only chart here with a direction: an average over a whole season cannot say whether the society is getting better or simply getting older.</p>
-  <p><b>Each card</b> is the day as it happened, spikes and all. <b>Running average</b> is everyone's average up to and including that day, so a line only moves when the player does and one freak round stops looking like a turning point.</p>
-  <p>The dashed line is the whole field. A player who missed a card has no point on it and their line carries straight over the gap, because the alternative is a score they never made. Tap a name to follow one player; where the society mixes nines and eighteens the chart counts points a hole.</p>`;
-
-/**
- * The league over time: one line a player, one column a card. On a phone there is no room for nine colours
- * and a key to go with them, so one line is picked out and the rest are the context behind it -- which is
- * also the question being asked, "where am I in this", rather than "what colour is everybody".
- */
-function seasonChart(St, gid, meId) {
-  const mode = ui.seasonMode[gid] === "running" ? "running" : "each";
-  const P = leagueProgress(St.rounds, { mode });
-  if (P.cards.length < 2 || !P.players.length) return "";
-  // Grey lines and nothing picked out is a chart nobody can read, so one is always followed until the reader
-  // says otherwise: their own, or the player at the top of the league where they are not in it.
-  const fallback = P.players.some(p => p.id === meId) ? meId : ((St.players[0] || {}).id || "");
-  const pick = P.players.some(p => p.id === ui.seasonWho[gid]) ? ui.seasonWho[gid]
-    : ui.seasonWho[gid] === "" ? "" : fallback;
-  const n = P.cards.length;
-  const vals = [...P.players.flatMap(p => p.points), ...P.field].filter(v => v !== null);
-  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
-  const W = 340, H = 168, padL = 5, padR = 5, padT = 10, padB = 22;
-  const X = i => padL + (i / (n - 1)) * (W - padL - padR);
-  const Y = v => padT + (1 - (v - lo) / span) * (H - padT - padB);
-  const seen = xs => xs.map((v, k) => [k, v]).filter(([, v]) => v !== null);
-  const poly = pts => pts.map(([i, v]) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
-  const unit = P.perHole ? "points a hole" : "points a round";
-  const fmtv = v => P.perHole ? fix(v, 2) : fix(v);
-  // a date under every column where they fit, the ends and a few between where they do not
-  const everyN = Math.ceil(n / 6);
-  const dates = P.cards.map((c, i) => (i % everyN === 0 || i === n - 1)
-    ? `<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === n - 1 ? "end" : "middle"}">${esc(shortDate(c.date))}</text>` : "").join("");
-  const lines = P.players.map(p => {
-    const pts = seen(p.points), on = p.id === pick;
-    // One card so far is a point, not a line, and a polyline of one point draws nothing at all
-    const only = pts.length === 1
-      ? `<circle class="sline${on ? " on" : ""} sonly" cx="${X(pts[0][0]).toFixed(1)}" cy="${Y(pts[0][1]).toFixed(1)}" r="3"></circle>` : "";
-    return `<polyline class="sline${on ? " on" : ""}" points="${poly(pts)}"><title>${esc(p.name)}</title></polyline>${only}${
-      on ? pts.map(([i, v]) => `<circle class="sdot" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3"><title>${esc(p.name)} · ${esc(shortDate(P.cards[i].date))} · ${fmtv(v)}</title></circle>`).join("") : ""}`;
-  });
-  // the picked line drawn last, so it is over the others rather than under them
-  const order = P.players.map((p, i) => i).sort((a, b) => (P.players[a].id === pick ? 1 : 0) - (P.players[b].id === pick ? 1 : 0));
-  const chosen = P.players.find(p => p.id === pick);
-  const chip = (id, label) => `<button class="pchip ${id === pick ? "on" : ""}" data-act="seasonwho" data-id="${esc(id)}">${esc(label)}</button>`;
-  return `${h2tip("The season, card by card", SEASON_TIP)}
-    ${subtabs([["each", "Each card"], ["running", "Running average"]].map(([k, l]) =>
-      `<button data-act="seasonmode" data-m="${k}" class="${k === mode ? "on" : ""}">${l}</button>`).join(""), true)}
-    <div class="card">
-      <svg class="season" viewBox="0 0 ${W} ${H}" role="img" aria-label="Every card this society has played, oldest on the left, one line a player and the whole field dashed behind them">
-        ${P.cards.map((c, i) => `<line class="sgrid" x1="${X(i).toFixed(1)}" y1="${padT}" x2="${X(i).toFixed(1)}" y2="${H - padB}"></line>`).join("")}
-        <polyline class="sfield" points="${poly(seen(P.field))}"><title>The whole field</title></polyline>
-        ${order.map(i => lines[i]).join("")}
-        ${dates}
-      </svg>
-      <p class="muted small" style="margin:8px 0 0">${chosen ? `<b>${esc(chosen.name)}</b> · ` : ""}${esc(unit)} · ${plural(n, "card")}, ${esc(shortDate(P.cards[0].date))} to ${esc(shortDate(P.cards[n - 1].date))}</p>
-    </div>
-    <div class="chips-wrap scroll" style="margin-top:8px">${chip("", "Nobody")}${P.players.map(p => chip(p.id, p.name)).join("")}</div>`;
 }
 
 // ---------------------------------------------------------------- putts, fairways and the rest, player by player
@@ -207,19 +147,20 @@ function matchTable(St) {
       <tbody>${rows.map(m => `<tr><td class="l">${esc(m.name)}</td><td>${m.played}</td><td>${m.won}</td><td>${m.halved}</td><td>${m.lost}</td><td class="acc">${m.holesWon}–${m.holesHalved}–${m.holesLost}</td></tr>`).join("")}</tbody></table>`;
 }
 
-function fieldStats(St, nines = "", gid = "", meId = null) {
+/** `who` is null for the whole society, or the chosen players' names, already escaped. */
+function fieldStats(St, nines = "", who = null) {
   const F = St.field;
   const recSub = r => `${firstName(r.player)} · ${shortDate(r.date)}`;
   const dist = [...St.players].sort((a, b) => pct(parOrBetter(b), b.holes) - pct(parOrBetter(a), a.holes) || a.name.localeCompare(b.name))
     .map(p => `<div class="drow"><div class="dname">${esc(p.name)}<small class="muted">${pct(parOrBetter(p), p.holes)}% par or better</small></div>${distBar(p.counts)}</div>`).join("");
+  const over = `${plural(F.holes, "hole")} over ${plural(F.rounds, "round")} on ${plural(F.cards, "card")}`;
   return `
-    <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(`Every hole this society has played: ${plural(F.holes, "hole")} over ${plural(F.rounds, "round")} on ${plural(F.cards, "card")}.`), "corner")}
+    <div class="card statcard hasi">${infoBtn("How the holes went", donutTip(who ? `Every hole ${who} played in this society${St.players.length > 1 ? ", taken together" : ""}: ${over}.` : `Every hole this society has played: ${over}.`), "corner")}
       <div class="dwrap">${donut(F.counts, `${pct(parOrBetter(F), F.holes)}%`, "par or better")}${donutKey(F.counts, F.rounds, "round")}</div>
       <p class="muted small" style="margin:10px 0 0">${plural(F.holes, "hole")} · ${fix(F.avgPts)} pts a round · ${fmtSigned(F.vspar, 2)} a hole against par</p></div>
-    ${seasonChart(St, gid, meId)}
     ${formTable(St)}
     ${F.statline.any ? `${shotsBody(F.statline, [], null, "")}${extrasTable(St)}` : ""}
-    ${holeKinds(F, "everyone in this society together")}
+    ${holeKinds(F, !who ? "everyone in this society together" : St.players.length > 1 ? `${who} together` : who)}
     ${nines}
     ${matchTable(St)}
     ${h2tip("Who scores what", `One bar a player: every hole they have played in this society, best scores on the left and worst on the right. The longer the left end, the more often they are at par or better.`)}
@@ -430,8 +371,10 @@ export function leagueRounds(gid) {
   return S.rounds().filter(r => ids.has(r.id) && r.status === "done").sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 }
 
-function ninesFieldBlock(gid, rounds, me) {
-  const nines = ninesPlayed(rounds);
+function ninesFieldBlock(gid, rounds, only = null) {
+  const nines = !only ? ninesPlayed(rounds) : ninesPlayed(rounds)
+    .map(x => { const rows = x.rows.filter(r => only.has(r.player.id)); return { ...x, rows, played: rows.length, unrated: [] }; })
+    .filter(x => x.rows.length);
   if (!nines.length) return "";
   const pick = nines.some(x => x.slug === ui.nineTab[gid]) ? ui.nineTab[gid] : nines[0].slug;
   const loop = nines.find(x => x.slug === pick);
@@ -483,13 +426,25 @@ export function ninesForPoster(rounds, members) {
   return out;
 }
 
-/** The field's numbers. One player's are their own screen now, so nothing here picks a person. */
-export function leagueStatsBody(g, Ms, members) {
+/**
+ * The society's numbers for whoever is picked: everyone, nobody, or any handful taken together, every reading
+ * worked out over their holes alone. `chosen` is null for everyone, otherwise a list of player ids.
+ */
+export function leagueStatsBody(g, Ms, members, chosen = null) {
   const St = leagueStats(Ms, members);
   if (!St.rounds.length) return `<p class="muted center" style="margin:30px 0">No finished rounds in this society yet.</p>`;
-  const mine = S.me();
-  const body = fieldStats(St, ninesFieldBlock(g.id, leagueRounds(g.id), mine), g.id, mine && mine.id);
-  return `<div class="statsbody">${body}</div>`;
+  const ids = chosen ? St.players.map(p => p.id).filter(id => chosen.includes(id)) : St.players.map(p => p.id);
+  const all = ids.length === St.players.length;
+  const chip = (id, label, on) => `<button class="pchip${on ? " on" : ""}" data-act="numwho" data-id="${esc(id)}" aria-pressed="${on}"><span>${esc(label)}</span></button>`;
+  const picks = `<div class="chips-wrap scroll whochips">${chip("", "Everyone", all)}${[...St.players].sort((a, b) => a.name.localeCompare(b.name))
+    .map(p => chip(p.id, p.name, !all && ids.includes(p.id))).join("")}</div>`;
+  if (!ids.length) return `${picks}<p class="muted center" style="margin:30px 0">Tap Everyone, or the players you want to see.</p>`;
+  if (all) return `${picks}<div class="statsbody">${fieldStats(St, ninesFieldBlock(g.id, leagueRounds(g.id)))}</div>`;
+  const names = St.players.filter(p => ids.includes(p.id)).map(p => p.name);
+  const who = names.length > 3 ? `these ${names.length} players` : namesList(names);
+  const said = names.length > 4 ? `${names.length} players, taken together` : names.length > 1 ? `${namesList(names.map(firstName))}, taken together` : "";
+  return `${picks}${said ? `<p class="muted small whosaid">${said}</p>` : ""}
+    <div class="statsbody">${fieldStats(leagueStats(Ms, ids), ninesFieldBlock(g.id, leagueRounds(g.id), new Set(ids)), who)}</div>`;
 }
 
 /** One player's season in this league, for their own screen. */

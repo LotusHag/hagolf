@@ -728,7 +728,7 @@ export function fmtIndex(hi) {
  */
 export const STAT_KINDS = [
   { key: "putts", col: "putts", label: "Putts", short: "Putts", word: "putts", perHole: "count", derived: false,
-    blurb: "How many of your strokes were putts. On its own this also gives greens in regulation, up and down and putts per green." },
+    blurb: "How many of your strokes were putts. On its own this also gives greens in regulation and up and down." },
   { key: "fairway", col: "fairway", label: "Fairways hit", short: "Fairway", word: "fairways", perHole: "fairway", derived: false,
     blurb: "Whether the tee shot finished on the fairway. Not asked on a par 3, which has none." },
   { key: "gir", col: "gir", label: "Greens in regulation", short: "GIR", word: "greens", perHole: null, derived: true,
@@ -754,7 +754,7 @@ export const hasFairway = par => par >= 4;
 /**
  * Greens in regulation, from strokes and putts alone: the ball was on the green after `strokes - putts`,
  * and regulation is two strokes fewer than par. This is why putts are the one extra worth having -- they
- * carry GIR, up and down and putts per green with them.
+ * carry GIR and up and down with them.
  */
 export function girFrom(strokes, putts, par) {
   if (strokes === null || putts === null) return null;
@@ -810,7 +810,6 @@ export function statSummary(holes) {
   const fw = hs.filter(h => hasFairway(h.par) && h.fairway !== null);
   const sand = hs.filter(h => h.bunker !== null && h.bunker > 0);
   const pen = hs.filter(h => h.penaltyShots !== null);
-  const puttsOnGreens = withPutts.filter(h => h.gir);
   const total = xs => xs.reduce((a, h) => a + h.putts, 0);
   const fwGir = fw.filter(h => h.gir !== null);
   const fwHit = fwGir.filter(h => h.fairway === "hit"), fwMiss = fwGir.filter(h => h.fairway !== "hit");
@@ -828,9 +827,6 @@ export function statSummary(holes) {
       one: withPutts.filter(h => h.putts === 1).length,
       none: withPutts.filter(h => h.putts === 0).length,
       three: withPutts.filter(h => h.putts >= 3).length,
-      onGir: puttsOnGreens.length ? mean(puttsOnGreens.map(h => h.putts)) : null,
-      onGirHoles: puttsOnGreens.length,
-      threeOnGir: puttsOnGreens.filter(h => h.putts >= 3).length,
     },
     fairway: !fw.length ? null : {
       holes: fw.length, hit: fw.filter(h => h.fairway === "hit").length,
@@ -903,7 +899,7 @@ export const RATE_MIN = 8;
 const SHOW_MIN = 5;
 
 /** The readings the personal card's strip and a poster's columns take, headline only, in the order drawn. */
-export const STRIP_KEYS = ["putts", "gir", "fairway", "puttsOnGir", "upDown", "penalty"];
+export const STRIP_KEYS = ["putts", "gir", "fairway", "upDown", "penalty"];
 
 /**
  * One summary read out as a list of readings, so the tiles on screen, the strip on a card and the rows on a
@@ -948,10 +944,6 @@ export function statReadings(x, { per18 = false } = {}) {
     const overHoles = `in ${p.holes} hole${s(p.holes)}`;
     if (p.one) num("onePutt", p.one, { title: "One-putts", label: `one-putt${s(p.one)}`, short: "One-putts", group: "putting", deep: true, n: p.holes, sub: overHoles });
     if (p.three) num("threePutt", p.three, { title: "Three-putts", label: `three-putt${s(p.three)}`, short: "Three-putts", group: "putting", deep: true, lower: true, n: p.holes, sub: overHoles });
-    // an average over one green is that green, not a putting record
-    if (p.onGir !== null && p.onGirHoles >= SHOW_MIN) num("puttsOnGir", p.onGir, {
-      title: "Putts per green", label: "putts per green", short: "Per green", group: "putting", lower: true, pair: true,
-      n: p.onGirHoles, sub: `${p.onGirHoles} green${s(p.onGirHoles)}`, fmt: v => fix(v, 2) });
   }
   if (x.gir) rate("gir", x.gir.hit, x.gir.holes, { title: "Greens in regulation", label: "greens in regulation", short: "GIR", group: "striking", min: 4 });
   if (x.fairway) {
@@ -1310,11 +1302,11 @@ export function matchRecords(results, memberIds) {
 }
 
 /**
- * Matchplay league: every pair who shared a round played a match on net score, hole by hole.
- * `win` and `draw` set what a result is worth, so the same maths gives a golf matchplay table
- * (2 and 1) or a football one (3 and 1).
+ * Matchplay league: every pair who shared a round played a match hole by hole, on strokes taken unless
+ * `basis` says Stableford points. `win` and `draw` set what a result is worth, so the same maths gives a
+ * golf matchplay table (2 and 1) or a football one (3 and 1).
  */
-export function matchStandings(results, memberIds, win = 2, draw = 1, basis = "net") {
+export function matchStandings(results, memberIds, win = 2, draw = 1, basis = "gross") {
   const members = new Set(memberIds);
   const rows = new Map();
   const row = p => { if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, up: 0 }); const r = rows.get(p.id); r.name = p.name; return r; };
@@ -1406,7 +1398,8 @@ export const ELO_BASES = ["points", "net", "match"];
  */
 function eloGame(pa, pb, basis) {
   if (basis === "match") {
-    const { up, holes } = matchResult(pa, pb, "net");
+    // strokes taken on each hole, no handicap, as a real match is played
+    const { up, holes } = matchResult(pa, pb, "gross");
     return holes ? { s: up > 0 ? 1 : up < 0 ? 0 : 0.5, d: up } : null;
   }
   if (basis === "points") return { s: pa.pts > pb.pts ? 1 : pa.pts < pb.pts ? 0 : 0.5, d: pa.pts - pb.pts };

@@ -163,7 +163,7 @@ export const hiOk = hi => hi >= -10 && hi <= 54;
 // players are compared. Everything else that used to live here -- which tab, which player, which pair -- is
 // in the hash instead, so the back button works and a board can be linked to.
 export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: {}, reviewOrder: {}, roundsFilter: "all", extrasOpen: true,
-  loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, seasonMode: {}, seasonWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", unlisted: null, found: null, pending: null };
+  loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, numWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", unlisted: null, found: null, pending: null };
 
 // ---------------------------------------------------------------- icons
 const I = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}${extra}</svg>`;

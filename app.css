@@ -953,15 +953,6 @@ a.kv:active { background: var(--card2); }
 .fcol small { font-size: 10px; white-space: nowrap; }
 /* The season: one line a player over every card, with the one being followed picked out and the rest left
    as context behind it. Nine colours and a key do not fit a phone; one line and a name do. */
-.season { display: block; width: 100%; height: auto; overflow: visible; }
-.season .sgrid { stroke: var(--line); stroke-width: 1; }
-.season .sline { fill: none; stroke: var(--line2); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-.season .sline.on { stroke: var(--green); stroke-width: 2.6; }
-.season .sfield { fill: none; stroke: var(--ink3); stroke-width: 1.6; stroke-dasharray: 5 4; stroke-linecap: round; }
-.season .sonly { fill: var(--line2); stroke: none; }
-.season .sonly.on { fill: var(--green); }
-.season .sdot { fill: var(--green); }
-.season text { font-size: 9px; fill: var(--ink3); }
 /* The extras table carries what each figure is out of under it, because a rate over four holes and one over
    four hundred are not the same claim and a column head cannot footnote a cell. */
 .xtab td b { display: block; font-size: 16px; line-height: 1.15; }
@@ -991,6 +982,9 @@ a.kv:active { background: var(--card2); }
 .chips-wrap.scroll { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; }
 .chips-wrap.scroll::-webkit-scrollbar { display: none; }
 .chips-wrap.scroll .pchip { flex: none; }
+.whochips { gap: 6px; margin: 12px -16px 0; mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent); }
+.whochips .pchip { min-height: 40px; padding: 6px 14px; }
+.whosaid { margin: 8px 0 0; }
 
 /* ---- the shop: every item shown working on your own round before it is bought */
 .shopintro { margin: 4px 4px 10px; }
@@ -1331,7 +1325,8 @@ main.wide { max-width: 1120px; }
   .playbtn { min-height: 220px; }
 }
 
-.lsegs { display: grid !important; grid-template-columns: repeat(4, 1fr); margin: 6px 0 10px; }
+.lsegs { display: grid !important; grid-template-columns: repeat(5, auto); gap: 2px; margin: 6px 0 10px; }
+.lsegs a { padding: 2px 5px; font-size: 13px; line-height: 1.1; text-align: center; }
 .todaycard { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .todaycard.start { cursor: pointer; border-style: dashed; }
 .todaycard .k { color: var(--green); font-size: 10px; letter-spacing: 2px; font-weight: 700; }

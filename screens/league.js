@@ -82,8 +82,8 @@ const dayWhere = c => (c.course && (c.course.loop || c.course.name)) || c.name |
 /** Invite, share and (for whoever runs it) the settings, as icons in the header. */
 const headActions = runs => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share and images") + (runs ? iconBtn("lgsettings", "settings", "Settings") : "");
 
-/** Board, Days, Numbers, Members: the four parts of a society, one tap each. */
-const segs = (gid, on) => `<div class="filter lsegs">${[["", "Board"], ["days", "Days"], ["stats", "Numbers"], ["members", "Members"]]
+/** Board, Days, Numbers, Head to head, Members: the parts of a society, one tap each. */
+const segs = (gid, on) => `<div class="filter lsegs">${[["", "Board"], ["days", "Days"], ["stats", "Numbers"], ["vs", "Head to&nbsp;head"], ["members", "Members"]]
   .map(([v, l]) => `<a href="#league/${gid}${v ? `/${v}` : ""}" class="${on === v ? "on" : ""}">${l}</a>`).join("")}</div>`;
 
 function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = runsIt(g), seg = null, wide = false } = {}) {
@@ -516,7 +516,7 @@ function dayView(C, key) {
       <h1>${esc(board[0] ? firstName(board[0].name) : matches[0] && matches[0].leader ? matches[0].sides[matches[0].leader].map(firstName).join(" & ") : matches[0] ? "Halved" : "No scores")}</h1>
       <p class="where">${esc([c.date ? fmtDate(c.date) : "", board.length ? plural(board.length, "player") : ""].filter(Boolean).join(" · "))}</p></section>
     ${board.length ? `<div class="rows lboard">${board.map((p, i) => `<${p.id ? "a" : "div"} class="hrow lrow${isMyRow(p, C.me) ? " me" : ""}"${p.id ? ` href="#league/${C.gid}/p/${esc(p.id)}"` : ""}>
-      <span class="lp num">${i + 1}</span><span class="t"><b>${esc(p.name)}</b><span>${esc([p.gross === null ? "no return" : `${p.gross} gross`, p.topar === null ? "" : fmtToPar(p.topar), D.basis === "net" ? `${p.pts} pts` : ""].filter(Boolean).join(" · "))}</span></span>
+      <span class="lp num">${i + 1}</span><span class="t"><b>${esc(p.name)}</b><span>${esc([p.gross === null ? "no return" : `${p.gross} gross`, p.topar === null || D.basis === "gross" ? "" : fmtToPar(p.topar), D.basis !== "points" ? `${p.pts} pts` : ""].filter(Boolean).join(" · "))}</span></span>
       <span class="v num">${esc(D.value(p))}<small class="u">${esc(D.unit)}</small></span></${p.id ? "a" : "div"}>`).join("")}</div>` : ""}
     ${matches.length ? `${sect("Match play")}<div class="rows">${matches.map(m => `<a class="hrow" href="#review/${m.roundId}"><span class="t"><b>${esc(`${m.sides.A.join(" & ")} v ${m.sides.B.join(" & ")}`)}</b><span>${esc(m.result || m.status)}</span></span><span class="chev">›</span></a>`).join("")}</div>` : ""}
     ${changed}
@@ -579,8 +579,6 @@ function playerView(C, pid, keep = false) {
       if (v) go(`#league/${C.gid}/vs/${pid}/${v}`);
       return;
     }
-    if (b.dataset.act === "seasonmode") { ui.seasonMode[C.gid] = b.dataset.m; return playerView(C, pid, true); }
-    if (b.dataset.act === "seasonwho") { ui.seasonWho[C.gid] = b.dataset.id; return playerView(C, pid, true); }
     if (b.dataset.act === "ninetab") { ui.nineTab[C.gid] = b.dataset.slug; return playerView(C, pid, true); }
   });
 }
@@ -589,10 +587,9 @@ function playerView(C, pid, keep = false) {
 function vsView(C, a, b) {
   const nameOf = id => { for (const M of C.Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
   if (!C.members.includes(a) || !C.members.includes(b) || a === b) {
-    const x = C.members.includes(a) ? a : C.members[0];
-    const y = C.members.find(m => m !== x);
-    if (!x || !y) { shell(C.g, "Head to head", `<p class="muted center" style="margin:30px 0">Head-to-heads appear once two players share a round in this society.</p>`, { back: `#league/${C.gid}`, runs: C.runs }); return bind(ev => common(C, ev)); }
-    return go(`#league/${C.gid}/vs/${x}/${y}`);
+    const pair = C.Ms.length ? h2hPair(C, standingsFor(C.g, C.Ms, C.members, C.kind)) : null;
+    if (!pair) { shell(C.g, C.g.name, `<p class="muted center" style="margin:30px 0">Head-to-heads appear once two players share a round in this society.</p>`, { runs: C.runs, seg: "vs" }); return bind(ev => common(C, ev)); }
+    return go(pair.href);
   }
   const h2hKind = C.formats.find(f => f in MATCH_BASIS);
   const basis = H2H_BASES.some(([k]) => k === ui.basis[C.gid]) ? ui.basis[C.gid] : (h2hKind ? MATCH_BASIS[h2hKind] : "points");
@@ -640,10 +637,10 @@ function vsView(C, a, b) {
       <div class="sc"><b class="${r.winner === "a" ? "wa" : ""}">${num(r.scoreA)}</b><s>&#8211;</s><b class="${r.winner === "b" ? "wb" : ""}">${num(r.scoreB)}</b></div></a>`).join("")}</div>`;
     body = sides + head + hero + formStrip + holesBlock + stats + list;
   }
-  shell(C.g, `${fA} v ${fB}`, `${body}
+  shell(C.g, C.g.name, `${body}
     ${C.members.length > 2 ? `${sect(`${fA} against`)}<div class="rows">${C.members.filter(m => m !== a && m !== b).slice(0, 5).map(m => `<a class="hrow" href="#league/${C.gid}/vs/${esc(a)}/${esc(m)}">
       <span class="t"><b>${esc(firstName(nameOf(m)))}</b></span><span class="chev">›</span></a>`).join("")}</div>` : ""}`,
-    { back: `#league/${C.gid}/p/${a}`, runs: C.runs });
+    { runs: C.runs, seg: "vs" });
   bind(async ev => {
     if (await common(C, ev)) return;
     const el = ev.target.closest("[data-act]");
@@ -667,18 +664,22 @@ function vsView(C, a, b) {
 // ---------------------------------------------------------------- the field's numbers
 function statsView(C, keep = false) {
   ui.statsWho[C.gid] = "";
-  const Sx = C.Ms.length ? standingsFor(C.g, C.Ms, C.members, C.kind) : { rows: [] };
-  const vs = h2hPair(C, Sx);
   const doors = C.Ms.length ? `<div class="list">
-      <a href="#league/${C.gid}/table/${C.kind}"><div><div class="name">The whole table</div><div class="muted small">${esc(FORMAT_NAMES[C.kind])}, every column</div></div><span class="chev">›</span></a>
-      ${vs ? `<a href="${vs.href}"><div><div class="name">Head to head</div><div class="muted small">${esc(vs.sub)}</div></div><span class="chev">›</span></a>` : ""}</div>` : "";
-  shell(C.g, C.g.name, doors + leagueStatsBody(C.g, C.Ms, C.members), { back: "#leagues", runs: C.runs, keepScroll: keep, seg: "stats" });
+      <a href="#league/${C.gid}/table/${C.kind}"><div><div class="name">The whole table</div><div class="muted small">${esc(FORMAT_NAMES[C.kind])}, every column</div></div><span class="chev">›</span></a></div>` : "";
+  shell(C.g, C.g.name, doors + leagueStatsBody(C.g, C.Ms, C.members, ui.numWho[C.gid] || null), { back: "#leagues", runs: C.runs, keepScroll: keep, seg: "stats" });
   bind(async ev => {
     if (await common(C, ev)) return;
     const b = ev.target.closest("[data-act]");
     if (!b) return;
-    if (b.dataset.act === "seasonmode") { ui.seasonMode[C.gid] = b.dataset.m; return statsView(C, true); }
-    if (b.dataset.act === "seasonwho") { ui.seasonWho[C.gid] = b.dataset.id; return statsView(C, true); }
+    if (b.dataset.act === "numwho") {
+      const every = [...document.querySelectorAll("[data-act=numwho]")].map(x => x.dataset.id).filter(Boolean);
+      const now = ui.numWho[C.gid] || every;
+      const id = b.dataset.id;
+      // Everyone flips between all and nobody; a name goes in or out of whoever is already picked
+      const next = !id ? (every.every(x => now.includes(x)) ? [] : null) : now.includes(id) ? now.filter(x => x !== id) : [...now, id];
+      ui.numWho[C.gid] = next && next.length === every.length ? null : next;
+      return statsView(C, true);
+    }
     if (b.dataset.act === "ninetab") { ui.nineTab[C.gid] = b.dataset.slug; return statsView(C, true); }
   });
 }

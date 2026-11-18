@@ -541,14 +541,14 @@ export function standingsPoster(S, group, T, kind = "stableford") {
     const maxPts = Math.max(1, ...rows.map(r => r.points));
     const scaleMax = 5 * Math.ceil((maxPts + 1) / 5);
     const w = S.win ?? (kind.startsWith("soccer") ? 3 : 2), d = S.draw ?? 1;
-    const basis = S.basis === "points" ? "the higher Stableford points" : "the lower net score";
+    const basis = S.basis === "points" ? "the higher Stableford points" : "the fewest strokes taken, no handicap";
     cols = [pos, col("Player", 1.15, 4.2, dName, "left"),
       num("P", 4.2, 4.8, r => String(r.played)), num("W", 4.9, 5.5, r => String(r.won)),
       num("D", 5.6, 6.2, r => String(r.drawn)), num("L", 6.3, 6.9, r => String(r.lost)),
       num("Holes up", 7.0, 7.85, r => (r.up > 0 ? "+" : "") + r.up),
       col("Pts", 7.95, 8.7, dVal(r => String(r.points), 22, (r, T) => T.ACCENT, "display")),
       col(`Points, 0 to ${scaleMax}`, 8.9, 9.95, pointsMeter(scaleMax, null, "points"), "left")];
-    right = `${w} points a win, ${d} a draw\n${S.basis === "points" ? "Stableford" : "net strokes"}`;
+    right = `${w} points a win, ${d} a draw\n${S.basis === "points" ? "Stableford" : "strokes taken"}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [maxPts, "the leader", T.ACCENT]];
     foot = `Every pair of society players who shared a round played a match, hole by hole, each hole going to ${basis}; ` +
       `a hole only one of them returned goes to the other. ${w} points for winning a match, ${d} for halving it. ` +
@@ -557,7 +557,7 @@ export function standingsPoster(S, group, T, kind = "stableford") {
     const elo = r => String(Math.round(r.score));
     const moved = r => r.last === null ? "–" : (Math.round(r.last) > 0 ? "+" : "") + Math.round(r.last);
     const lead = rows.length ? elo(rows[0]) : "0";
-    const how = { all: "Stableford, net and the match, averaged", points: "Stableford points", net: "net score", match: "a match on net score" }[S.basis];
+    const how = { all: "Stableford, net and the match, averaged", points: "Stableford points", net: "net score", match: "a match on strokes taken" }[S.basis];
     cols = [pos, col("Player", 1.15, 4.1, dName, "left"),
       num("Days", 4.1, 4.8, r => String(r.played)), num("W", 4.9, 5.4, r => String(r.won)),
       num("D", 5.5, 6.0, r => String(r.drawn)), num("L", 6.1, 6.6, r => String(r.lost)),

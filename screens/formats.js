@@ -8,7 +8,8 @@ export const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", m
   gp: "Grand Prix (Stableford)", gpstroke: "Grand Prix (stroke)",
   elo: "Elo rating", elopts: "Elo (Stableford)", elostroke: "Elo (stroke)", elomatch: "Elo (matchplay)" };
 export const GP_BASIS = { gp: "points", gpstroke: "net" };
-export const MATCH_BASIS = { match: "net", matchpts: "points", soccer: "net", soccerpts: "points" };
+// every match table not on Stableford goes hole by hole on strokes taken, never on handicap
+export const MATCH_BASIS = { match: "gross", matchpts: "points", soccer: "gross", soccerpts: "points" };
 export const ELO_BASIS = { elo: "all", elopts: "points", elostroke: "net", elomatch: "match" };
 export const basisWord = b => b === "points" ? "Stableford points" : b === "gross" ? "gross score" : "net strokes";
 export const H2H_BASES = [["points", "Stableford", "the most Stableford points", "the higher Stableford points"],
@@ -22,23 +23,23 @@ export const FORMAT_MODE = { stableford: "Stroke play", stroke: "Stroke play", g
 export const FORMAT_BLURB = {
   stableford: "Everyone's Stableford points added up; most points wins",
   stroke: "Everyone's net score against par added up; lowest wins",
-  match: "Everyone out the same day plays a match, each hole to the lower net score: 2 for a win, 1 for a draw",
+  match: "Everyone out the same day plays a match, each hole to the fewest strokes taken, no handicap: 2 for a win, 1 for a draw",
   matchpts: "Everyone out the same day plays a match, each hole to the higher Stableford points: 2 for a win, 1 for a draw",
-  soccer: "The same matches on net scores, in a football table: 3 for a win, 1 for a draw",
+  soccer: "The same matches on strokes taken, in a football table: 3 for a win, 1 for a draw",
   soccerpts: "The same matches on Stableford points, in a football table: 3 for a win, 1 for a draw",
   gp: "Points for where you finish on each card on Stableford points, as in Formula 1: 25 for the win, then 18, 15, 12…",
   gpstroke: "The same points, with the day finished on net score against par instead; no card, no points",
   elo: "A rating that rises when you beat the players you were out with, more for beating better ones and by more; Stableford, net score and the match all count",
   elopts: "The same rating, with each pair settled on Stableford points",
   elostroke: "The same rating, with each pair settled on net score",
-  elomatch: "The same rating, with each pair settled by a match on net score, hole by hole",
+  elomatch: "The same rating, with each pair settled by a match on strokes taken, hole by hole, no handicap",
 };
 // What a game is in each Elo format: who wins it, and what the margin d is counted in.
 const ELO_GAME = {
-  elo: "Each game is worked out three times: on Stableford points (d in points), on net score (d in strokes) and as a match on net score, hole by hole (d in holes up). M × (R − E) is averaged over the three, so winning all three counts fully and a split counts for less.",
+  elo: "Each game is worked out three times: on Stableford points (d in points), on net score (d in strokes) and as a match on strokes taken, hole by hole with no handicap (d in holes up). M × (R − E) is averaged over the three, so winning all three counts fully and a split counts for less.",
   elopts: "A game goes to whoever has more Stableford points, and d is the difference in points.",
   elostroke: "A game goes to the lower net score, and d is the difference in net strokes. A card you did not finish loses to everyone who finished theirs, with M = 1.",
-  elomatch: "A game is a match on net score, hole by hole, over every hole played rather than stopped once it is decided, and d is the holes up at the end. A hole only one of you finished goes to that player.",
+  elomatch: "A game is a match on strokes taken, hole by hole with no handicap, over every hole played rather than stopped once it is decided, and d is the holes up at the end. A hole only one of you finished goes to that player.",
 };
 
 // The tables a match play round registers in. Every other table, and a society with none of these, never sees one.
@@ -66,9 +67,9 @@ ${readsMatches(kind) ? `<p>${MATCH_ROUND}</p>` : "<p>A match play round does not
 export const FORMAT_NOTES = {
   stableford: "<b>Stroke play.</b> Everyone plays for their own score and nobody plays against anybody: each round gives you your Stableford points and this table adds them up. <b>Rds</b> is rounds played, <b>Wins</b> how often you had the most points on the day, <b>Avg</b> your points per round.",
   stroke: "<b>Stroke play.</b> Each round counts your net score against par, so −2 means two under. The lowest total wins. A round you did not finish a full card for counts nothing and is marked NR.",
-  match: "<b>Match play.</b> A match play round counts as the match that was played, with no handicap, side against side. On any other card, everyone out on it played a match against everyone else on it. Each hole goes to the lower net score, which is the score after handicap strokes, and whoever wins more holes wins the match. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost across every match.",
+  match: "<b>Match play.</b> A match play round counts as the match that was played, with no handicap, side against side. On any other card, everyone out on it played a match against everyone else on it. Each hole goes to the fewest strokes taken, with no handicap, and whoever wins more holes wins the match. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost across every match.",
   matchpts: "<b>Match play.</b> A match play round counts as the match that was played, with no handicap, side against side. On any other card, everyone out on it played a match against everyone else on it, and each hole goes to the higher Stableford points. Points stop at zero, so two ruined holes are halved where net scores would still separate them. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost.",
-  soccer: "<b>Match play, football table.</b> The same matches, each hole on the lower net score, scored the way a football league is: 3 points for a win, 1 for a draw, nothing for a loss.",
+  soccer: "<b>Match play, football table.</b> The same matches, each hole to the fewest strokes taken with no handicap, scored the way a football league is: 3 points for a win, 1 for a draw, nothing for a loss.",
   soccerpts: "<b>Match play, football table.</b> The same matches, each hole on the higher Stableford points, scored 3 for a win, 1 for a draw, nothing for a loss.",
   gp: `<b>Stroke play.</b> Each card hands out points for where you finished on the day on Stableford points, as Formula 1 does: ${GP_POINTS.join(", ")} down the board and nothing after that. Equal points are separated by countback. Only this society's players count towards a position, so a guest cannot take the win off you.`,
   gpstroke: `<b>Stroke play.</b> The same ${GP_POINTS.join(", ")} down the board, with the day finished on net score against par rather than on points, so the best card takes the win instead of the best points haul and a 9 and an 18 are ranked the same way. Equal net scores are separated by countback on net strokes. A card you did not finish has no position and scores nothing, marked NR.`,
@@ -193,8 +194,8 @@ export function boardLine(kind, r, g) {
 export const decidingValue = (kind, r) => kind in MATCH_BASIS ? r.points : kind in ELO_BASIS ? Math.round(r.score) : r.counted;
 export const eloDelta = d => { const x = Math.round(d); return x > 0 ? `+${x}` : x < 0 ? `−${-x}` : "±0"; };
 
-/** What a round is settled on in each way of scoring: Stableford points, or net strokes against par. */
-export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind === "stroke" || kind === "elostroke" || kind === "elomatch" ? "net" : "points");
+/** What a round is settled on in each way of scoring: Stableford points, net strokes against par, or strokes taken. */
+export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind === "elomatch" ? "gross" : kind === "stroke" || kind === "elostroke" ? "net" : "points");
 
 /**
  * One day's board in the league's own currency. A football-table or stroke-play league whose day is read off
@@ -213,10 +214,10 @@ export function dayBoard(kind, card) {
   const basis = dayBasis(kind);
   const rows = [...(card.stbl_board || [])];
   if (basis === "points") return { basis, rows, value: p => String(p.pts), unit: "pts" };
-  const par = card.course_par ?? 0;
-  const net = p => (p.net === null || p.net === undefined ? null : p.net - par);
+  const par = card.course_par ?? 0, field = basis === "gross" ? "gross" : "net";
+  const net = p => (p[field] === null || p[field] === undefined ? null : p[field] - par);
   rows.sort((a, b) => { const x = net(a), y = net(b); return x === null ? (y === null ? 0 : 1) : y === null ? -1 : x - y; });
-  return { basis, rows, value: p => net(p) === null ? "NR" : fmtToPar(net(p)), unit: "net", key: net };
+  return { basis, rows, value: p => net(p) === null ? "NR" : fmtToPar(net(p)), unit: field, key: net };
 }
 
 /**

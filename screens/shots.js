@@ -150,9 +150,8 @@ function puttSection(x) {
   const p = x.putts;
   if (!p || p.holes < 4) return "";
   const heads = [lead(fix(p.per18, 1), "putts a round", `over ${plural(p.holes, "hole")}`)];
-  if (p.onGir !== null && p.onGirHoles >= 5) heads.push(lead(fix(p.onGir, 2), "putts a green hit", plural(p.onGirHoles, "green")));
   heads.push(lead(fix((p.three / p.holes) * 18, 1), "three-putts a round"));
-  return `${h2tip("On the green", `<p>Every hole where putts were kept. <b>Putts a round</b> is the average scaled to 18 holes. <b>Putts a green hit</b> counts only the greens reached in regulation, where the first putt is usually the long one, so it is the fairer measure of the putter.</p>
+  return `${h2tip("On the green", `<p>Every hole where putts were kept. <b>Putts a round</b> is the average scaled to 18 holes.</p>
       <p>The columns are how many putts each hole took, as a share of the holes. A hole chipped in or holed from off the green took none.</p>`, "putt")}
     <div class="card">${leads(heads)}${puttColumns(p)}</div>`;
 }

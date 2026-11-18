@@ -36,7 +36,7 @@ export function scoreStepper(e, i, h, par) {
 
 // ---------------------------------------------------------------- the extras, on the same stepper
 // Everything a card can count rather than choose. Putts first: it is the one that carries greens in regulation,
-// up and down, sand saves and putts per green with it.
+// up and down and sand saves with it.
 const COUNTS = [["putts", "Putts"], ["bunker", "Sand"], ["penaltyShots", "Pen"]];
 
 /** Every extra this card keeps, for one player, in one row of tiles: three counts and the fairway, which a par 3 has none of. */
