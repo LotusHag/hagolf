@@ -35,16 +35,118 @@ if (history.state && typeof history.state.at === "number") {
 }
 stamp();
 window.addEventListener("hashchange", ev => {
-  const s = history.state;
+  const s = history.state, prevAt = at, wasReplacing = replacing, from = navFrom;
+  navFrom = location.hash;
   if (s && typeof s.at === "number") at = s.at;   // back or forward
   else if (!replacing) { at++; trail.length = at; }
   replacing = false;
   stamp();
-  if (then === null) return;
+  // a rebase lands in two steps; the way it went is decided on the first
+  if (!keepNav) nav = { dir: motionFor(norm(from), norm(location.hash), s && typeof s.at === "number" ? (s.at < prevAt ? "back" : "fwd") : wasReplacing ? "side" : "fwd"), at: Date.now() };
+  keepNav = false;
+  if (then === null) { tabJump = false; return; }
   const t = then;
   then = null;
-  if (t !== location.hash) { ev.stopImmediatePropagation(); replacing = true; location.replace(t); }
+  if (t !== location.hash) { ev.stopImmediatePropagation(); replacing = true; keepNav = true; location.replace(t); }
 });
+
+// ---------------------------------------------------------------- the theme's screen change
+// Each theme moves the way its own object does (themes/<name>.motion.css). It plays on going forward, going back
+// and turning to another hole; a bottom tab, a sideways board and every redraw stay instant.
+let nav = null, navFrom = location.hash, keepNav = false, tabJump = false;
+const holeIn = h => { const m = /^#score\/[^/]+\/(\d+)/.exec(h); return m ? Number(m[1]) : null; };
+function motionFor(from, to, kind) {
+  if (tabJump) return null;
+  if (kind !== "side") return kind;
+  const a = holeIn(from), b = holeIn(to);
+  if (a !== null && b !== null) return b > a ? "fwd" : "back";
+  if (/^#score\//.test(from) && /^#review\//.test(to)) return "fwd";
+  if (/^#review\//.test(from) && /^#score\//.test(to)) return "back";
+  return /^#(new|scan|j|players)(\/|$)/.test(from) && /^#(players|score)\//.test(to) ? "fwd" : null;
+}
+const stillPlease = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** The way the screen being drawn was reached, once; null for a redraw or a hash change long since drawn. */
+function takeNav() {
+  const n = nav;
+  nav = null;
+  return n && n.dir && Date.now() - n.at < 3000 && !stillPlease() ? n.dir : null;
+}
+let screenDone = null;
+/** The old screen, frozen where it was scrolled to, laid over the new one while the theme carries one off the other. */
+function swapScreens(write, dir) {
+  if (screenDone) screenDone();
+  const old = app.cloneNode(true), top = app.scrollTop, root = document.documentElement;
+  old.removeAttribute("id");
+  old.className = "vt-old";
+  old.inert = true;
+  old.setAttribute("aria-hidden", "true");
+  unlabel(old);
+  // nor is it a page: its landmarks become plain boxes that keep their look (app.css styles both)
+  old.querySelectorAll("main, header, footer, nav").forEach(el => {
+    const d = document.createElement("div");
+    d.className = `${el.className} x-${el.localName}`;
+    d.append(...el.childNodes);
+    el.replaceWith(d);
+  });
+  write();
+  document.body.appendChild(old);
+  old.scrollTop = top;
+  root.dataset.nav = dir;
+  app.classList.add("vt-new");
+  getComputedStyle(app).animationName;   // starts the theme's animations, so they can be counted
+  const done = () => {
+    if (screenDone !== done) return;
+    screenDone = null;
+    old.remove();
+    app.classList.remove("vt-new");
+    delete root.dataset.nav;
+  };
+  screenDone = done;
+  const runs = [...old.getAnimations(), ...app.getAnimations()];
+  if (!runs.length) return done();
+  Promise.all(runs.map(a => a.finished.catch(() => {}))).then(done);
+  setTimeout(done, 900);
+}
+
+/** Where every keyed row of a board stands before a redraw, measured down the page rather than the screen. */
+function flipSpots() {
+  const els = app.querySelectorAll("[data-flip]");
+  if (!els.length) return null;
+  const m = new Map();
+  els.forEach(el => m.set(el.dataset.flip, el.getBoundingClientRect().top + app.scrollTop));
+  return m;
+}
+/** After it: a row whose place on the board changed slides from where it was to where it is. */
+function slideMoved(was) {
+  app.querySelectorAll("[data-flip]").forEach(el => {
+    const y0 = was.get(el.dataset.flip);
+    if (y0 === undefined) return;
+    const dy = y0 - (el.getBoundingClientRect().top + app.scrollTop);
+    if (Math.abs(dy) < 2 || Math.abs(dy) > 1200) return;
+    el.style.transform = `translateY(${dy}px)`;
+    void el.offsetWidth;
+    el.classList.add("moved");
+    el.style.transform = "";
+    el.addEventListener("transitionend", () => el.classList.remove("moved"), { once: true });
+  });
+}
+
+/** The theme's moment for being picked, once: whatever it does to the whole screen, then nothing. */
+export function arrive() {
+  const root = document.documentElement;
+  if (stillPlease()) return;
+  root.classList.remove("arrive");
+  void app.offsetWidth;
+  root.classList.add("arrive");
+  getComputedStyle(app).animationName;
+  const runs = app.getAnimations();
+  const done = () => root.classList.remove("arrive");
+  if (!runs.length) return done();
+  Promise.all(runs.map(a => a.finished.catch(() => {}))).then(done);
+}
+
+/** Plays the theme's moment on a mark that was just written: a score landing. */
+export function land(el) { if (el && !stillPlease()) el.classList.add("run"); }
 
 const SETUP = /^#(new|scan|j)(\/|$)/;
 /** Screens that are one place seen different ways: the holes and check of a card, the stats tabs, a society's boards. */
@@ -67,7 +169,7 @@ function rebase(k, to) {
 export function go(hash) {
   const to = norm(hash), from = norm(location.hash);
   if (to === location.hash) return;
-  if (TABS.some(t => t[1] === to)) return rebase(to === "#home" || norm(trail[0]) !== "#home" ? 0 : 1, to);
+  if (TABS.some(t => t[1] === to)) { tabJump = true; return rebase(to === "#home" || norm(trail[0]) !== "#home" ? 0 : 1, to); }
   for (let k = at - 1; k >= 0; k--) if (trail[k] && samePlace(to, norm(trail[k]))) return rebase(k, to);
   const players = from.match(/^#players\/([^/]+)/);
   if (samePlace(to, from) || (SETUP.test(from) && /^#(players|score|review)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
@@ -248,10 +350,15 @@ export function page(title, body, { back = "#home", bar = "", sub = "", tabs = n
     : `<header class="top">${back ? `<button class="back" data-goback="${esc(back)}" aria-label="Back">‹</button>` : "<span class='back none'></span>"}
       <div class="ttl">${brand ? `<div class="brand">Hagolf</div>` : `<h1>${esc(title)}</h1>`}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
       <div class="acts">${actions}${bellBtn}${gearBtn}</div></header>`;
-  app.innerHTML = bare ? `<main class="bare">${body}</main>` : `${head}
+  const write = () => {
+    app.innerHTML = bare ? `<main class="bare">${body}</main>` : `${head}
     <main class="${bar ? "with-bar" : tabs ? "with-tabs" : ""}${wide ? " wide" : ""}">${body}</main>
     ${bar ? `<footer class="bar">${bar}</footer>` : nav}`;
-  scrollAt(y);
+    scrollAt(y);
+  };
+  const dir = takeNav();
+  if (dir && !bare && app.firstElementChild) swapScreens(write, dir);
+  else { const was = !dir && !stillPlease() ? flipSpots() : null; write(); if (was) slideMoved(was); }
   cueTabs();
 }
 /** Friend requests waiting, for the People tab's badge. */
@@ -302,6 +409,22 @@ function backShuts(shut) {
   return () => { if (overlays.includes(shut)) history.back(); };
 }
 
+/**
+ * A sheet goes the way it came. It is renamed and unlabelled at once, so nothing looking for the open sheet -- the
+ * next one, a redraw, a test -- can find it while it fades, and it is gone a moment later.
+ */
+function leaveSoftly(el) {
+  if (stillPlease()) return el.remove();
+  el.classList.replace("sheet-wrap", "sheet-gone");
+  el.querySelector(".sheet")?.classList.replace("sheet", "sheet-out");
+  unlabel(el);
+  setTimeout(() => el.remove(), 150);
+}
+/** Strips what code finds things by -- ids, names, data- attributes -- from a copy that is only there to be seen. */
+function unlabel(el) {
+  el.querySelectorAll("*").forEach(n => [...n.attributes].forEach(a => { if (a.name.startsWith("data-") || a.name === "id" || a.name === "name") n.removeAttribute(a.name); }));
+}
+
 // ---------------------------------------------------------------- sheets: what confirm(), prompt() and alert() used to do
 /**
  * A bottom sheet. `body` is trusted HTML; `actions` are [{label, value, kind}] drawn as buttons under it. Resolves
@@ -316,7 +439,7 @@ export function sheet({ title = "", lead = "", body = "", actions = [], onOpen =
       ${title ? `<h3>${esc(title)}</h3>` : ""}${lead ? `<p class="lead">${esc(lead)}</p>` : ""}${body}
       ${actions.length ? `<div class="acts">${actions.map(a => `<button class="btn ${a.kind || ""}" data-sheet="${esc(a.value)}">${esc(a.label)}</button>`).join("")}</div>` : ""}</div>`;
     let gone = false, picked = null;
-    const shut = () => { if (gone) return; gone = true; wrap.remove(); document.removeEventListener("keydown", onKey); resolve(picked); };
+    const shut = () => { if (gone) return; gone = true; leaveSoftly(wrap); document.removeEventListener("keydown", onKey); resolve(picked); };
     const leave = backShuts(shut);
     const close = v => { if (gone) return; picked = v; leave(); };
     const onKey = e => { if (e.key === "Escape") close(null); };
@@ -508,7 +631,7 @@ export function paint(t) {
   if (!t || !t.ui || key === painted) return;
   painted = key;
   const root = document.documentElement, h = t.HOUSE || {}, r = Math.min(16, Math.max(2, Math.round(6 * (h.radius ?? 1))));
-  const vars = { ...t.ui, fd: `"${t.DISPLAY}", sans-serif`, ft: `"${t.TEXT}", sans-serif`, r: `${r}px`, "r-s": `${Math.max(2, Math.round(r * 0.66))}px`,
+  const vars = { ...t.ui, fd: `"${t.DISPLAY}", sans-serif`, ft: `"${t.TEXT}", sans-serif`, dw: t.DISPLAY_WEIGHT || 600, UNDER: t.UNDER, r: `${r}px`, "r-s": `${Math.max(2, Math.round(r * 0.66))}px`,
     "r-xs": `${Math.max(2, Math.round(r / 2))}px`, isw: (h.icons || 1.9) / 1.9, icap: (h.radius ?? 1) > 0.3 ? "round" : "square", ijoin: (h.radius ?? 1) > 0.3 ? "round" : "miter" };
   for (const [k, v] of Object.entries(vars)) if (k !== "scheme") root.style.setProperty(`--${k}`, v);
   root.style.colorScheme = t.ui.scheme;
@@ -640,7 +763,8 @@ const toFile = (x, prefix) => new File([x.blob], `${prefix}_${x.label.replace(/\
 /** Renders jobs one by one with a progress line into #out, then shows thumbnails with save buttons. */
 export async function runJobs(jobs, prefix) {
   const out = document.getElementById("out");
-  out.innerHTML = `<div class="progress">Loading fonts…</div>`;
+  out.innerHTML = `<div class="progress">Loading fonts…</div><div class="thumbs"></div>`;
+  const making = out.querySelector(".thumbs");
   ui.blobs.forEach(b => b.thumbUrl && URL.revokeObjectURL(b.thumbUrl));
   ui.blobs = [];
   await loadFonts(DATA.fonts);
@@ -653,6 +777,7 @@ export async function runJobs(jobs, prefix) {
       const blob = await fig.toBlob();
       const thumb = await thumbnail(fig);
       results.push({ label: jobs[i].label, blob, thumbUrl: URL.createObjectURL(thumb), w: fig.canvas.width, h: fig.canvas.height });
+      making.insertAdjacentHTML("beforeend", `<figure>${thumbImg(results[i], i)}<figcaption><span class="tname">${esc(jobs[i].label)}</span></figcaption></figure>`);
     } catch (err) {
       console.error(err);
       results.push({ label: jobs[i].label, error: err.message });
@@ -664,7 +789,7 @@ export async function runJobs(jobs, prefix) {
     <h2>${plural(ok.length, "image")} ready</h2>
     <div class="saveall"><button class="btn primary" data-act="save-all">${sheetForPhotos() ? "Save all to Photos" : onPhone() ? "Save all to phone" : "Download all"}</button>
       <div class="muted small">${sheetForPhotos() ? "Tap “Save Images” in the sheet. " : onPhone() ? "They go straight to your photos. " : ""}Or save one at a time below.</div></div>
-    <div class="thumbs">${results.map((x, i) => x.blob ? `
+    <div class="thumbs done">${results.map((x, i) => x.blob ? `
       <figure>${thumbImg(x, i)}<figcaption><span class="tname">${esc(x.label).replace(/([/_])/g, "$1<wbr>")} <span class="muted">${x.w}×${x.h}</span></span>
         <button class="btn small" data-act="save-one" data-i="${i}">Save</button></figcaption></figure>`
       : `<figure class="err"><figcaption>${esc(x.label)}: ${esc(x.error)}</figcaption></figure>`).join("")}</div>`;
@@ -675,7 +800,7 @@ export async function runJobs(jobs, prefix) {
     if (b.dataset.act === "save-one") await saveFiles([toFile(results[Number(b.dataset.i)], prefix)], prefix);
     if (b.dataset.act === "open") viewer(ok.map(x => ({ url: x.thumbUrl, blob: x.blob, label: x.label, w: x.w, h: x.h })), ok.indexOf(results[Number(b.dataset.i)]));
   };
-  out.scrollIntoView({ behavior: "smooth" });
+  out.scrollIntoView({ behavior: stillPlease() ? "auto" : "smooth" });
 }
 export { makeTheme, loadFonts, phone };
 /** A look in the sizes this phone last chose, each with what goes before `.png` in its file name. */

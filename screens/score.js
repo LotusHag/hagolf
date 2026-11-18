@@ -5,7 +5,7 @@
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
-import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet, ICONS, firstName, toast } from "../ui.js";
+import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet, ICONS, firstName, toast, land } from "../ui.js";
 import { handicapFor, scratchFor, stableford, NO_SCORE } from "../model.js";
 import { scoreStepper, extrasRows, ptsSoFar, mark } from "../pad.js";
 import { statTap, statStep, seedStats } from "./extras.js";
@@ -78,6 +78,17 @@ function syncPill() {
     : waiting ? ["wait", `${waiting} waiting`] : ["ok", "Synced"];
   return `<span class="syncpill ${cls}">${word}</span>`;
 }
+/** The pill redrawn in place, easing in only when what it says has changed. */
+function swapPill(pill) {
+  const was = pill.textContent;
+  pill.outerHTML = syncPill();
+  const now = document.querySelector(".syncpill");
+  if (now && now.textContent !== was) now.classList.add("fresh");
+}
+// a push that lands changes nothing on the card, so nothing redraws it: the pill has to hear about it itself
+Y.onChange(() => { const pill = document.querySelector(".syncpill"); if (pill) swapPill(pill); });
+// what each hole showed when it was last drawn, so another scorer's numbers can be picked out as they arrive
+const SEEN = new Map();
 
 // ---------------------------------------------------------------- the bag, the board and the menu
 export async function bagSheet(r, c, h) {
@@ -210,6 +221,8 @@ export function score(rid, hArg) {
     <a class="btn half ${done() ? "primary" : ""}" href="${h < n - 1 ? `#score/${rid}/${h + 1}` : `#review/${rid}`}">${esc(onward)} ›</a>`;
   const here = `${rid}/${h}`, again = ui.lastScore === here;
   ui.lastScore = here;
+  const before = again ? SEEN.get(here) : null, now = r.entries.map(e => e.scores[h]);
+  SEEN.set(here, now);
   page(r.name, body, { back: "#home", bar, sub: `${formatLabel(r.format)} · ${courseTitle(c)}`, bell: false, keepScroll: again,
     actions: `<button class="iconbtn" data-act="bag" aria-label="My bag">${ICONS.bag}</button><button class="iconbtn" data-act="board" aria-label="The board">${ICONS.table}</button><button class="iconbtn" data-act="menu" aria-label="More">${ICONS.more}</button>` });
 
@@ -220,14 +233,16 @@ export function score(rid, hArg) {
     const ow = document.querySelector("footer.bar a:last-child");
     if (ow) ow.classList.toggle("primary", d);
     const pill = document.querySelector(".syncpill");
-    if (pill) pill.outerHTML = syncPill();
+    if (pill) swapPill(pill);
     if (Mo.isMatchFormat(r.format)) { const ms = document.querySelector(".matchstrip"); if (ms) ms.outerHTML = matchStrip(r, c, h, gf); }
   };
   const refresh = i => {
     const el = document.querySelector(`.prow[data-i="${i}"]`);
     if (el) el.outerHTML = block(r, c, r.entries[i], i, h, kinds);
+    now[i] = r.entries[i].scores[h];
     remark();
   };
+  if (before) now.forEach((v, i) => { if (before[i] !== v) document.querySelector(`.prow[data-i="${i}"] .sval`)?.classList.add("fresh"); });
 
   // a swipe across the card turns the page, as a scorecard would; the bar's arrows stay the visible way
   let x0 = null, y0 = null;
@@ -270,7 +285,8 @@ export function score(rid, hArg) {
       else if (v === null || v === 0) S.setScore(r, e, h, par);
       else return;
       if (e.role !== "team") seedStats(r, e, h, c, kinds);
-      return refresh(i);
+      refresh(i);
+      return land(document.querySelector(`.prow[data-i="${i}"] .sval .mk`));
     }
     if (act === "x-inc" || act === "x-dec") { statStep(r, e, h, b.dataset.k, act === "x-inc" ? 1 : -1, c, kinds); return refresh(i); }
     if (act === "st-fw") { statTap(r, e, h, act, b); return refresh(i); }

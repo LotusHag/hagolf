@@ -64,9 +64,9 @@ button { font: inherit; color: inherit; }
 .iconbtn .n.quiet { background: var(--green); color: var(--green-ink); }
 .iconbtn.on { color: var(--green); }
 
-main { padding: 6px 16px 28px; max-width: 640px; margin: 0 auto; }
-main.with-bar { padding-bottom: calc(100px + var(--sab)); }
-main.with-tabs { padding-bottom: calc(92px + var(--sab)); }
+:is(main, .x-main) { padding: 6px 16px 28px; max-width: 640px; margin: 0 auto; }
+:is(main, .x-main).with-bar { padding-bottom: calc(100px + var(--sab)); }
+:is(main, .x-main).with-tabs { padding-bottom: calc(92px + var(--sab)); }
 .bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; padding: 10px 16px calc(12px + var(--sab)); background: var(--bg); border-top: 1px solid var(--line); z-index: 5; }
 .bar > * { flex: 1; }
 .bar > .btn:not(.primary) { flex: 0 0 auto; min-width: 120px; }
@@ -136,7 +136,7 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .banner.act { display: flex; align-items: center; gap: 10px; }
 .banner.act > span { flex: 1 1 auto; }
 .banner.act > .btn, .banner.act > .x { flex: 0 0 auto; }
-.sheet .steps { padding-left: 20px; display: grid; gap: 10px; color: var(--ink2); font-size: 15px; line-height: 1.6; }
+:is(.sheet, .sheet-out) .steps { padding-left: 20px; display: grid; gap: 10px; color: var(--ink2); font-size: 15px; line-height: 1.6; }
 .nw { white-space: nowrap; }
 .key { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--card2); border: 1px solid var(--line); color: var(--ink); vertical-align: -8px; margin: 0 2px; }
 .key svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: calc(1.7px * var(--isw)); stroke-linecap: var(--icap); stroke-linejoin: var(--ijoin); }
@@ -295,13 +295,13 @@ input::placeholder { color: var(--ink3); opacity: .8; font-weight: 400; }
 .addbtn { width: 100%; margin: 10px 0; gap: 10px; border-style: dashed; box-shadow: none; background: transparent; }
 .addbtn .plus { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--green); color: var(--green-ink); font-size: 22px; font-weight: 800; line-height: 1; }
 details.card > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-weight: 600; }
-details.card > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
+details.card > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); transition: transform .15s var(--ease-out); }
 details.card[open] > summary::after { transform: rotate(-90deg); }
 .foldrow > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; min-height: 44px; font-weight: 600; color: var(--ink2); }
 .foldrow > summary > b { flex: 1; }
 .foldrow > summary .says { color: var(--ink3); font-weight: 500; padding-right: 6px; }
 .foldrow > summary::-webkit-details-marker { display: none; }
-.foldrow > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
+.foldrow > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); transition: transform .15s var(--ease-out); }
 .foldrow[open] > summary::after { transform: rotate(-90deg); }
 /* the Elo formula, set apart from the words around it */
 .elof { padding: 10px 12px; border-radius: var(--r); background: var(--card2); color: var(--ink); font-weight: 600; text-align: center; }
@@ -336,28 +336,33 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 /* The door is one button; the line under it says what that button will do on this particular device. */
 .gate .install .btn { margin-top: 18px; }
 .gate .install .under { margin: 10px 0 0; color: var(--ink3); }
-.gate .install .sheet .qr { margin: 0 auto; }
+.gate .install :is(.sheet, .sheet-out) .qr { margin: 0 auto; }
 .onb h1 { font-size: 27px; margin: 8px 0 4px; letter-spacing: .2px; }
 .onb .lead { color: var(--ink2); margin: 0 0 12px; }
 .onb label { text-align: left; }
 .onb .skip { display: block; margin-top: 14px; color: var(--ink3); font-size: 14px; }
 
 /* ---- bottom sheet, replacing every native dialog */
-.sheet-wrap { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s; }
+:is(.sheet-wrap, .sheet-gone) { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s var(--ease-out); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { transform: translateY(24px); } to { transform: none; } }
-.sheet { position: relative; width: 100%; max-width: 640px; max-height: 88dvh; overflow-y: auto; background: var(--bg); border-radius: var(--r) 8px 0 0; padding: 0 16px calc(16px + var(--sab)); animation: rise .18s; }
+:is(.sheet, .sheet-out) { position: relative; width: 100%; max-width: 640px; max-height: 88dvh; overflow-y: auto; background: var(--bg); border-radius: var(--r) 8px 0 0; padding: 0 16px calc(16px + var(--sab)); animation: rise .18s var(--ease-out); }
+/* a sheet leaves the way it came: renamed the moment it starts to, so nothing looking for the open sheet finds it */
+.sheet-gone { animation: fade-out .14s var(--ease-in) forwards; pointer-events: none; }
+.sheet-gone .sheet-out { animation: sink .14s var(--ease-in) forwards; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes sink { to { transform: translateY(24px); } }
 /* the grip and the way out ride along as the sheet scrolls: a long sheet must never hide its own cross */
-.sheet .sheethead { position: sticky; top: 0; z-index: 2; padding: 10px 0 8px; background: var(--bg); }
-.sheet .grip { display: block; width: 38px; height: 4px; border-radius: 2px; background: var(--line2); margin: 0 auto; }
-.sheet .sheetx { position: absolute; top: -2px; right: -10px; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: var(--ink3); font-size: 26px; line-height: 1; cursor: pointer; }
-.sheet .sheetx:active { color: var(--ink); }
-.sheet h3 { font-size: 18px; margin: 4px 0 4px; }
-.sheet .lead { color: var(--ink2); margin: 0 0 10px; font-size: 15px; }
-.sheet .acts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.sheet .acts .btn { width: 100%; }
-.sheet .list { margin: 8px 0; }
-.sheet label { margin-top: 10px; }
+:is(.sheet, .sheet-out) .sheethead { position: sticky; top: 0; z-index: 2; padding: 10px 0 8px; background: var(--bg); }
+:is(.sheet, .sheet-out) .grip { display: block; width: 38px; height: 4px; border-radius: 2px; background: var(--line2); margin: 0 auto; }
+:is(.sheet, .sheet-out) .sheetx { position: absolute; top: -2px; right: -10px; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: var(--ink3); font-size: 26px; line-height: 1; cursor: pointer; }
+:is(.sheet, .sheet-out) .sheetx:active { color: var(--ink); }
+:is(.sheet, .sheet-out) h3 { font-size: 18px; margin: 4px 0 4px; }
+:is(.sheet, .sheet-out) .lead { color: var(--ink2); margin: 0 0 10px; font-size: 15px; }
+:is(.sheet, .sheet-out) .acts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+:is(.sheet, .sheet-out) .acts .btn { width: 100%; }
+:is(.sheet, .sheet-out) .list { margin: 8px 0; }
+:is(.sheet, .sheet-out) label { margin-top: 10px; }
 
 /* ---- looking at a rendered image: over the app, above the sheet it was opened from, never a new browser tab.
    Its own dark surround whatever the theme, because a poster is judged against nothing, and the chrome is only
@@ -442,7 +447,7 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .mk { display: inline-grid; place-items: center; box-sizing: border-box; width: 34px; height: 34px; padding: 0;
   flex: none; align-self: center; justify-self: center; line-height: 1;
   font-family: var(--fd); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 500;
-  color: var(--ink); border: 1.5px solid transparent; border-radius: 50%; }
+  color: var(--ink); border: 1.5px solid transparent; border-radius: 50%; position: relative; }
 .mk .num { font-size: inherit; font-weight: inherit; line-height: 1; }
 .mk.c1 { border-color: var(--under); }
 .mk.c2 { border-color: var(--under); box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--under); }
@@ -881,7 +886,7 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .linkbox { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; color: var(--ink2); background: var(--card2); border-radius: var(--r-xs); padding: 8px 10px; margin: 8px 0; }
 
 /* ---- misc */
-#toast { position: fixed; left: 50%; bottom: calc(96px + var(--sab)); transform: translateX(-50%) translateY(12px); background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: var(--r-s); font-size: 14px; font-weight: 600; opacity: 0; transition: all .2s; z-index: 40; max-width: 90vw; text-align: center; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+#toast { position: fixed; left: 50%; bottom: calc(96px + var(--sab)); transform: translateX(-50%) translateY(12px); background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: var(--r-s); font-size: 14px; font-weight: 600; opacity: 0; transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); z-index: 40; max-width: 90vw; text-align: center; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 #toast.show { opacity: 1; transform: translateX(-50%); }
 .toastbtn { margin-left: 10px; background: var(--gold); color: var(--on-gold); border: 0; border-radius: var(--r-xs); padding: 6px 12px; font-weight: 700; pointer-events: auto; }
 #toast.show.action { pointer-events: auto; }
@@ -1021,7 +1026,7 @@ a.kv:active { background: var(--card2); }
 .lookfold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; min-height: 48px; font-weight: 600; }
 .lookfold > summary::-webkit-details-marker { display: none; }
 .lookfold > summary .fname { flex: 1; }
-.lookfold > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
+.lookfold > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); transition: transform .15s var(--ease-out); }
 .lookfold[open] > summary::after { transform: rotate(-90deg); }
 .lookfold > .themes { gap: 0; padding-bottom: 6px; }
 .lookwhy { margin: -2px 2px 8px; }
@@ -1098,7 +1103,7 @@ a.dayl:active { color: var(--green); }
 .fold { padding: 0 16px; }
 .fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 48px; font-weight: 600; color: var(--ink2); }
 .fold > summary::-webkit-details-marker { display: none; }
-.fold > summary::after { content: "›"; margin-left: auto; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
+.fold > summary::after { content: "›"; margin-left: auto; color: var(--ink3); font-size: 22px; transform: rotate(90deg); transition: transform .15s var(--ease-out); }
 .fold[open] > summary::after { transform: rotate(-90deg); }
 .fold > summary .ibtn { margin-left: 2px; }
 .pickrow { display: block; width: 100%; padding: 13px 2px; margin: 4px 0 2px; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: none; color: var(--ink2); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
@@ -1125,7 +1130,7 @@ a.dayl:active { color: var(--green); }
 .swapb:active { background: var(--card2); }
 
 /* ---- partners: the dashboard and the operator's desk, as wide as a laptop allows ---- */
-main.wide { max-width: 1120px; }
+:is(main, .x-main).wide { max-width: 1120px; }
 .dtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0 14px; }
 .dtile { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
 .dtile small { font-size: 12px; color: var(--ink3); text-transform: uppercase; letter-spacing: .6px; }
@@ -1242,7 +1247,7 @@ main.wide { max-width: 1120px; }
 .spark polyline { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .list.topics .name { font-size: 16px; }
 .radios { padding: 4px 14px; }
-.radiorow, .sheet .radiorow { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); margin: 0; }
+.radiorow, :is(.sheet, .sheet-out) .radiorow { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); margin: 0; }
 .radiorow:first-child { border-top: 0; }
 .radiorow span { display: grid; gap: 2px; }
 .radiorow b { color: var(--ink); font-size: 16px; font-weight: 600; }
@@ -1264,8 +1269,8 @@ main.wide { max-width: 1120px; }
 @media (min-width: 900px) {
   .tabs { top: 0; right: auto; width: 96px; flex-direction: column; justify-content: flex-start; gap: 6px; padding: 24px 6px; border-top: 0; border-right: 1px solid var(--line); }
   .tabs a { flex: none; padding: 12px 0; }
-  main.with-tabs { padding-bottom: 28px; }
-  #app:has(nav.tabs) { padding-left: 96px; }
+  :is(main, .x-main).with-tabs { padding-bottom: 28px; }
+  :is(#app, .vt-old):has(:is(nav, .x-nav).tabs) { padding-left: 96px; }
   .playbtn { min-height: 220px; }
 }
 
@@ -1331,7 +1336,7 @@ main.bare:has(.tvboard) { display: block; }
 [data-theme="seventies"] .btn { border-radius: 999px; }
 [data-theme="broadcast"] .top { border-bottom: 4px solid var(--green); }
 [data-theme="broadcast"] .tabs a.on::before { content: ""; position: absolute; top: -7px; left: 22%; right: 22%; height: 3px; background: var(--green); transform: skewX(-20deg); }
-[data-theme="blueprint"] #app { background-image: linear-gradient(color-mix(in oklch, var(--green) 9%, transparent) 1px, transparent 1px),
+[data-theme="blueprint"] :is(#app, .vt-old) { background-image: linear-gradient(color-mix(in oklch, var(--green) 9%, transparent) 1px, transparent 1px),
   linear-gradient(90deg, color-mix(in oklch, var(--green) 9%, transparent) 1px, transparent 1px); background-size: 16px 16px; }
 [data-theme="blueprint"] .card { border-color: var(--line2); }
 [data-theme="honours"] .top { border-bottom: 4px double var(--green2); }
@@ -1341,7 +1346,7 @@ main.bare:has(.tvboard) { display: block; }
 [data-theme="arcade"] .top { border-bottom: 2px solid; border-image: linear-gradient(90deg, var(--green), var(--green2)) 1; }
 /* the one glow the design rules allow: Arcade, dark, on its headings and its big figures */
 [data-theme="arcade"][data-mode="dark"] :is(h1, .num, .now .name) { text-shadow: 0 0 10px color-mix(in oklch, var(--green) 65%, transparent); }
-[data-theme="yardage"] #app { background-image: repeating-linear-gradient(transparent 0 27px, color-mix(in oklch, var(--line) 55%, transparent) 27px 28px); }
+[data-theme="yardage"] :is(#app, .vt-old) { background-image: repeating-linear-gradient(transparent 0 27px, color-mix(in oklch, var(--line) 55%, transparent) 27px 28px); }
 [data-theme="yardage"] .top { border-bottom: 2px solid var(--green); }
 /* VT323 sits small on its em; this brings its letters up to the size the other faces set at */
 [data-theme="teletext"] body { font-size-adjust: ex-height 0.5; }
@@ -1357,3 +1362,21 @@ main.bare:has(.tvboard) { display: block; }
   background: radial-gradient(circle, var(--bg) 0 3.5px, transparent 4px) 0 0 / 14px 12px, var(--green2); }
 [data-theme="palmsprings"] .btn { border-radius: 999px; }
 [data-theme="starter"] .top { border-bottom: 3px solid var(--green); }
+
+/* ---- motion. Each theme's own moments are in themes/<name>.motion.css (built into motion.css); these are the
+   stage they play on, and the quiet motion every theme shares. DESIGN-RULES.md (Motion) sets the limits. */
+:root { --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); --ease-in: cubic-bezier(0.4, 0, 1, 1); }
+/* a screen change: the old screen, frozen, laid over or under the new one while the theme moves them */
+.vt-old { position: fixed; inset: 0; z-index: 1; overflow: hidden; background-color: var(--bg); pointer-events: none; }
+#app.vt-new { position: relative; z-index: 2; background-color: var(--bg); }
+/* the saved seal sits on the board it signs, and a redraw after it shows it already in place */
+.saved .sealcard { position: relative; }
+.saved.settled .seal, .saved.settled .seal::before, .saved.settled .seal::after, .saved.settled .sealcard { animation-duration: 0s !important; animation-delay: 0s !important; }
+/* another scorer's number arriving: its cell takes a breath of the accent, then lets it go */
+.sval.fresh { animation: fresh .6s var(--ease-out); }
+@keyframes fresh { from { background-color: var(--green-soft); } }
+.syncpill.fresh { animation: fade .15s var(--ease-out); }
+/* a row that moved on a board slides to its new place */
+.moved { transition: transform .25s var(--ease-out); }
+/* each finished image arrives as it is made */
+.thumbs:not(.done) > * { animation: fade .12s var(--ease-out); }

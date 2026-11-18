@@ -160,6 +160,18 @@ async function historySheet(r, c) {
 }
 
 // ---------------------------------------------------------------- the round page
+/**
+ * The theme signs the board the moment the round is saved: its seal plays once, and stays, settled, through the
+ * redraws that follow until the card is left.
+ */
+function sealed(rid, done, html) {
+  const j = ui.justSaved;
+  if (!done || !j || j.rid !== rid || !location.hash.startsWith(`#review/${rid}`)) return html;
+  const settled = j.played;
+  j.played = true;
+  return `<div class="saved run ${settled ? "settled" : ""}">${html.replace('<div class="ranking">', '<div class="ranking sealcard">').replace(/<\/div>$/, '<i class="seal" aria-hidden="true"></i></div>')}</div>`;
+}
+
 export function review(rid, keep = false) {
   const r = S.getRound(rid);
   if (!r) return go("#home");
@@ -207,7 +219,7 @@ export function review(rid, keep = false) {
       ${ui.expanded === e.playerId ? `<div class="chips">${chips(e)}</div>${editor(e)}${oldPens(e)}` : ""}</div>`;
   };
   // the board in the round's own format, then every card underneath it to open and correct
-  const ranking = R.rows.map(x => `<div class="rankrow ${x.place === 1 ? "p1" : ""}"><span class="pos">${x.place ?? "–"}</span><span class="t"><b>${esc(x.name)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span><span class="v">${esc(x.main)}</span></div>`).join("");
+  const ranking = R.rows.map(x => `<div class="rankrow ${x.place === 1 ? "p1" : ""}" data-flip="${esc(x.id ?? x.name)}"><span class="pos">${x.place ?? "–"}</span><span class="t"><b>${esc(x.name)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span><span class="v">${esc(x.main)}</span></div>`).join("");
   const order = fmt === "stableford" ? M.stbl_board : isMatchFormat(fmt) ? M.players : R.rows.map(x => M.players.find(p => p.id === x.id)).filter(Boolean).concat(M.players.filter(p => !R.rows.some(x => x.id === p.id)));
   const missing = unfinished.map(e => {
     const holes = e.scores.map((v, i) => v === null && (e.fromHole || 1) - 1 <= i ? c.first_hole + i : null).filter(x => x !== null);
@@ -224,7 +236,7 @@ export function review(rid, keep = false) {
       ${scorer ? `<a class="btn small" href="#score/${rid}/${noPar[0]}">Fill in</a>` : ""}</div>` : ""}
     ${missing ? `<h2>Not finished</h2>${missing}` : ""}
     <h2>${esc(formatLabel(fmt))}${done ? "" : " · as it stands"}</h2>
-    ${ranking ? `<div class="ranking">${ranking}</div>` : `<p class="muted center">No complete scorecards yet.</p>`}
+    ${ranking ? sealed(rid, done, `<div class="ranking">${ranking}</div>`) : `<p class="muted center">No complete scorecards yet.</p>`}
     ${order.length ? `<h2>Cards</h2>${scorer ? `<p class="muted small" style="margin:-4px 4px 8px">Tap a player, then a hole, to change a score.</p>` : ""}${order.map(detail).join("")}` : ""}
     ${partnerRow(rid) ? `<div class="list" style="margin-top:16px">${partnerRow(rid)}</div>` : ""}`;
   const canSave = M.field && !noPar.length && !conflicts.length;
@@ -263,6 +275,7 @@ export function review(rid, keep = false) {
       if (mineOut.length && !await confirmSheet("Holes with no score", `${plural(mineOut.length, "player")} ${mineOut.length === 1 ? "has" : "have"} holes with no score, which count ${NO_SCORE} strokes each.`, { label: act === "sign-group" ? "Hand it in anyway" : "Save anyway" })) return;
       if (act === "sign-group") S.signGroup(r, myGroup); else { r.status = "done"; S.saveRound(r); }
       toast(r.status === "done" ? "Saved. ⤴ to share it" : `Group ${myGroup} is in. The day ends when every group is.`, 3500);
+      if (r.status === "done") ui.justSaved = { rid, played: false };
       return review(rid);
     }
     if (act === "close-day") {
@@ -270,6 +283,7 @@ export function review(rid, keep = false) {
       if (out.length && !await confirmSheet("Close the day?", `${out.length === 1 ? `Group ${out[0]} has` : `Groups ${out.join(", ")} have`} not handed in. Their cards count as they stand.`, { label: "Close the day" })) return;
       r.status = "done"; S.saveRound(r);
       toast("The day is closed. ⤴ to share it", 3500);
+      ui.justSaved = { rid, played: false };
       return review(rid);
     }
   });

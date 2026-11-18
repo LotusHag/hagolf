@@ -71,7 +71,7 @@ export async function liveScreen(token, mode) {
     const gf = !tv && groups.includes(ui.liveGroup) ? ui.liveGroup : 0;
     const rows = (L ? L.rows : []).filter(x => !gf || x.group === gf);
     body = `${!tv && groups.length > 1 ? `<div class="filter">${[0, ...groups].map(g => `<button data-act="g" data-g="${g}" class="${gf === g ? "on" : ""}">${g ? `Group ${g}` : "Everyone"}</button>`).join("")}</div>` : ""}
-      <div class="ranking liverank">${rows.map(x => `<div class="rankrow ${x.place === 1 ? "p1" : ""}"><span class="pos">${x.place ?? "–"}</span><span class="t"><b>${esc(tv ? x.name : x.name)}</b><small>${esc(x.sub)}${groups.length > 1 ? ` · group ${x.group}` : ""}</small></span><span class="v">${esc(x.main)}</span></div>`).join("")
+      <div class="ranking liverank">${rows.map(x => `<div class="rankrow ${x.place === 1 ? "p1" : ""}" data-flip="${esc(x.name)}"><span class="pos">${x.place ?? "–"}</span><span class="t"><b>${esc(tv ? x.name : x.name)}</b><small>${esc(x.sub)}${groups.length > 1 ? ` · group ${x.group}` : ""}</small></span><span class="v">${esc(x.main)}</span></div>`).join("")
         || `<p class="muted center" style="padding:20px">No scores in yet.</p>`}</div>`;
   }
   const title = P.round.league || P.round.name;

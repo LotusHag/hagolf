@@ -113,7 +113,7 @@ function boardRow(C, r, move, Sx) {
   const d = move && move.was ? (move.was.has(r.id) ? move.was.get(r.id) - r.place : null) : undefined;
   const arrow = d === undefined ? "" : d === null ? `<i class="mv new">new</i>`
     : d > 0 ? `<i class="mv up">▲${d}</i>` : d < 0 ? `<i class="mv dn">▼${-d}</i>` : `<i class="mv">·</i>`;
-  return `<a class="hrow lrow${mine ? " me" : ""}${r.place <= 3 ? " pod" : ""}" href="#league/${C.gid}/p/${esc(r.id)}">
+  return `<a class="hrow lrow${mine ? " me" : ""}${r.place <= 3 ? " pod" : ""}" href="#league/${C.gid}/p/${esc(r.id)}" data-flip="${esc(r.id)}">
     <span class="lp num">${r.place}</span>
     <span class="t"><b>${esc(r.name)}</b><span>${esc(L.sub)}</span></span>
     ${arrow}<span class="v num">${esc(L.value)}<small class="u">${esc(L.unit)}</small></span></a>`;
@@ -411,6 +411,7 @@ function emptyBoard(C) {
   const { g, gid } = C;
   const attached = new Set(S.leagueRoundIds(gid));
   const loose = S.rounds().filter(r => r.status === "done" && !attached.has(r.id) && S.iPlayed(r)).length;
+  const upcoming = comingUp().filter(r => r.leagueId === gid);
   shell(g, g.name, `
     <section class="inplay"><div class="rule"></div>
       <div class="k quiet">Nothing scored yet</div><h1>${esc(g.name)}</h1>
@@ -420,7 +421,8 @@ function emptyBoard(C) {
     <div class="rows">
       <a class="hrow" href="#league/${gid}/admin"><span class="t"><b>Add a round you already played</b>
         <span>${loose ? `${plural(loose, "finished round")} of yours ${loose === 1 ? "is" : "are"} not in this society` : "Nothing of yours is waiting"}</span></span><span class="chev">›</span></a>
-    </div>`, { runs: C.runs });
+    </div>
+    ${upcoming.length || C.runs ? `${sect("Coming up")}<div class="rows">${upcoming.map(eventRow).join("")}${C.runs ? `<button class="hrow more" data-act="new-event"><span class="t"><b>New event</b><span>A date, a loop, the field, tee times and the draw</span></span></button>` : ""}</div>` : ""}`, { runs: C.runs });
   wireBoard(C, { rows: [] });
 }
 
@@ -433,6 +435,7 @@ function wireBoard(C, Sx) {
     if (act === "board-pick") { const v = await formatSheet(C); if (v) { ui.boardOf[C.gid] = v; league(C.gid); } return; }
     if (act === "board-cols") return columnsSheet(C, Sx);
     if (act === "new-in-league") return playToday(C);
+    if (act === "new-event") return newEvent(C.gid);
     if (act === "attach-day") {
       const d = b.dataset.date;
       const ids = d ? S.rounds().filter(r => r.status === "done" && r.date === d && S.iPlayed(r) && !S.leagueRoundIds(C.gid).includes(r.id)).map(r => r.id) : [b.dataset.rid];
