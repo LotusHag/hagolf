@@ -3,7 +3,7 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, ui, plural, courseBy, subtabs, tip, paint, themeNamed, appTheme, fmtDate, ordinal } from "../ui.js";
+import { page, bind, esc, go, ui, plural, courseBy, subtabs, tip, paint, themeNamed, appTheme, fmtDate } from "../ui.js";
 import { compute, fmtToPar, fmtHcp, outcome, NO_SCORE, isMatchFormat, golfersOf } from "../model.js";
 import { FORMAT_NAMES, FORMAT_NOTES, standingsFor, standingsTable, readsMatches } from "./formats.js";
 

@@ -221,7 +221,7 @@ function matchRows(M, p) {
 const matchState = s => s === 0 ? "AS" : s > 0 ? `+${s}` : `−${-s}`;
 
 /** The headline tiles, [caption, figure, line under it]. */
-function cardTiles(M, p, basic) {
+function cardTiles(M, p) {
   const n = M.n, N = M.field, L = M.labels, PAR = p.par;
   const vsTotal = sum(p.vsrest.filter(v => v !== null));
   const mm = matchOf(M, p);
@@ -237,7 +237,7 @@ function cardTiles(M, p, basic) {
       ["Holes won", String(won), `of ${m.thru} played`],
       p.nr ? ["Gross", "NR", `${p.holes_played} of ${n} holes`] : ["Gross", String(p.gross), `${fmtToPar(p.topar)} to par`],
     ];
-    if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
+    tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
     return tiles;
   }
   let grossTile, netTile;
@@ -249,23 +249,17 @@ function cardTiles(M, p, basic) {
     netTile = ["Net", String(p.net), `${fmtToPar(p.net - sum(PAR))} to par`];
   }
   const tiles = [grossTile, netTile, ["Stableford", String(p.pts), `points  ·  ${p.splace} of ${N}`]];
-  if (!basic) tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
+  tiles.push(["Against the field", fmtSigned(vsTotal, 1), `strokes ${vsTotal < 0 ? "fewer" : "more"}`]);
   return tiles;
 }
 
-/**
- * `basic` is the free card: who, what they went round in, and the scorecard with its notation. `full` adds what
- * the round was like -- against the field per hole, where the strokes went, and the story. The basic card stops
- * after the scorecard, so the sheet itself is shorter rather than a full card with holes in it.
- */
-export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
-  if (isPhone(T)) return phoneCard(M, p, T, tier, { extras });
+export function renderCard(M, p, T, { extras = false } = {}) {
+  if (isPhone(T)) return phoneCard(M, p, T, { extras });
   const n = M.n, SI = M.si, L = M.labels, PAR = p.par;
   const holeLine = h => M.course.unlisted ? `par ${PAR[h]}` : `par ${PAR[h]}  ·  SI ${SI[h]}`;
-  const basic = tier === "basic";
   // The extras are a choice; the room for them is not. Whether this card kept any or not the by-section
   // block ends with the same reserved strip, so the two cards are the same card.
-  const strip = basic || !extras ? [] : stripReadings(p.statline);
+  const strip = extras ? stripReadings(p.statline) : [];
   const H = house(T);
   // A narrow theme stands the two panels under the scorecard one above the other instead of side by side,
   // and every theme tells as much of the story as its prose level allows. Both change the height, which is
@@ -281,13 +275,13 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   const sectIn = SECT_ROW0 + per * SECT_ROW + SECT_BAR + STATS_IN;
   const colIn = stacked ? SIDE_IN : Math.max(SIDE_IN, sectIn);
   const midIn = stacked ? SIDE_IN + CAP_IN + sectIn : colIn;
-  const told = basic ? [] : story(M, p, { extras }).slice(0, storyN);
+  const told = story(M, p, { extras }).slice(0, storyN);
   const storyW = (1 - 2 * MARGIN) * W_IN * 0.984;
   const probe = new Fig(W_IN, 1, T, 20);
   const wrapped = told.map(ln => probe.wrap(ln, storyW, 9.5));
   const storyIn = STORY_TOP + wrapped.reduce((a, ls) => a + STORY_LINE + (ls.length - 1) * STORY_WRAP, 0);
   const storyTop = MID_TOP + midIn + 0.45;
-  const bodyIn = basic ? 5.25 : storyTop + storyIn + 0.2;
+  const bodyIn = storyTop + storyIn + 0.2;
   const band = bandLayout(probe);
   const H_IN = bodyIn + (band ? band.h : 0);
   const fig = new Fig(W_IN, H_IN, T, 150);
@@ -305,8 +299,8 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
 
   // stat tiles
   const vsPlayed = p.vsrest.filter(v => v !== null);
-  const tiles = cardTiles(M, p, basic);
-  const axt = fig.axes(rect(0.28, 1.0, basic ? 0.62 : 0.50), [0, tiles.length], [0, 1]);
+  const tiles = cardTiles(M, p);
+  const axt = fig.axes(rect(0.28, 1.0, 0.50), [0, tiles.length], [0, 1]);
   tiles.forEach(([lab, big, small], k) => {
     axt.rbox(k + 0.05, 0.0, 0.9, 1.0, T.PANEL, 0.06);
     // 0.9 of a tile wide, less a hair of padding: every one of the three lines is shrunk to that rather than
@@ -400,11 +394,6 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   if (p.skipped.some(Boolean)) note = "– = not played (joined late)  ·  " + note;
   axs.text(xmax, 5.0, note, { size: 7.5, color: T.INK_3, ha: "right", va: "center" });
 
-  if (basic) {
-    if (band) brandBand(fig, bodyIn, band); else drawMark(fig, 0.06);
-    return { file: cardFile(p), fig };
-  }
-
   // against the field
   const vs = p.vsrest;
   const lo = Math.min(0, ...vsPlayed), hi = Math.max(0, ...vsPlayed);
@@ -471,8 +460,8 @@ export function renderCard(M, p, T, tier = "full", { extras = false } = {}) {
   return { file: cardFile(p), fig };
 }
 
-export function renderCards(M, T, names = null, tier = "full", opts = {}) {
-  return M.players.filter(p => !names || names.includes(p.name)).map(p => renderCard(M, p, T, tier, opts));
+export function renderCards(M, T, names = null, opts = {}) {
+  return M.players.filter(p => !names || names.includes(p.name)).map(p => renderCard(M, p, T, opts));
 }
 
 // ---------------------------------------------------------------- the phone version
@@ -481,9 +470,9 @@ export function renderCards(M, T, names = null, tier = "full", opts = {}) {
 const PH_LINE = 10 / 72 * 1.5, TILE_IN = 1.0, TILE_GAP = 0.1;
 const STORY_PT = 11, STORY_LS = 1.4;
 
-function phoneCard(M, p, T, tier, { extras }) {
+function phoneCard(M, p, T, { extras }) {
   const n = M.n, SI = M.si, L = M.labels, PAR = p.par, H = house(T);
-  const basic = tier === "basic", listed = !M.course.unlisted;
+  const listed = !M.course.unlisted;
   const Mx = MARGIN * PHONE_W, W = PHONE_W - 2 * Mx;
   const probe = new Fig(PHONE_W, 0.1, T);   // measured at the real DPI, so wrapping matches the drawing
   const range = (a, b) => [...Array(b - a).keys()].map(i => a + i);
@@ -506,7 +495,7 @@ function phoneCard(M, p, T, tier, { extras }) {
   }, 0.26);
 
   // tiles, two across; an odd last one takes the row
-  const tiles = cardTiles(M, p, basic);
+  const tiles = cardTiles(M, p);
   add(Math.ceil(tiles.length / 2) * (TILE_IN + TILE_GAP) - TILE_GAP, (fig, y) => tiles.forEach(([lab, big, small], k) => {
     const tw = k === tiles.length - 1 && k % 2 === 0 ? W : (W - TILE_GAP) / 2;
     const x = Mx + (k % 2) * (tw + TILE_GAP), ty = y + Math.floor(k / 2) * (TILE_IN + TILE_GAP), cx = x + tw / 2, inner = tw - 0.24;
@@ -624,73 +613,71 @@ function phoneCard(M, p, T, tier, { extras }) {
   add(noteLines.length * 9.5 / 72 * 1.45, (fig, y) =>
     fig.text(Mx, y, noteLines.join("\n"), { size: 9.5, color: T.INK_3, va: "top", lineSpacing: 1.45 }), 0.34);
 
-  if (!basic) {
-    // against the field: split like the scorecard, on one scale, each half only as tall as its own bars
-    const vs = p.vsrest, played = vs.filter(v => v !== null);
-    const span = Math.max(1, Math.max(0, ...played) - Math.min(0, ...played));
-    const PLOT = 1.6, PAD = 0.24, u = span / (PLOT - 2 * PAD), per = half;
-    const pitch = W / per;
-    head(["Strokes against the rest of the field, per hole", "Strokes against the field, per hole", "Against the field, per hole"]);
-    nines.forEach(([a, b], i) => {
-      const own = vs.slice(a, b).filter(v => v !== null);
-      const lo = Math.min(0, ...own), hi = Math.max(0, ...own), plot = (hi - lo) / u + 2 * PAD;
-      add(plot + 0.22, (fig, y) => {
-        const ax = blockAxes(fig, Mx, y, W, plot, [0, per], [lo - PAD * u, hi + PAD * u]);
-        const off = 0.05 * u, bw = 0.58;
-        ax.line(0.05, 0, per - 0.05, 0, T.LINE, 0.8);
-        range(a, b).forEach((h, k) => {
-          const v = vs[h], x = k + 0.5;
-          const val = { size: 10, family: "display", color: T.INK_2, ha: "center" };
-          if (v === null) ax.text(x, off, "–", { ...val, size: 11, color: T.INK_3, va: "bottom" });
-          else if (Math.abs(v) < 0.005) {
-            ax.rbox(x - bw / 2, -0.01 * u, bw, 0.02 * u, T.INK_3, 0);
-            ax.text(x, off, "0.0", { ...val, va: "bottom" });
-          } else {
-            ax.rbox(x - bw / 2, Math.min(0, v), bw, Math.abs(v), v < 0 ? T.ACCENT : T.BAR, 0.03);
-            ax.text(x, v + (v >= 0 ? off : -off), fmtSigned(v, 1), { ...val, va: v >= 0 ? "bottom" : "top" });
-          }
-          fig.text(Mx + x * pitch, y + plot + 0.11, L[h], { size: 10, color: T.INK_3, ...ctr });
-        });
-      }, i < nines.length - 1 ? 0.16 : 0.34);
-    });
-
-    // where the strokes went
-    const rows = sectionRows(M, p), ROW = 0.33;
-    head("Shots to par, by section");
-    add(rows.length * ROW + 0.62, (fig, y) => {
-      const ax = inchAxes(fig, Mx, y, W, rows.length * ROW + 0.62);
-      rows.forEach(([label, v, cnt], i) => {
-        const yy = (i + 0.5) * ROW;
-        ax.text(0, yy, label, { size: 11, color: T.INK_2, va: "center" });
-        ax.text(W * 0.66, yy, fmtToPar(v), { size: 14, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
-        ax.text(W * 0.7, yy, `${fmtSigned(v / cnt, 1)} per hole`, { size: 10, color: T.INK_3, va: "center" });
+  // against the field: split like the scorecard, on one scale, each half only as tall as its own bars
+  const vs = p.vsrest, played = vs.filter(v => v !== null);
+  const span = Math.max(1, Math.max(0, ...played) - Math.min(0, ...played));
+  const PLOT = 1.6, PAD = 0.24, u = span / (PLOT - 2 * PAD), perHalf = half;
+  const pitch = W / perHalf;
+  head(["Strokes against the rest of the field, per hole", "Strokes against the field, per hole", "Against the field, per hole"]);
+  nines.forEach(([a, b], i) => {
+    const own = vs.slice(a, b).filter(v => v !== null);
+    const lo = Math.min(0, ...own), hi = Math.max(0, ...own), plot = (hi - lo) / u + 2 * PAD;
+    add(plot + 0.22, (fig, y) => {
+      const ax = blockAxes(fig, Mx, y, W, plot, [0, perHalf], [lo - PAD * u, hi + PAD * u]);
+      const off = 0.05 * u, bw = 0.58;
+      ax.line(0.05, 0, perHalf - 0.05, 0, T.LINE, 0.8);
+      range(a, b).forEach((h, k) => {
+        const v = vs[h], x = k + 0.5;
+        const val = { size: 10, family: "display", color: T.INK_2, ha: "center" };
+        if (v === null) ax.text(x, off, "–", { ...val, size: 11, color: T.INK_3, va: "bottom" });
+        else if (Math.abs(v) < 0.005) {
+          ax.rbox(x - bw / 2, -0.01 * u, bw, 0.02 * u, T.INK_3, 0);
+          ax.text(x, off, "0.0", { ...val, va: "bottom" });
+        } else {
+          ax.rbox(x - bw / 2, Math.min(0, v), bw, Math.abs(v), v < 0 ? T.ACCENT : T.BAR, 0.03);
+          ax.text(x, v + (v >= 0 ? off : -off), fmtSigned(v, 1), { ...val, va: v >= 0 ? "bottom" : "top" });
+        }
+        fig.text(Mx + x * pitch, y + plot + 0.11, L[h], { size: 10, color: T.INK_3, ...ctr });
       });
-      const foot = rows.length * ROW;
-      ax.text(0, foot + 0.15, "Results against par" + (p.nr ? ` (${p.holes_played} holes played)` : ""), { size: 10, color: T.INK_3, va: "center" });
-      outcomeBar(ax, 0, foot + 0.33, W, 0.27, p.counts, n, 0.03, true, 10.5);
-    }, 0.34);
+    }, i < nines.length - 1 ? 0.16 : 0.34);
+  });
 
-    // the extras, three to a row at most and the rows balanced, so four readings stand two over two
-    const strip = extras ? stripReadings(p.statline) : [];
-    if (strip.length) {
-      const across = strip.length <= 3 ? strip.length : Math.ceil(strip.length / 2), step = W / across, BOX = 0.92;
-      const xrows = [strip.slice(0, across), strip.slice(across)].filter(r => r.length);
-      head("Putts, fairways and the rest");
-      add(xrows.length * (BOX + 0.08) - 0.08, (fig, y) => xrows.forEach((row, r) => row.forEach((rd, i) =>
-        panel(fig, Mx + (W - row.length * step) / 2 + i * step, y + r * (BOX + 0.08), step, BOX, rd.count, rd.short, null,
-          { bigSize: 22, capSize: 10 }))), 0.34);
-    }
+  // where the strokes went
+  const rows = sectionRows(M, p), ROW = 0.33;
+  head("Shots to par, by section");
+  add(rows.length * ROW + 0.62, (fig, y) => {
+    const ax = inchAxes(fig, Mx, y, W, rows.length * ROW + 0.62);
+    rows.forEach(([label, v, cnt], i) => {
+      const yy = (i + 0.5) * ROW;
+      ax.text(0, yy, label, { size: 11, color: T.INK_2, va: "center" });
+      ax.text(W * 0.66, yy, fmtToPar(v), { size: 14, family: "display", color: v < 0 ? T.UNDER : T.INK, ha: "right", va: "center" });
+      ax.text(W * 0.7, yy, `${fmtSigned(v / cnt, 1)} per hole`, { size: 10, color: T.INK_3, va: "center" });
+    });
+    const foot = rows.length * ROW;
+    ax.text(0, foot + 0.15, "Results against par" + (p.nr ? ` (${p.holes_played} holes played)` : ""), { size: 10, color: T.INK_3, va: "center" });
+    outcomeBar(ax, 0, foot + 0.33, W, 0.27, p.counts, n, 0.03, true, 10.5);
+  }, 0.34);
 
-    // story
-    const told = story(M, p, { extras }).slice(0, STORY_LINES[H.prose] ?? 7);
-    const lh = STORY_PT / 72 * STORY_LS;
-    const wrapped = told.map(ln => probe.wrap(ln, W - 0.17, STORY_PT));
-    head("The story of the round", 0.1);
-    wrapped.forEach((lines, i) => add(lines.length * lh, (fig, y) => {
-      fig.rbox(Mx, y + 0.02, 0.045, 0.16, T.ACCENT, 0);
-      fig.text(Mx + 0.17, y, lines.join("\n"), { size: STORY_PT, color: T.INK_2, va: "top", lineSpacing: STORY_LS });
-    }, i < wrapped.length - 1 ? 0.13 : 0));
+  // the extras, three to a row at most and the rows balanced, so four readings stand two over two
+  const strip = extras ? stripReadings(p.statline) : [];
+  if (strip.length) {
+    const across = strip.length <= 3 ? strip.length : Math.ceil(strip.length / 2), step = W / across, BOX = 0.92;
+    const xrows = [strip.slice(0, across), strip.slice(across)].filter(r => r.length);
+    head("Putts, fairways and the rest");
+    add(xrows.length * (BOX + 0.08) - 0.08, (fig, y) => xrows.forEach((row, r) => row.forEach((rd, i) =>
+      panel(fig, Mx + (W - row.length * step) / 2 + i * step, y + r * (BOX + 0.08), step, BOX, rd.count, rd.short, null,
+        { bigSize: 22, capSize: 10 }))), 0.34);
   }
+
+  // story
+  const told = story(M, p, { extras }).slice(0, STORY_LINES[H.prose] ?? 7);
+  const lh = STORY_PT / 72 * STORY_LS;
+  const wrapped = told.map(ln => probe.wrap(ln, W - 0.17, STORY_PT));
+  head("The story of the round", 0.1);
+  wrapped.forEach((lines, i) => add(lines.length * lh, (fig, y) => {
+    fig.rbox(Mx, y + 0.02, 0.045, 0.16, T.ACCENT, 0);
+    fig.text(Mx + 0.17, y, lines.join("\n"), { size: STORY_PT, color: T.INK_2, va: "top", lineSpacing: STORY_LS });
+  }, i < wrapped.length - 1 ? 0.13 : 0));
 
   const band = bandLayout(probe);
   const BOTTOM = band ? 0.3 + band.h : 0.4;   // room under the last block for the mark, or for the partner's strip

@@ -2,8 +2,8 @@
 // keep. Stats is one row of tabs over the same numbers.
 import * as S from "../store.js";
 import * as A from "../auth.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, confirmSheet, subtabs } from "../ui.js";
-import { compute, fix, fmtToPar, STAT_SWITCHES, matchWith } from "../model.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, subtabs } from "../ui.js";
+import { compute, fix, STAT_SWITCHES, matchWith } from "../model.js";
 import { myGame, myGameBody } from "./stats.js";
 import { dayBlock, nowCard, formatLabel } from "./home.js";
 import { sendMine } from "../images.js";

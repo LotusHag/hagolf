@@ -125,14 +125,6 @@ export function quarantine(table, sent, reason) {
   afterPull();
 }
 
-/**
- * A card is never locked: whoever played a round can still correct it, however old it is. Kept as a function
- * because the screens ask it, and because a future league may want to close its own season.
- */
-export function roundOpen(r) {
-  return true;
-}
-
 /** Stamps a record as changed now and queues it. */
 export function touch(table, rec, key = null) {
   rec.updated_at = now();
@@ -550,15 +542,6 @@ export function setStatsFor(rid, kinds) {
   save();
 }
 
-/** What unlocking opens on a card: the kinds ticked in Settings, or everything until somebody narrows it. */
-/** Turning the extras on turns on all of them; switching one back off afterwards is one tap in the sheet. */
-export function defaultStats() {
-  const on = state.settings.stats;
-  return Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, on ? !!on[k] : true]));
-}
-
-export function setDefaultStats(kinds) { state.settings.stats = kinds; save(); }
-
 /**
  * Whether the extras are drawn on the images as well as read back on screen. On by default: somebody who
  * took the trouble to write putts down on eighteen holes usually wants them on the card. One answer for
@@ -572,17 +555,6 @@ export function setImageChoice(choice) { state.settings.images = { ...imageChoic
 export const IMAGE_SIZES = ["full", "phone", "both"];
 // most people look at these on a phone, so that is the size until this phone has said otherwise
 export const imageSize = () => IMAGE_SIZES.includes(imageChoice().size) ? imageChoice().size : "phone";
-
-/** The Extras button: opens the ticked kinds for this card and every player on it, or shuts them again.
- * The only place a player's `trackStats` is turned on by default; anywhere else reads `cardKeepsStats`. */
-export function unlockStats(r, on) {
-  const kinds = Object.fromEntries(STAT_SWITCH_KEYS.map(k => [k, !!on]));
-  setStatsFor(r.id, kinds);
-  if (on) for (const e of r.entries) if (!e.trackStats) setTrackStats(r, e, true);
-}
-
-/** True when this round is keeping anything at all on this phone. */
-export const anyStatsOn = rid => Object.values(statsFor(rid)).some(Boolean);
 
 /**
  * Whether this card has ever been asked for extras. Which kinds are open is per phone, but *whose* card keeps
@@ -1011,11 +983,6 @@ function mergeRoundInto(mine, theirs) {
   return changed;
 }
 
-export function needsBackup() {
-  const last = state.settings.lastExport || "";
-  return rounds().some(r => r.status === "done" && (r.created || "") > last);
-}
-
 // ---------------------------------------------------------------- desktop kit
 function yamlStr(s) {
   s = String(s);
@@ -1054,36 +1021,6 @@ export function toYAML(round) {
         L.push(`  - {${f.join(", ")}}`);
       });
     }
-  }
-  return L.join("\n") + "\n";
-}
-
-/**
- * A phone-made course as courses/<slug>.yaml for the desktop kit. Everything that cannot be worked out again
- * from par and ratings has to be written: `nines` is how a round is split back into its loops, `first_hole`
- * is what a 10-18 loop numbers its holes from, and a tee with its own par list keeps it. Leaving any of them
- * out quietly turns a club's loop into an unrelated nine the next time the file is read.
- */
-export function courseToYAML(c) {
-  const w = c.where || null;
-  const L = [`# ${c.name}${c.loop ? " " + c.loop : ""}. Added on a phone in Hagolf; check ratings against the club card.`,
-    `name: ${yamlStr(c.name)}`, `loop: ${yamlStr(c.loop || "")}`];
-  if (w && (w.town || w.country)) {
-    const bits = ["town", "region", "country", "lat", "lng"].filter(k => w[k] !== undefined && w[k] !== null && w[k] !== "");
-    L.push(`where: {${bits.map(k => `${k}: ${typeof w[k] === "number" ? w[k] : yamlStr(String(w[k]))}`).join(", ")}}`);
-  }
-  if ((c.nines || []).length) L.push(`nines: [${c.nines.join(", ")}]`);
-  if (c.first_hole && c.first_hole !== 1) L.push(`first_hole: ${c.first_hole}`);
-  if (c.provenance && (c.provenance.ratings || c.provenance.stroke_index)) {
-    L.push(`source: {ratings: ${c.provenance.ratings || "unknown"}, stroke_index: ${c.provenance.stroke_index || "unknown"}}`);
-  }
-  L.push(`par: [${c.par.join(", ")}]`, `stroke_index: [${c.stroke_index.join(", ")}]`, "tees:");
-  for (const [tee, t] of Object.entries(c.tees)) {
-    L.push(`  ${tee}:`);
-    if (t.ratings && t.ratings.m) { L.push(`    course_rating: ${t.ratings.m.cr}`); L.push(`    slope: ${t.ratings.m.slope}`); }
-    if (t.ratings && t.ratings.f) L.push(`    women: {course_rating: ${t.ratings.f.cr}, slope: ${t.ratings.f.slope}}`);
-    if (t.par && String(t.par) !== String(c.par)) L.push(`    par: [${t.par.join(", ")}]`);
-    if (t.metres) L.push(`    metres: [${t.metres.join(", ")}]`);
   }
   return L.join("\n") + "\n";
 }

@@ -3,7 +3,7 @@
 //
 // Each of these is a header, a set of headline numbers and one or two blocks, handed to `sheet` (sheet.js).
 // The theme family decides the page from there: how wide, whether the headline numbers sit in a row or up
-// in the header band, how much of the footer survives, and -- for the two-board sheet -- whether the boards
+// in the header band, and -- for the two-board sheet -- whether the boards
 // stand side by side or one under the other. What a column contains and how a row is ranked never varies.
 import { house, caps, note, posChip, outcomeBar, legend, on, rowBand, isPhone, brandTitle, brandDate } from "./draw.js";
 import { sheet, block, blockAxes, heading, headingIn, dense } from "./sheet.js";
@@ -180,30 +180,9 @@ function pointsMeter(scaleMax, level, key = "pts") {
 
 
 // ---------------------------------------------------------------- posters
-/**
- * A board comes in two tiers. `basic` is what the free app renders: position, name, score, with the number
- * set large, so it reads as a deliberately plain poster rather than a full one with columns missing. `full`
- * adds what the round was actually like -- to par, the result bar, the handicap, the meter, and a row of
- * headline numbers. Both go through the same blocks, so a tier is a column set, never a second renderer.
- */
-export const TIERS = ["basic", "full"];
-const BASIC_W = 6.4;
-
-export function grossLeaderboard(M, T, tier = "full") {
+export function grossLeaderboard(M, T) {
   const rows = M.gross_board, n = M.n, N = M.field;
   const finished = rows.filter(p => p.gross !== null).map(p => p.gross);
-  if (tier === "basic") {
-    const cols = [
-      col("Pos", 0.15, 0.95, dPos("g")),
-      col("Player", 1.15, 4.9, dName, "left"),
-      col("Gross", 5.0, 6.25, dVal(r => r.gross === null ? "NR" : String(r.gross), 26, (r, T) => T.INK, "display")),
-    ];
-    return sheet(T, {
-      title: brandTitle("gross", "Gross leaderboard"), kicker: M.name, sub: brandDate(M.sub),
-      right: `Stroke play, no handicap\nField ${N}${finished.length ? `  ·  best ${Math.min(...finished)}` : ""}`,
-      tiles: null,
-    }, [tableBlock(T, cols, rows, BASIC_W, { minW: 5.6 })], { maxCols: 1, minInner: 6.6 });
-  }
   const W = 10;
   const [cols, opts] = isPhone(T) ? grossPhone(T, rows, n) : [[
     col("Pos", 0.15, 0.95, dPos("g")),
@@ -245,22 +224,10 @@ function stblPhone(T, scaleMax, level) {
   ], { ...PHONE_ROWS, key: phoneNote(`bar: points, 0 to ${scaleMax}, line at ${level}`) }];
 }
 
-export function stablefordLeaderboard(M, T, tier = "full") {
+export function stablefordLeaderboard(M, T) {
   const rows = M.stbl_board, n = M.n, N = M.field;
   const level = 2 * n, best = Math.max(...rows.map(p => p.pts));
   const scaleMax = Math.max(level + 6, 3 * Math.ceil((best + 2) / 3));
-  if (tier === "basic") {
-    const cols = [
-      col("Pos", 0.15, 0.95, dPos("s")),
-      col("Player", 1.15, 4.9, dName, "left"),
-      col("Points", 5.0, 6.25, dVal(r => String(r.pts), 26, (r, T) => T.ACCENT, "display")),
-    ];
-    return sheet(T, {
-      title: brandTitle("stbl", "Stableford leaderboard"), kicker: M.name, sub: brandDate(M.sub),
-      right: `Net, course handicap\nField ${N}  ·  best ${best} pts`,
-      tiles: null,
-    }, [tableBlock(T, cols, rows, BASIC_W, { minW: 5.6 })], { maxCols: 1, minInner: 6.6 });
-  }
   const hcpTitle = M.allowance === 100 ? "Hcp" : `Hcp (${M.allowance}%)`;
   const W = 10;
   const [cols, opts] = isPhone(T) ? stblPhone(T, scaleMax, level) : [[
@@ -728,14 +695,11 @@ function standingsPhone(kind, total, pairs) {
     sub(col("", 1.25, 7.6, dPairs(pairs)))], { rowH: PHONE_ROWS.rowH }];
 }
 
-export function renderPosters(M, T, tier = "full") {
-  const out = [
-    { file: "1_leaderboard_gross.png", fig: grossLeaderboard(M, T, tier) },
-    { file: "2_leaderboard_stableford.png", fig: stablefordLeaderboard(M, T, tier) },
+export function renderPosters(M, T) {
+  return [
+    { file: "1_leaderboard_gross.png", fig: grossLeaderboard(M, T) },
+    { file: "2_leaderboard_stableford.png", fig: stablefordLeaderboard(M, T) },
+    { file: "3_holes.png", fig: holesPoster(M, T) },
+    { file: "4_leaderboard_both.png", fig: bothBoards(M, T) },
   ];
-  if (tier !== "basic") {  // how the holes played and the two-up sheet are what the full tier adds
-    out.push({ file: "3_holes.png", fig: holesPoster(M, T) });
-    out.push({ file: "4_leaderboard_both.png", fig: bothBoards(M, T) });
-  }
-  return out;
 }

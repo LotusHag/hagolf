@@ -4,17 +4,16 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import * as Y from "../sync.js";
-import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, shortDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, roundClub, roundLoop, safeCompute, saveFiles, subtabs, courseBy, courseTitle } from "../ui.js";
+import { page, scrollPos, scrollAt, bind, esc, go, toast, ui, plural, firstName, ordinal, fmtDate, shortDate, avatar, sheet, confirmSheet, shareLink, qrHtml, appBase, ICONS, emptyState, roundClub, roundLoop, safeCompute, subtabs, courseBy, courseTitle } from "../ui.js";
 import { compute, fmtIndex, fmtToPar, halves, statSummary, isMatchFormat, isTeamFormat } from "../model.js";
 import { statLine, statHolesOf } from "./extras.js";
 import { playerRounds, ninesPlayerBlock, gameOf, gameBody } from "./stats.js";
 import { buildRound, courseOf } from "./public.js";
 import { shotsBody } from "./shots.js";
 import { leagueResults, standingsFor, standingValue, MATCH_BASIS, ELO_BASIS } from "./formats.js";
-import { myCard, nineLine } from "./review.js";
+import { myCard } from "./review.js";
 import { matchFor } from "./mine.js";
 import { nineName } from "./play.js";
-import { inviteSheet } from "./league.js";
 import { parseHI, hiOk } from "../ui.js";
 
 let searchTimer = null;
@@ -47,7 +46,8 @@ export function people() {
       : acct ? emptyState("people", "No friends yet", "Find someone you've played with above, or send them your link.") : ""}
     ${acct ? `<div class="btnrow"><button class="btn" data-act="mylink">${ICONS.link} Send my link</button><button class="btn" data-act="myqr">${ICONS.qr} My QR code</button></div>` : ""}
     ${held.outgoing.length ? `<h2>Asked</h2><div class="list">${held.outgoing.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">waiting for them</div></div></span><button class="btn small" data-act="decline" data-id="${esc(p.id)}">Cancel</button></div>`).join("")}</div>` : ""}
-    ${contacts.length ? `<h2>On your cards</h2><div class="list">${contacts.map(p => personRow(p, [p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))}` : "", plural(S.roundsOf(p.id).filter(r => r.status === "done").length, "round")].filter(Boolean).join(" · "), `#player/${p.id}`)).join("")}</div>` : ""}`,
+    ${contacts.length ? `<h2>On your cards</h2><div class="list">${contacts.map(p => personRow(p, [p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))}` : "", plural(S.roundsOf(p.id).filter(r => r.status === "done").length, "round")].filter(Boolean).join(" · "), `#player/${p.id}`)).join("")}</div>` : ""}
+    ${held.blocked.length ? `<h2>Blocked</h2><div class="list">${held.blocked.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">cannot find you, ask you or send you cards</div></div></span><button class="btn small" data-act="unblock" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Unblock</button></div>`).join("")}</div>` : ""}`,
     { back: "#me", bell: false });
   const qEl = document.getElementById("q");
   if (qEl) qEl.addEventListener("input", () => {
@@ -69,6 +69,7 @@ export function people() {
       if (act === "request") { b.disabled = true; const r = await F.request(id); toast(r.state === "accepted" ? "You are now friends" : "Asked"); ui.found = null; ui.search = ""; }
       if (act === "accept") { await F.accept(id); toast("You are now friends"); }
       if (act === "decline") { await F.decline(id); }
+      if (act === "unblock") { b.disabled = true; await F.unblock(id); toast(`${firstName(b.dataset.name)} is unblocked`); }
       if (act === "mylink") return shareLink(myLink(), "Add me on Hagolf", "Add me on Hagolf");
       if (act === "myqr") return sheet({ title: "Your friend link", lead: "Whoever scans this and taps Add is your friend straight away.", body: `${qrHtml(myLink())}<div class="linkbox">${esc(myLink())}</div>`, actions: [{ label: "Done", value: "ok", kind: "primary" }] });
     } catch (e) { toast(e.message, 5000); }

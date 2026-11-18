@@ -6,8 +6,7 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as B from "../brand.js";
 import { DATA } from "../data.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, avatar, sheet, confirmSheet, alertSheet, saveFiles, subtabs, sect, courseTitle, makeTheme,
-  qrHtml, shareLink, appBase, applyBrand, ICONS, app } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, fmtDate, avatar, sheet, confirmSheet, saveFiles, subtabs, sect, courseTitle, makeTheme, qrHtml, shareLink, appBase, applyBrand, ICONS, app } from "../ui.js";
 import { loadFonts } from "../draw.js";
 import { BRAND_STYLES, dayOutSheet, personalSheet, leagueSheet } from "../brandsheets.js";
 import { showcaseRound, showcaseLeague } from "../sample.js";
@@ -330,7 +329,7 @@ const PANES = {
         <div class="two"><label>Panels<input type="color" name="PANEL" value="${esc(pal.PANEL || baseT.PANEL)}"></label><label>Writing<input type="color" name="INK" value="${esc(pal.INK || baseT.INK)}"></label></div></div>
       <div class="card"><div class="name">What the sheets say</div>
         <label>Line above every title<input name="kicker" maxlength="60" value="${esc(t.kicker || "")}" placeholder="${esc(C.name)}"></label>
-        <label>In the corner, instead of hagolf.app<input name="mark" maxlength="40" value="${esc(t.mark || "")}" placeholder="${esc(C.name)}"></label>
+        <label>In the corner<input name="mark" maxlength="40" value="${esc(t.mark || "")}" placeholder="${esc(C.name)}"></label>
         ${has("foot") ? `<label>Footer line<input name="foot" maxlength="140" value="${esc(t.foot || "")}" placeholder="Book your next round at the pro shop"></label>
           <label>A QR code to<input name="link" type="url" value="${esc(t.link || "")}" placeholder="https://…"></label>
           <label class="switch"><span>The date on every sheet</span><input type="checkbox" name="date" ${t.date ? "checked" : ""}></label>

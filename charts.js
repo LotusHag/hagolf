@@ -25,6 +25,39 @@ const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matche
 const ms = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
 let io = null;
 
+// Each theme sets the donut's centre in its own font, so whether it fits the hole is measured, not assumed. The hole is
+// 90 across at its middle but narrower where the figure's top and the label sit.
+const FIG = 76, LABEL = 78, LOW = 70;
+const shrinkTo = (el, w, room) => { if (w > room) el.style.fontSize = `${(parseFloat(getComputedStyle(el).fontSize) * room) / w}px`; };
+export function fitDonuts(main) {
+  if (!main) return;
+  main.querySelectorAll("svg.donut").forEach(svg => {
+    const big = svg.querySelector(".dbig"), small = svg.querySelector(".dsmall");
+    if (!big || !small) return;
+    const words = small.dataset.words ?? (small.dataset.words = small.textContent);
+    small.textContent = words;
+    big.style.fontSize = small.style.fontSize = "";
+    big.setAttribute("y", 70); small.setAttribute("y", 89);
+    const w = small.getComputedTextLength();
+    if (!w) return;
+    const mid = words.length / 2, cut = [...words].reduce((b, c, i) => c === " " && Math.abs(i - mid) < Math.abs(b - mid) ? i : b, -1);
+    if (w > LABEL && cut > 0) {
+      small.innerHTML = "";
+      [words.slice(0, cut), words.slice(cut + 1)].forEach((line, i) => {
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+        t.setAttribute("x", 70); t.setAttribute("dy", i ? 11 : 0); t.textContent = line;
+        small.append(t);
+      });
+      big.setAttribute("y", 69); small.setAttribute("y", 85);
+      // the lower line sits where the hole is narrower
+      shrinkTo(small, Math.max(...[...small.children].map(t => t.getComputedTextLength())), LOW);
+    } else shrinkTo(small, w, LABEL);
+    shrinkTo(big, big.getComputedTextLength(), FIG);
+  });
+}
+// a theme's font arriving late changes every width measured before it
+document.fonts?.addEventListener?.("loadingdone", () => fitDonuts(document.querySelector("#app main")));
+
 /** Readies every chart on a freshly drawn screen; each plays when it is first seen, `after` ms from now at the soonest. */
 export function charts(main, after = 0) {
   if (io) io.disconnect();

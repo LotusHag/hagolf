@@ -3,7 +3,7 @@
 import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
-import { ui, paint, themeHere, hideToast, rememberIntent, atDoor } from "./ui.js";
+import { ui, paint, themeHere, hideToast, rememberIntent } from "./ui.js";
 import { welcome, signin, join, add, you, getApp } from "./screens/gate.js";
 import { home } from "./screens/home.js";
 import { play, newRound, loops } from "./screens/play.js";
@@ -56,7 +56,6 @@ export function route() {
   // the card on screen is the one watched live; anywhere else nothing is
   Y.watchRound(["score", "review", "players", "event"].includes(name) && args[0] ? decodeURIComponent(args[0]) : null);
   ui.expanded = name === "review" ? ui.expanded : null;
-  if (name !== "review") ui.reviewOrder = {};
   if (name !== "people" && name !== "play") { ui.search = ""; ui.found = null; }
   if (name !== "new") ui.courseQ = "";   // the country chip is a preference and stays; the search box is not
   (screens[name] || home)(...args.map(decodeURIComponent));

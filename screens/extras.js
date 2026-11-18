@@ -1,32 +1,7 @@
-// Putts, fairways and the rest: what one tap on the hole writes, and the tiles that read them all back.
+// Putts, fairways and the rest: what one tap on the hole writes, and the line that reads them back.
 import * as S from "../store.js";
 import { esc, plural } from "../ui.js";
-import { statReadings, fmtSigned, hasFairway, STAT_START } from "../model.js";
-
-/**
- * The extras read back, as tiles. Only what was actually recorded appears, and `deep` decides whether the
- * headline readings come back or the ones that are interesting rather than important.
- */
-export function statTiles(x, { per18 = false, deep = false } = {}) {
-  const rs = statReadings(x, { per18 }).filter(r => !!r.deep === deep);
-  if (!rs.length) return "";
-  return `<div class="statgrid">${rs.map(r =>
-    `<div class="stattile"><b>${esc(r.big)}</b><small>${esc(r.label)}</small></div>`).join("")}</div>`;
-}
-
-/** True when a summary has anything worth folding away under "more". */
-export const hasDeepStats = (x, opts) => statReadings(x, opts).some(r => r.deep);
-
-/**
- * The whole read-back as one card: the headline readings, with the interesting-but-not-important ones folded
- * underneath. `intro` is drawn as it comes, so a caller that puts a name in it escapes that itself.
- */
-export function statBlock(x, intro, opts = {}) {
-  if (!x || !x.any) return "";
-  const rest = statTiles(x, { ...opts, deep: true });
-  return `<div class="card"><div class="muted small">${intro}</div>${statTiles(x, opts)}${
-    rest ? `<details class="morestats"><summary class="small">More of the same, for fun</summary>${rest}</details>` : ""}</div>`;
-}
+import { fmtSigned, hasFairway, STAT_START } from "../model.js";
 
 export function statLine(x) {
   const bits = [];
@@ -37,21 +12,6 @@ export function statLine(x) {
   if (x.sand && x.sand.holes >= 3) bits.push(`${x.sand.saved}/${x.sand.holes} sand`);
   if (x.penalty) bits.push(plural(x.penalty.total, "penalty shot"));
   return bits.join(" · ");
-}
-
-/** Strokes gained, drawn; `who` is the baseline in words. */
-export function sgBlock(sg, who) {
-  if (!sg || sg.total === null || !sg.holes) return "";
-  const t = (v, label) => `<div class="stattile"><b class="${v > 0.05 ? "sgup" : v < -0.05 ? "sgdown" : ""}">${fmtSigned(v, 2)}</b><small>${esc(label)}</small></div>`;
-  const per = sg.split ? sg.split.per18 : null;
-  const note = !per ? "No split: nobody they played against kept putts"
-    // The split runs on fewer holes than the total, so its two halves add up to their own figure, not the tile.
-    : sg.split.holes < sg.holes ? `Tee to green and putting come from the ${plural(sg.split.holes, "hole")} where both cards kept putts; on those they add up to ${fmtSigned(per.total, 2)} per 18`
-    : "";
-  return `<div class="card">
-    <div class="muted small">Against ${esc(who)} · average per 18 holes, over ${plural(sg.holes, "hole")}${sg.rounds > 1 ? ` in ${plural(sg.rounds, "round")}` : ""}</div>
-    <div class="statgrid">${t(sg.per18, "strokes gained")}${per ? t(per.teeToGreen, "tee to green") : ""}${per ? t(per.putting, "putting") : ""}</div>
-    ${note ? `<p class="muted small" style="margin:10px 0 0">${note}</p>` : ""}</div>`;
 }
 
 export function sgWords(sg, them) {
@@ -68,18 +28,11 @@ export const SG_TIP = `<p>The published version of this compares every shot with
 <p><b>Strokes gained</b> is what they averaged on a hole less what you took: plus means you took fewer. <b>Putting</b> is the same sum on putts alone, and <b>tee to green</b> is whatever is left over, so on the same holes the two always add back up to the total.</p>
 <p>Every figure is an average per 18 holes, so rounds of different lengths compare. A hole picked up is left out, and the putting split only counts holes where both cards wrote putts down; when that is fewer holes than the total, the split adds up to its own figure, which the card states.</p>`;
 
-export const STATS_TIP = `<p>These come off your own card, and only the ones you switched on. Nothing here is guessed at.</p>
-<p><b>GIR</b>, greens in regulation, is the green reached with two strokes still left for par, and is never asked for either: your strokes less your putts is where the ball was, so counting putts answers it. It is arithmetic, not an opinion, which is why there is no chip for it.</p>
-<p><b>Up and down</b> is the holes where you missed the green and still made par or better, however you got there. <b>Sand saves</b> are the same question asked of the greenside bunkers. Neither is ever asked for.</p>
-<p>Every figure counts only the holes that answered it, so switching something on halfway through a season skews nothing. A percentage waits until there are eight attempts behind it; under that you get the fraction itself, because one sand save out of one is not a hundred per cent of anything. Under a handful of attempts a reading is left out altogether: one bunker all season is a bunker, not a sand-save record.</p>`;
-
 export function statHolesOf(rounds, pid) {
   const out = [];
   for (const { M } of rounds) { const p = M.players.find(x => x.id === pid); if (p) out.push(...p.stats); }
   return out;
 }
-
-export const holedOut = (e, h) => e.scores[h] !== null && e.scores[h] !== 0;
 
 /**
  * A counted extra nudged by one: putts, penalty shots, shots from a bunker. A hole that has been scored already

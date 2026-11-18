@@ -3,7 +3,7 @@
 // score goes in anywhere on the card.
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
-import { page, bind, esc, go, ui, plural, fmtDate, courseTitle, firstName } from "../ui.js";
+import { page, bind, esc, go, ui, plural, fmtDate, courseTitle } from "../ui.js";
 import { courseOf } from "./public.js";
 import { liveBoard, formatLabel } from "./home.js";
 import { teeSheet, teamTable } from "./event.js";

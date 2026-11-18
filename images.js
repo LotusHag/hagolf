@@ -92,7 +92,7 @@ export async function sendRound(rid, want = null, pid = null) {
   const choices = [];
   const board = k => ({ key: k, label: ROUND_IMAGES[k].name, sub: roundSays(M, k), render: draw(() => sized(T, r.name, ROUND_IMAGES[k].name, Tz => ROUND_IMAGES[k].make(M, Tz))) });
   const card = p => ({ key: "cards", label: p.id === mySeatId(r) ? "Your card" : `${firstName(p.name)}'s card`, sub: p.gross === null ? "no return" : `${p.gross} gross${isMatchFormat(M.format) ? "" : ` · ${p.pts} pts`}`,
-    render: draw(() => sized(T, r.name, p.name, Tz => renderCards(M, Tz, [p.name], "full", { extras: S.statsOnImages() })[0].fig)) });
+    render: draw(() => sized(T, r.name, p.name, Tz => renderCards(M, Tz, [p.name], { extras: S.statsOnImages() })[0].fig)) });
   // a partner's round opens on the partner's own sheet, where the card is not settled as a match
   if (brand && !isMatchFormat(M.format)) {
     const st = styleOf(brand, "dayout");

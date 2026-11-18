@@ -9,7 +9,6 @@
 // not lose a score: sync.js keeps the queue, asks here for a refresh when it next sees a 401, and only when the
 // refresh itself is refused does the phone consider itself signed out -- keeping every round it holds.
 import * as S from "./store.js";
-import { mirror } from "./idb.js";
 
 const KEY = "hagolf-auth";
 const GRACE = 30000;   // refresh this many ms before the access token actually expires

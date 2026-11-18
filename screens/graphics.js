@@ -175,7 +175,7 @@ export function graphics(rid, want = "") {
     const jobs = [];
     const add = adder(jobs, r.name, looksOf(chosen, brand));
     for (const k of offered.map(o => o.key).filter(k => k !== "cards" && want.includes(k))) add(ROUND_IMAGES[k].name, Tz => ROUND_IMAGES[k].make(M, Tz));
-    if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) add(p.name, Tz => renderCards(M, Tz, [p.name], "full", cardOpts)[0].fig);
+    if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) add(p.name, Tz => renderCards(M, Tz, [p.name], cardOpts)[0].fig);
     for (const { kind, style } of bsOf(want)) {
       const sname = BRAND_STYLES[kind].find(s => s.key === style).name;
       if (kind === "dayout") add(`${BS_NAMES.dayout} (${sname})`, Tz => dayOutSheet(M, Tz, style));

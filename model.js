@@ -305,7 +305,7 @@ function boards(players, n, segments) {
   const finished = players.filter(p => !p.nr).sort((a, b) => cmpTuple(keyGross(a), keyGross(b)));
   const noReturn = players.filter(p => p.nr).sort((a, b) => cmpTuple([-a.holes_played, -a.pts], [-b.holes_played, -b.pts]));
   const stbl = [...players].sort((a, b) => cmpTuple(keyPts(a), keyPts(b)));
-  // positions run 1, 2, 3 in board order: equal scores are separated by the countback, which the footer explains
+  // positions run 1, 2, 3 in board order: equal scores are separated by the countback
   finished.forEach((p, i) => { p.gplace = i + 1; });
   noReturn.forEach(p => { p.gplace = null; });
   stbl.forEach((p, i) => { p.splace = i + 1; });
@@ -692,9 +692,6 @@ export function netBoard(M) {
   return [...finished.map((p, i) => Object.assign(p, { nplace: i + 1 })), ...noReturn.map(p => Object.assign(p, { nplace: null }))];
 }
 
-/** How a card is settled, as the image of its result: "match", "net" or "stbl". */
-export const resultKind = format => isMatchFormat(format) ? "match" : onPoints(format) ? "stbl" : "net";
-
 // ---------------------------------------------------------------- formatting, as golf/theme.py
 /** Fixed decimals with Python's round-half-even on exact ties, so 0.25 prints 0.2 as on the desktop. */
 export function fix(v, d = 1) {
@@ -747,7 +744,6 @@ export const STAT_KEYS = STAT_KINDS.map(k => k.key);
 /** The ones a card actually asks about, and so the only ones with a switch and a chip. */
 export const STAT_SWITCHES = STAT_KINDS.filter(k => !k.derived);
 export const STAT_SWITCH_KEYS = STAT_SWITCHES.map(k => k.key);
-export const statKind = key => STAT_KINDS.find(k => k.key === key) || null;
 
 /** The ways a fairway can be missed. The app writes `hit` or `miss`; the rest are for a card read off paper. */
 export const FAIRWAY_MISSES = ["left", "right", "short", "long"];
@@ -877,13 +873,6 @@ export function statSummary(holes) {
     },
     penalty: !pen.length ? null : { holes: pen.length, total: pen.reduce((a, h) => a + h.penaltyShots, 0) },
   };
-}
-
-/** Which switches a set of holes actually answered, so a table only ever shows columns with something in them. */
-export function statKindsPresent(summary) {
-  if (!summary) return [];
-  return STAT_KINDS.filter(k => k.key === "putts" ? summary.putts : k.key === "fairway" ? summary.fairway
-    : k.key === "gir" ? summary.gir : k.key === "penaltyShots" ? summary.penalty : summary.sand);
 }
 
 /** A ratio as a percentage, for display. Named apart from the app's own `pct`, which takes a part and a whole. */
@@ -1744,55 +1733,6 @@ export function leagueStats(results, memberIds) {
     bounce: sum(rounds.map(r => r.chances)) ? sum(rounds.map(r => r.backs)) / sum(rounds.map(r => r.chances)) : null,
   };
   return { rounds, holes, field, players, matches: [...matches.values()] };
-}
-
-/**
- * How a league has moved: one column a card in date order, and what everyone scored on it, so a season reads
- * left to right instead of as a pile of averages. `rounds` is leagueStats().rounds, so guests are already out.
- *
- * Points a hole where the league mixes nine- and eighteen-hole rounds and points a round where it does not:
- * an eighteen beside a nine on one axis is two different questions drawn as one line.
- *
- * `mode` is what each point means. "each" is what they scored that day, which is the season as it happened,
- * spikes and all; "running" is their average up to and including that day, which is the same season with the
- * one-off good round argued down -- a line that only moves when the player does. Both run over the same
- * columns, so the two can be swapped under one chart.
- *
- * A player who missed a card has no point on it and their line carries straight over the gap, because the
- * alternative is either a hole in the line or a score they never made.
- */
-export function leagueProgress(rounds, { mode = "each" } = {}) {
-  const perHole = new Set(rounds.map(r => r.n)).size > 1;
-  const val = r => perHole ? r.pts / r.n : r.pts;
-  const byCard = new Map();
-  for (const r of rounds) {
-    const k = r.card ?? r.id;
-    if (!byCard.has(k)) byCard.set(k, { key: k, date: r.date, where: r.where, loop: r.loop, n: r.n, rows: [] });
-    byCard.get(k).rows.push(r);
-  }
-  const cards = [...byCard.values()].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-  const names = new Map();
-  for (const r of rounds) names.set(r.pid, r.player);
-  const series = id => {
-    const seen = [];
-    return cards.map(c => {
-      // a player who went round twice on one card counts once, as the day they had
-      const mine = c.rows.filter(r => id === null || r.pid === id);
-      if (!mine.length) return null;
-      const v = mean(mine.map(val));
-      seen.push(...(mode === "running" ? mine.map(val) : [v]));
-      return mode === "running" ? mean(seen) : v;
-    });
-  };
-  const players = [...names.keys()].map(id => {
-    const points = series(id);
-    return { id, name: names.get(id), points, played: points.filter(v => v !== null).length,
-      first: points.findIndex(v => v !== null), last: points.reduce((a, v, i) => v === null ? a : i, -1) };
-  }).filter(p => p.played).sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
-  return {
-    perHole, mode, players, field: series(null),
-    cards: cards.map(c => ({ key: c.key, date: c.date, where: c.where, loop: c.loop, n: c.n, players: c.rows.length })),
-  };
 }
 
 // ---------------------------------------------------------------- one player against another

@@ -35,6 +35,7 @@ export function donut(counts, big, small) {
     off += len;
     return seg;
   }).join("");
+  // fitDonuts() in charts.js wraps or shrinks these once the theme's font is known
   return `<svg class="donut" viewBox="0 0 140 140" role="img" aria-label="Scoring distribution, given as numbers beside it">
     <g transform="rotate(-90 70 70)">${total ? arcs : `<circle class="dseg par" cx="70" cy="70" r="${R}" stroke-width="${W}"></circle>`}</g>
     <text class="dbig" x="70" y="70">${esc(big)}</text><text class="dsmall" x="70" y="89">${esc(small)}</text></svg>`;
@@ -462,6 +463,3 @@ export function leaguePlayerBody(g, Ms, members, pid) {
   if (!p) return "";
   return `<div class="statsbody">${playerStats(St, p, ninesPlayerBlock(leagueRounds(g.id), p.id, firstName(p.name)), g.id, leagueCards(Ms))}</div>`;
 }
-
-/** That player's line in `leagueStats`, for a screen that wants the headline figures without the whole wall. */
-export const leaguePlayer = (Ms, members, pid) => leagueStats(Ms, members).players.find(x => x.id === pid) || null;

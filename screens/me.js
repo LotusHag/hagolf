@@ -5,8 +5,8 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, lookTitle, arrive, paint, themeHere, lookMode, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, roundWhere } from "../ui.js";
-import { fmtIndex, STAT_SWITCHES, STAT_SWITCH_KEYS } from "../model.js";
+import { page, bind, esc, go, toast, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, lookTitle, arrive, paint, themeHere, lookMode, parseHI, hiOk, app, ICONS, roundWhere } from "../ui.js";
+import { fmtIndex, STAT_SWITCHES } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
 import { keepPage } from "./mine.js";
@@ -77,7 +77,14 @@ function account() {
     </form>
     <div class="btnrow"><button class="btn" data-act="mylink">${ICONS.link} Share my link</button><button class="btn" data-act="myqr">${ICONS.qr} My QR code</button></div>
     <p class="muted small" style="margin:14px 4px">Signed in with Google. Your email address is used to sign you in and is never shown to anyone.</p>
+    <div id="pkslot"></div>
     <div class="btnrow"><button class="btn small" data-act="signout-all">Sign out on every phone</button></div>`);
+  // a passkey is offered only where this backend takes them and this phone can make one
+  A.config().then(cfg => {
+    const slot = document.getElementById("pkslot");
+    if (slot && (cfg.methods || []).includes("passkey") && A.passkeysAvailable())
+      slot.innerHTML = `<div class="btnrow"><button class="btn" data-act="passkey">Add a passkey on this phone</button></div><p class="muted small" style="margin:6px 4px 14px">Then this phone signs you in with its own lock, Face ID or a fingerprint.</p>`;
+  });
   document.getElementById("acctf").addEventListener("submit", async ev => {
     ev.preventDefault();
     const f = ev.target, raw = f.hi.value.trim(), hi = raw ? parseHI(raw) : null;
@@ -95,6 +102,14 @@ function account() {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "mylink") return shareLink(myLink(), "Add me on Hagolf", "Add me on Hagolf");
+    if (b.dataset.act === "passkey") {
+      b.disabled = true;
+      const label = /iPhone|iPad/.test(navigator.userAgent) ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android phone" : "Browser";
+      try { await A.registerPasskey(label); toast("Passkey added: this phone can sign you in with it"); }
+      catch (e) { if (e && e.name !== "NotAllowedError" && e.name !== "AbortError") toast(e.message || "Could not add a passkey", 5000); }
+      b.disabled = false;
+      return;
+    }
     if (b.dataset.act === "myqr") return sheet({ title: "Your friend link", lead: "Let them scan this with their camera.", body: `${qrHtml(myLink())}<div class="linkbox">${esc(myLink())}</div>`, actions: [{ label: "Done", value: "ok", kind: "primary" }] });
     if (b.dataset.act === "signout-all") { if (await confirmSheet("Sign out everywhere?", "Every phone signed in as you is signed out, and notifications stop.", { label: "Sign out everywhere", danger: true })) { await A.signOut(true); go("#welcome"); } }
   });
@@ -131,7 +146,7 @@ function privacySettings() {
   sub("Privacy", `
     <div class="card"><label class="switch"><span>Keep me off shared boards<small>Initials instead of your name on any board or card that is not private.</small></span><input type="checkbox" id="hidepub" ${a.hidePublic ? "checked" : ""}></label></div>
     <div class="list">${row("#legal/privacy", "shield", "Privacy policy", "What is kept, who sees it, and your rights")}${row("#legal/terms", "info", "Terms")}</div>
-    <p class="muted small" style="margin:14px 4px">Blocked people are under People. Your data, and deleting your account, are under Data and backup.</p>`);
+    <p class="muted small" style="margin:14px 4px">Blocked people are listed under Friends. Your data, and deleting your account, are under Data and backup.</p>`);
   document.getElementById("hidepub").addEventListener("change", async ev => {
     try { await A.update({ hidePublic: ev.target.checked }); toast(ev.target.checked ? "You are initials on shared boards from now on" : "Your name is back on shared boards"); } catch (e) { toast(e.message, 5000); }
   });
@@ -152,15 +167,6 @@ function look() {
     paint(themeHere());
     look();
   });
-}
-
-// ---------------------------------------------------------------- scoring extras
-function scoring() {
-  const dstats = S.defaultStats();
-  sub("Scoring extras", `<p class="muted small" style="margin:4px 4px 10px">Every card starts with the score and nothing else. The Extras button on the scoring screen opens what is ticked here for that card, one tap on the hole each; anything left off never appears.</p>
-    <div class="card"><div class="statpick">${STAT_SWITCHES.map(k => `<button data-act="def-stat" data-k="${k.key}" class="${dstats[k.key] ? "on" : ""}">${esc(k.label)}</button>`).join("")}</div>
-      ${STAT_SWITCH_KEYS.some(k => dstats[k]) ? `<p class="muted small" style="margin:10px 0 0">${STAT_SWITCHES.filter(k => dstats[k.key]).map(k => `<b>${esc(k.short)}</b> · ${esc(k.blurb)}`).join("<br>")}</p>` : `<p class="muted small" style="margin:10px 0 0">Nothing ticked, so the Extras button opens everything.</p>`}</div>`);
-  bind(ev => { const b = ev.target.closest("[data-act=def-stat]"); if (b) { S.setDefaultStats({ ...dstats, [b.dataset.k]: !dstats[b.dataset.k] }); scoring(); } });
 }
 
 // ---------------------------------------------------------------- courses

@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, appBase, shareLink, qrHtml, atDoor, installRoute, isAndroid, ICONS } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, appBase, qrHtml, atDoor, installRoute, isAndroid } from "../ui.js";
 import { fmtIndex } from "../model.js";
 import { buildRound, courseOf } from "./public.js";
 import { isNative, plugin } from "../native.js";

@@ -256,7 +256,6 @@ function ncSave() {
   made.forEach(c => S.addCourse(c.slug, c));
   toast(`${plural(made.length, "course")} saved on every phone`);
   nc.draft = null; nc.found = null; nc.step = "where"; nc.q = "";
-  ui.courseScope = "all";   // a club just added must be visible, whichever country the picker was filtered to
   go("#new");
 }
 

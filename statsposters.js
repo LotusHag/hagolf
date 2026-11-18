@@ -8,7 +8,7 @@
 // narrowest one it can take and be given a full-width row instead.
 import { house, caps, note, outcomeBar, legend, rowBand, seriesColor, isPhone } from "./draw.js";
 import { sheet, block, blockAxes, heading, headingIn, dense, panel, bandRows, bigIn, barSpan } from "./sheet.js";
-import { fmtToPar, fmtSigned, fix, statReadings, statPairs, leagueProgress, STRIP_KEYS, RATE_MIN } from "./model.js";
+import { fmtToPar, fmtSigned, fix, statReadings, statPairs, STRIP_KEYS, RATE_MIN } from "./model.js";
 
 /** The screen's six buckets folded onto the four the poster palette names. */
 export function four(counts) {
@@ -123,67 +123,72 @@ function distributionBlock(T, counts, label) {
   }, 0.7);
 }
 
+// two points is a hole played to the handicap, the mark every points bar is read against, as on the Numbers screen
+const NET_PAR = 2;
+
+/** The key that names the mark, at the right of a heading: a tick, then what it stands for. */
+function markKey(fig, x, top, w, words) {
+  const T = fig.T, cy = top + headingIn / 2, tw = fig.measure(words, 9);
+  fig.text(x + w, cy, words, { size: 9, color: T.INK_3, ha: "right", va: "center" });
+  fig.line(x + w - tw - 0.12, cy - 0.08, x + w - tw - 0.12, cy + 0.08, T.INK_3, 1.2);
+}
+
 /**
- * Rows of one reading each, the bar running from a zero line so a figure under par points the other way.
- * `rows` are [label, value, note, good]: with `good` set the bar takes the accent when it is the better
- * side; without it the theme's palette decides, because a description is not a comparison.
+ * Points a hole, one row a kind of hole, every bar from nought with net par marked across them all; a bar past
+ * the mark takes the accent. `rows` are [label, points, note].
  */
-function barRowsBlock(T, rows, { title, fmtv = v => fix(v, 2), noteHead = "", labelW = 2.4 } = {}) {
-  if (isPhone(T)) return phoneBarRows(T, rows, { title, fmtv, noteHead });
+function pointRowsBlock(T, rows, { title, top = 3 } = {}) {
+  if (isPhone(T)) return phonePointRows(T, rows, { title, top });
   const rowIn = 0.42 * dense(T), hIn = rowIn * rows.length + 0.2;
   const notes = house(T).prose !== "none";
-  return block("chart", 3.4, () => hIn + (title ? headingIn : 0), (fig, x, top, w, extra = 0) => {
-    if (title) heading(fig, x, top, w, title, note(T, noteHead));
-    const y = top + (title ? headingIn : 0);
-    const ax = blockAxes(fig, x, y, w, hIn + extra, [0, w], [-rows.length, 0.2 / rowIn]);
-    const lw = Math.min(labelW, w * 0.3), noteW = notes ? Math.min(1.9, w * 0.2) : 0.15;
-    // the figure is written at the end of its own bar, so the track stops short of the note by its width
-    const valW = Math.max(...rows.map(r => ax.textWidth(fmtv(r[1]), 12, "display"))) + 0.18;
-    const barX0 = lw, barX1 = w - noteW - valW;
-    const lo = Math.min(0, ...rows.map(r => r[1])), hi = Math.max(0, ...rows.map(r => r[1]));
-    const span = (hi - lo) || 1;
-    const at = v => barX0 + ((v - lo) / span) * (barX1 - barX0);
-    const zero = at(0);
-    ax.line(zero, 0.12, zero, -rows.length + 0.08, T.LINE, 0.8);
-    rows.forEach(([label, value, tail, good], i) => {
+  return block("chart", 3.4, () => hIn + headingIn, (fig, x, y0, w, extra = 0) => {
+    heading(fig, x, y0, w, title, "");
+    markKey(fig, x, y0, w, "net par");
+    const ax = blockAxes(fig, x, y0 + headingIn, w, hIn + extra, [0, w], [-rows.length, 0.2 / rowIn]);
+    const lw = Math.min(2.4, w * 0.3), noteW = notes ? Math.min(1.9, w * 0.2) : 0.15;
+    const valW = Math.max(...rows.map(r => ax.textWidth(fix(r[1], 2), 12, "display"))) + 0.18;
+    const max = Math.max(top, ...rows.map(r => r[1])), end = w - noteW - valW;
+    const at = v => lw + (Math.max(0, v) / max) * (end - lw);
+    rows.forEach(([label, value, tail], i) => {
       const yy = -i - 0.5;
       rowBand(ax, 0, yy - 0.42, w, 0.84, i, 0.06);
       ax.text(0.05, yy, label, { size: 12, family: "display", color: T.INK, va: "center" });
-      const bx = at(value);
-      ax.rbox(Math.min(zero, bx), yy - 0.14, Math.abs(bx - zero), 0.28, seriesColor(T, i, good), 0.04);
-      ax.text(bx + (bx >= zero ? 0.08 : -0.08), yy, fmtv(value), { size: 12, family: "display", color: T.INK, ha: bx >= zero ? "left" : "right", va: "center" });
+      pointTrack(ax, T, lw, end, at, yy, 0.14, value, i);
+      ax.text(w - noteW - 0.05, yy, fix(value, 2), { size: 12, family: "display", color: T.INK, ha: "right", va: "center" });
       if (tail && notes) ax.text(w, yy, tail, { size: 9.5, color: T.INK_2, ha: "right", va: "center" });
     });
   }, 0.3);
 }
 
 /** The same rows on a phone: each note goes under its label rather than out past the end of the bar. */
-function phoneBarRows(T, rows, { title, fmtv, noteHead }) {
+function phonePointRows(T, rows, { title, top }) {
   const notes = house(T).prose !== "none" && rows.some(r => r[2]);
   const rowIn = (notes ? 0.62 : 0.46) * dense(T), hIn = rowIn * rows.length + 0.2;
-  const hd = note(T, noteHead);
-  return block("chart", 0, (w, probe) => hIn + (title ? headIn(probe, w, title, hd) : 0), (fig, x, top, w) => {
-    const y = top + (title ? head(fig, x, top, w, title, hd) : 0);
-    const ax = blockAxes(fig, x, y, w, hIn, [0, w], [-rows.length, 0.2 / rowIn]);
+  return block("chart", 0, () => hIn + headingIn, (fig, x, y0, w) => {
+    heading(fig, x, y0, w, title, "");
+    markKey(fig, x, y0, w, "net par");
+    const ax = blockAxes(fig, x, y0 + headingIn, w, hIn, [0, w], [-rows.length, 0.2 / rowIn]);
     const lw = Math.min(w * 0.42, Math.max(...rows.map(r => Math.max(fig.measure(r[0], 12, "display"),
       notes && r[2] ? fig.measure(r[2], 10) : 0))) + 0.24);
-    const valW = Math.max(...rows.map(r => ax.textWidth(fmtv(r[1]), 14, "display"))) + 0.14;
-    const lo = Math.min(0, ...rows.map(r => r[1])), hi = Math.max(0, ...rows.map(r => r[1]));
-    // a bar under par grows leftwards, so the figure's room is kept on whichever side the bars reach
-    const barX0 = lw + (lo < 0 ? valW : 0), barX1 = w - (hi > 0 ? valW : 0.05);
-    const at = v => barX0 + ((v - lo) / ((hi - lo) || 1)) * (barX1 - barX0);
-    const zero = at(0);
-    ax.line(zero, 0.12, zero, -rows.length + 0.08, T.LINE, 0.8);
-    rows.forEach(([label, value, tail, good], i) => {
+    const valW = Math.max(...rows.map(r => ax.textWidth(fix(r[1], 2), 14, "display"))) + 0.14;
+    const max = Math.max(top, ...rows.map(r => r[1])), end = w - valW;
+    const at = v => lw + (Math.max(0, v) / max) * (end - lw);
+    rows.forEach(([label, value, tail], i) => {
       const yy = -i - 0.5, two = notes && tail;
       rowBand(ax, 0, yy - 0.44, w, 0.88, i, 0.06);
       ax.fitText(0.1, two ? yy + 0.17 : yy, label, lw - 0.16, { size: 12, min: 11, family: "display", color: T.INK, va: "center" });
       if (two) ax.fitText(0.1, yy - 0.2, tail, lw - 0.16, { size: 10, min: 9, color: T.INK_2, va: "center" });
-      const bx = at(value);
-      ax.rbox(Math.min(zero, bx), yy - 0.15, Math.abs(bx - zero), 0.3, seriesColor(T, i, good), 0.04);
-      ax.text(bx + (bx >= zero ? 0.08 : -0.08), yy, fmtv(value), { size: 14, family: "display", color: T.INK, ha: bx >= zero ? "left" : "right", va: "center" });
+      pointTrack(ax, T, lw, end, at, yy, 0.15, value, i);
+      ax.text(w - 0.05, yy, fix(value, 2), { size: 14, family: "display", color: T.INK, ha: "right", va: "center" });
     });
   });
+}
+
+/** One row's track, its bar from nought, and the net par tick standing a little proud of both. */
+function pointTrack(ax, T, x0, x1, at, yy, h, value, i) {
+  ax.rbox(x0, yy - h, x1 - x0, h * 2, T.PANEL_2, 0.04);
+  ax.rbox(x0, yy - h, at(value) - x0, h * 2, seriesColor(T, i, value > NET_PAR), 0.04);
+  ax.line(at(NET_PAR), yy - h - 0.08, at(NET_PAR), yy + h + 0.08, T.INK_3, 1.4);
 }
 
 /**
@@ -368,75 +373,6 @@ function phoneRoundChart(T, rounds, label, perHole, { val, fld, any, best }) {
 }
 
 /**
- * The season left to right: one column a card, one line a player, and the field's own average behind them
- * all. This is the only block that answers "is this league getting better or just older", which no average
- * over the whole season can, because an average has no direction.
- *
- * Names sit at the right end of each line and are pushed apart where two lines finish level, since a chart
- * of nine lines is only readable if each one says whose it is.
- */
-function progressBlock(T, P, label, tail) {
-  const ph = isPhone(T), hd = note(T, tail);
-  const hIn = (ph ? 3.2 : 2.5) * dense(T);
-  const vals = [...P.players.flatMap(p => p.points), ...P.field].filter(v => v !== null);
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const pad = (hi - lo || 1) * 0.16;
-  const n = P.cards.length;
-  // A first name, unless two players share one, in which case both of them carry their whole name: a chart
-  // with two lines both labelled "Gijs" has labelled neither.
-  const firsts = {};
-  for (const p of P.players) firsts[p.name.split(" ")[0]] = (firsts[p.name.split(" ")[0]] || 0) + 1;
-  const shortName = p => firsts[p.name.split(" ")[0]] > 1 ? p.name : p.name.split(" ")[0];
-  return block("chart", 4.0, (w, probe) => hIn + headIn(probe, w, label, hd), (fig, x0, top, w, extra = 0) => {
-    const y = top + head(fig, x0, top, w, label, hd);
-    // The names live in a gutter of their own, and the plot keeps a sane pitch rather than stretching two
-    // cards across a foot of paper. Both are centred together, so a short season sits in the middle.
-    const nameW = ph ? Math.min(1.3, w * 0.24) : Math.min(1.5, w * 0.2);
-    const plotW = Math.min(w - nameW, Math.max(2.0, n * 1.5));
-    const x = x0 + Math.max(0, (w - plotW - nameW) / 2);
-    const ax = blockAxes(fig, x, y, plotW, hIn + extra, [-0.35, n - 1 + 0.35], [lo - pad * 1.9, hi + pad]);
-    // on a phone a long season dates every few cards, counted back from the newest, rather than shrinking them all
-    const every = ph ? Math.max(1, Math.ceil((Math.max(...P.cards.map(c => fig.measure(shortDate(c.date), 9.5))) + 0.12) / (plotW / Math.max(1, n - 0.3)))) : 1;
-    // the grid is one hairline a card with its date under it: no y axis, because the lines carry the numbers
-    P.cards.forEach((c, i) => {
-      ax.line(i, lo - pad * 1.2, i, hi + pad, T.LINE, 0.6);
-      if (!ph) ax.fitText(i, lo - pad * 1.35, shortDate(c.date), 0.95, { size: 8.5, color: T.INK_3, ha: "center", va: "top" });
-      else if ((n - 1 - i) % every === 0) ax.text(i, lo - pad * 1.35, shortDate(c.date), { size: 9.5, color: T.INK_3, ha: "center", va: "top" });
-    });
-    // the field first, so a player's own line is always the one on top of it
-    const run = (pts, col, lw, dash) => {
-      for (let k = 1; k < pts.length; k++) ax.line(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1], col, lw, dash);
-    };
-    const seen = xs => xs.map((v, k) => [k, v]).filter(([, v]) => v !== null);
-    run(seen(P.field), T.INK_3, 1.6, [5, 4]);
-    const ends = [];
-    P.players.forEach((p, i) => {
-      // The one chart where colour is identity rather than decoration, so it takes the five series colours
-      // whatever the theme would otherwise paint a chart in: nine lines in one colour is nine lines lost.
-      const col = T.SERIES[i % T.SERIES.length], pts = seen(p.points);
-      run(pts, col, 2.0);
-      for (const [k, v] of pts) fig.disc(ax.X(k), ax.Y(v), 0.075, col);
-      const [lastX, lastV] = pts[pts.length - 1];
-      if (pts.length === 1) fig.disc(ax.X(lastX), ax.Y(lastV), 0.11, col);
-      ends.push({ name: shortName(p), col, at: ax.X(lastX), from: ax.Y(lastV), y: ax.Y(lastV) });
-    });
-    // Pushed apart down the gutter so two players who finish level still get a name each, and joined to their
-    // own last point by a hairline, since a name that has been moved says nothing about which line it names.
-    const step = ph ? 0.2 : 0.145;
-    ends.sort((a, b) => a.y - b.y);
-    for (let k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + step);
-    const drop = Math.max(0, ends.length ? ends[ends.length - 1].y - (y + hIn + extra) : 0);
-    const lx = x + plotW + 0.14;
-    for (const e of ends) {
-      e.y -= drop;
-      fig.line(e.at + 0.06, e.from, lx - 0.06, e.y, T.LINE, 0.7);
-      if (ph) fig.fitText(lx, e.y, e.name, nameW - 0.16, 11, 9, { family: "display", color: e.col, va: "center" });
-      else fig.fitText(lx, e.y, e.name, nameW - 0.2, 9.5, 6.5, { family: "display", color: e.col, va: "center" });
-    }
-  }, 0.5);
-}
-
-/**
  * One row a player, one column a reading. Every cell carries what it is out of underneath, because a rate
  * over four holes and a rate over four hundred are not the same claim and a poster cannot footnote a cell.
  */
@@ -542,12 +478,19 @@ const BANDS = ["Hardest third", "Middle third", "Easiest third"];
  */
 export function statsFieldPoster(St, group, T, { extras = false } = {}) {
   const F = St.field;
-  const P = leagueProgress(St.rounds);
   const band = extras && F.statline.any ? statReadings(F.statline, { per18: true }).filter(r => !r.deep).slice(0, 5) : [];
+  const kind = (label, x) => x && x.holes ? [label, x.pts, `${fmtSigned(x.vspar, 2)} a hole  ·  ${x.holes} holes`] : null;
   const rows = [
-    ...Object.keys(F.byPar).sort().map(k => [`Par ${k}`, F.byPar[k].vspar, `${fix(F.byPar[k].pts, 2)} pts  ·  ${F.byPar[k].holes} holes`]),
-    ...F.bands.map((b, i) => b.holes ? [BANDS[i], b.vspar, `${fix(b.pts, 2)} pts  ·  ${b.holes} holes`] : null).filter(Boolean),
-  ];
+    ...Object.keys(F.byPar).sort().map(k => kind(`Par ${k}s`, F.byPar[k])),
+    ...F.bands.map((b, i) => kind(BANDS[i], b)),
+  ].filter(Boolean);
+  const by = r => `${r.player.split(" ")[0]}  ·  ${shortDate(r.date)}`;
+  const records = [
+    F.bestRound && { big: String(F.bestRound.pts), name: "points, best round", sub: by(F.bestRound) },
+    F.lowRound && { big: String(F.lowRound.gross), name: `best against par, ${fmtToPar(F.lowRound.topar)}`, sub: by(F.lowRound) },
+    F.mostBirdies && F.mostBirdies.birdies > 1 && { big: String(F.mostBirdies.birdies), name: "most birdies in a round", sub: by(F.mostBirdies) },
+    F.bounce !== null && { big: `${Math.round(F.bounce * 100)}%`, name: "bounce back", sub: `after ${sumc(St.rounds.map(r => r.chances))} bad holes` },
+  ].filter(Boolean);
   return sheet(T, {
     title: "How this society scores", kicker: group.name,
     sub: `${F.cards} cards  ·  ${F.rounds} rounds  ·  ${dateSpan(St.rounds)}`,
@@ -560,11 +503,9 @@ export function statsFieldPoster(St, group, T, { extras = false } = {}) {
     ],
   }, [
     distributionBlock(T, F.counts, "Every hole walked"),
-    barRowsBlock(T, rows, { title: "How the holes play", noteHead: "average against par", fmtv: v => fmtSigned(v, 2) }),
-    P.cards.length > 1 && P.players.length
-      ? progressBlock(T, P, P.perHole ? "The season, points a hole" : "The season, card by card", "one line a player, oldest card on the left")
-      : null,
+    rows.length ? pointRowsBlock(T, rows, { title: "How the holes play" }) : null,
     playerBarsBlock(T, St.players, "Who scores what", `${St.players.length} players`),
+    records.length ? bandBlock(T, "Records", records) : null,
     band.length ? bandBlock(T, "Putts, fairways and the rest", band) : null,
   ]);
 }

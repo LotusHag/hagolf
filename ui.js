@@ -4,12 +4,11 @@
 import { DATA } from "./data.js";
 import * as B from "./brand.js";
 import * as S from "./store.js";
-import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import * as N from "./notify.js";
 import { loadFonts, makeTheme, pickTheme, phone } from "./draw.js";
 import { isNative } from "./native.js";
-import { charts } from "./charts.js";
+import { charts, fitDonuts } from "./charts.js";
 
 export const app = document.getElementById("app");
 export const scrollPos = () => app.scrollTop;
@@ -191,7 +190,6 @@ document.addEventListener("click", ev => {
 });
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const plural = (n, w, ws = `${w}s`) => `${n} ${n === 1 ? w : ws}`;
-export const andList = xs => xs.length < 2 ? (xs[0] || "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 export const firstName = n => String(n || "").trim().split(/\s+/)[0];
 /** Tees are named after the markers' colour, so the picker shows the colour itself. */
 const TEE_INK = { white: "#FFFFFF", yellow: "#EFC63C", blue: "#2E6FB7", red: "#C8433A", black: "#17181A", orange: "#E07B23",
@@ -245,7 +243,6 @@ export function installRoute() {
  */
 export const atDoor = () => !isStandalone() && !isNative() && location.protocol !== "file:"
   && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
-export const inShell = () => isNative();
 /** Wide enough to be a laptop: the organiser's screens spread out, and the tabs become a rail down the side. */
 export const onDesk = () => window.matchMedia("(min-width: 900px)").matches;
 export const appBase = () => `${location.origin}${location.pathname}`;
@@ -261,11 +258,8 @@ export function parseHI(s) {
 export const hiOk = hi => hi >= -10 && hi <= 54;
 
 /** Screen state that survives a redraw but not a reload. Keyed per screen where a screen has several instances. */
-// A league's own screen state is two keys now: which table it is being read in, and in what currency two
-// players are compared. Everything else that used to live here -- which tab, which player, which pair -- is
-// in the hash instead, so the back button works and a board can be linked to.
-export const ui = { expanded: null, selHole: null, sel: {}, ask: null, blobs: [], groupFilter: {}, reviewOrder: {}, roundsFilter: "all", extrasOpen: true,
-  loops: {}, nineTab: {}, boardOf: {}, basis: {}, statsWho: {}, numWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseScope: "all", courseQ: "", unlisted: null, found: null, pending: null };
+export const ui = { expanded: null, selHole: null, blobs: [], groupFilter: {}, roundsFilter: "all", nineTab: {}, boardOf: {}, basis: {}, statsWho: {},
+  numWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseQ: "", unlisted: null, found: null };
 
 // ---------------------------------------------------------------- icons
 const I = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}${extra}</svg>`;
@@ -363,6 +357,7 @@ export function page(title, body, { back = "#home", bar = "", sub = "", tabs = n
   else { const was = !dir && !stillPlease() ? flipSpots() : null; write(); if (was) slideMoved(was); }
   cueTabs();
   charts(app.querySelector("main"), dir && !bare ? 240 : 0);
+  fitDonuts(app.querySelector("main"));
 }
 /** Friend requests waiting, for the People tab's badge. */
 function pendingPeople() { try { return (JSON.parse(localStorage.getItem("hagolf-friends")) || {}).incoming?.length || 0; } catch (e) { return 0; } }

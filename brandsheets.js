@@ -1,7 +1,7 @@
 // The partner's own sheets: a day out's board, one golfer's card and a society's table, each in a handful of quiet
 // styles where the course or company's logo is the centre of the page and the words are cut to the result. They
 // read the same models the posters do (compute, standingsFor) and the brand draw.js holds (setBrand/brandNow).
-import { Fig, on, mix, isPhone, PHONE_W, MARGIN, brandNow, logoFit, drawLogo, drawMark, drawQR, qrIn, scoreGlyph } from "./draw.js";
+import { Fig, on, mix, isPhone, PHONE_W, brandNow, logoFit, drawLogo, drawQR, qrIn, scoreGlyph } from "./draw.js";
 import { inchAxes } from "./sheet.js";
 import { fmtToPar } from "./model.js";
 
@@ -155,20 +155,12 @@ const logoBox = (crest, wide) => {
   return f && f[0] / f[1] >= WIDE ? wide : crest;
 };
 
-/** The corner credit: the partner's mark or name, or our own mark without a partner. Set to be read, it is sold. */
+/** The corner credit: the partner's mark or name, and nothing without a partner. Set to be read, it is sold. */
 const creditText = B => String(B.mark || B.name || "").slice(0, 40);
 const CREDIT_SZ = fig => isPhone(fig.T) ? 11.5 : 11;
 function credit(fig, y, { ha = "center", x = fig.w / 2, color } = {}) {
   const B = brandNow();
-  if (!B) {
-    // our mark keeps its own corner unless a style sets it against an edge of its own, as the ticket's stub does
-    const dx = ha === "right" ? x - fig.w * (1 - MARGIN) : 0;
-    fig.ctx.save();
-    fig.ctx.translate(fig.px(dx), 0);
-    drawMark(fig, fig.h - y);
-    fig.ctx.restore();
-    return;
-  }
+  if (!B) return;
   const s = creditText(B);
   if (s) fig.text(x, y, s, { size: CREDIT_SZ(fig), family: "display", color: color || fig.T.INK_2, ha, va: "bottom" });
 }

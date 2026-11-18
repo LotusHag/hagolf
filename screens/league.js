@@ -7,7 +7,7 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import { brandField } from "./partner.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
@@ -969,22 +969,6 @@ async function wireMembers(C) {
 }
 
 // ---------------------------------------------------------------- what every view answers
-/** Everything about the league that is not the board itself: the menu behind the three lines in the header. */
-function menuItems(C) {
-  const { gid } = C;
-  const nCards = leagueCards(C.Ms).length;
-  const Sx = C.Ms.length ? standingsFor(C.g, C.Ms, C.members, C.kind) : { rows: [] };
-  const vs = h2hPair(C, Sx);
-  return [
-    ...(C.Ms.length ? [[`#league/${gid}/table/${C.kind}`, "table", "The whole table", `${FORMAT_NAMES[C.kind]}, every column${C.formats.length > 1 ? `, and the other ${plural(C.formats.length - 1, "way")}` : ""}`]] : []),
-    [`#league/${gid}/days`, "card", "Cards", `${plural(nCards, "day")} played`],
-    ...(C.Ms.length ? [[`#league/${gid}/stats`, "chart", "The numbers", "How the field scores"]] : []),
-    ...(vs ? [[vs.href, "vs", "Head to head", vs.sub]] : []),
-    [`#leagueimages/${gid}`, "image", "Images", "The standings and the season's sheets, in any look"],
-    [`#league/${gid}/admin`, "settings", C.runs ? "Running the society" : "Members and this society", C.runs ? "Cards, members, the icon, how it is scored" : "Who is in it, and how it is scored"],
-  ];
-}
-
 /** The header icons, handled once. Returns true when it took the event. */
 async function common(C, ev) {
   const b = ev.target.closest("[data-act]");
@@ -997,13 +981,6 @@ async function common(C, ev) {
   if (act === "share-board") { await boardShare(C.g, C.kind); return true; }
   if (act === "send-table") { await sendTable(C.gid, b.dataset.kind || C.kind); return true; }
   if (act === "board-graph") { await climbSheet(C, b.dataset.kind); return true; }
-  if (act === "lgmenu") {
-    const v = await sheet({ title: C.g.name, body: `<div class="list lmenu">${menuItems(C).map(([href, icon, name, sub]) => `<button data-sheet="${esc(href)}">
-      <span class="lead">${ICONS[icon]}<div><div class="name">${esc(name)}</div><div class="muted small">${esc(sub)}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`,
-      actions: [{ label: "Close", value: "no" }] });
-    if (v && v.startsWith("#")) go(v);
-    return true;
-  }
   return false;
 }
 

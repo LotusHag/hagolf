@@ -5,14 +5,14 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, h2tip, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, ICONS } from "../ui.js";
-import { compute, halves, outcome, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat, onPoints, matchWith } from "../model.js";
+import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, ICONS } from "../ui.js";
+import { compute, halves, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat, onPoints, matchWith } from "../model.js";
 import { runsCard } from "./event.js";
 import { formatLabel } from "./home.js";
 import { sendRound, roundDoor } from "../images.js";
 import { statTap, statStep, statLine, seedStats } from "./extras.js";
 import { mark, scoreStepper, extrasRows } from "../pad.js";
-import { dropBtn, dropRound } from "./players.js";
+import { dropRound } from "./players.js";
 import { nineName } from "./play.js";
 import { sendTheirRounds } from "./people.js";
 
@@ -103,14 +103,24 @@ export async function shareSheet(r) {
 
 async function friendsSheet(r) {
   const friends = F.held().friends;
-  if (!friends.length) return toast("No friends yet: add some under Me → Friends");
-  const already = new Set(S.sharesOf(r.id).map(x => x.account_id));
+  // who has it, named by the server so somebody who is no longer a friend can still be taken off; offline, what synced
+  let holders;
+  try { holders = (await F.cardShares(r.id)).shares; }
+  catch (e) { holders = S.sharesOf(r.id).map(x => ({ id: x.account_id, name: (friends.find(f => f.id === x.account_id) || {}).name || "Someone" })); }
+  const has = new Set(holders.map(h => h.id));
+  const others = friends.filter(f => !has.has(f.id));
+  if (!others.length && !holders.length) return toast("No friends yet: add some under Me → Friends");
   const v = await sheet({ title: "Send to friends",
-    body: `<div class="list">${friends.map(f => `<label style="margin:0;font:inherit"><span class="lead">${avatar(f.name)}<div><div class="name">${esc(f.name)}</div>${already.has(f.id) ? `<div class="muted small">already has it</div>` : ""}</div></span><input type="checkbox" name="fr" value="${esc(f.id)}" ${already.has(f.id) ? "disabled" : ""}></label>`).join("")}</div>`,
-    actions: [{ label: "Send", value: "ok", kind: "primary" }, { label: "Cancel", value: "no" }],
+    body: `<div class="list">${holders.map(h => `<div><span class="lead">${avatar(h.name)}<div><div class="name">${esc(h.name)}</div><div class="muted small">has it</div></div></span><button class="btn small" data-sheet="unshare:${esc(h.id)}">Take back</button></div>`).join("")}${others.map(f => `<label style="margin:0;font:inherit"><span class="lead">${avatar(f.name)}<div><div class="name">${esc(f.name)}</div></div></span><input type="checkbox" name="fr" value="${esc(f.id)}"></label>`).join("")}</div>`,
+    actions: others.length ? [{ label: "Send", value: "ok", kind: "primary" }, { label: "Cancel", value: "no" }] : [{ label: "Done", value: "no" }],
     onOpen: el => { el.addEventListener("change", () => { window.__fr = [...el.querySelectorAll("input[name=fr]:checked")].map(i => i.value); }); window.__fr = []; } });
   const ids = window.__fr || [];
   window.__fr = null;
+  if (v && v.startsWith("unshare:")) {
+    const h = holders.find(x => x.id === v.slice(8));
+    try { await F.unshareRound(r.id, h.id); toast(`${firstName(h.name)} no longer has this card`); await Y.pull(); } catch (e) { return toast(e.message, 5000); }
+    return friendsSheet(r);
+  }
   if (v !== "ok") return;
   if (!ids.length) return toast("Tick at least one friend");
   try { const res = await F.shareRound(r.id, ids); toast(`Sent to ${plural(res.shared, "friend")}`); await Y.pull(); } catch (e) { toast(e.message, 5000); }
@@ -120,17 +130,25 @@ async function friendsSheet(r) {
 async function roundMenu(r, c) {
   const lg = S.leaguesOfRound(r.id);
   const scorer = S.isScorer(r);
+  // a seat I took on somebody else's card, which I can always hand back
+  const me = S.myAccount(), seat = S.mySeat(r);
+  const handBack = me && seat && seat.accountId === me && r.owner && r.owner !== me;
   const v = await sheet({ title: r.name, body: `<div class="list">
       ${scorer ? `<button data-sheet="details"><span class="lead">${ICONS.edit}<div><div class="name">Name and date</div><div class="muted small">${esc(r.name)} · ${esc(fmtDate(r.date) || "no date")}</div></div></span><span class="chev">›</span></button>` : ""}
       ${scorer ? `<button data-sheet="players"><span class="lead">${ICONS.people}<div><div class="name">Players, sides and handicaps</div></div></span><span class="chev">›</span></button>` : ""}
       ${c.unlisted || !scorer ? "" : `<button data-sheet="attach"><span class="lead">${ICONS.trophy}<div><div class="name">Counts for</div><div class="muted small">${lg.length ? esc(lg.map(g => g.name).join(", ")) : "no society"}</div></div></span><span class="chev">›</span></button>`}
       ${Y.enabled() ? `<button data-sheet="history"><span class="lead">${ICONS.inbox}<div><div class="name">What was changed</div><div class="muted small">Every correction, and who made it</div></div></span><span class="chev">›</span></button>` : ""}
+      ${handBack ? `<button data-sheet="notme"><span class="lead">${ICONS.x}<div><div class="name">${esc(seat.name)} is not me</div><div class="muted small">Hand the seat back; the card stays with whoever scored it</div></div></span></button>` : ""}
     </div>`, actions: [...(S.iPlayed(r) || scorer ? [{ label: r.status === "done" ? "Delete this round" : "Discard this round", value: "drop", kind: "danger" }] : []), { label: "Close", value: "no" }] });
   if (v === "details") return detailsSheet(r);
   if (v === "players") return go(`#players/${r.id}`);
   if (v === "attach") return go(`#attach/${r.id}`);
   if (v === "history") return historySheet(r, c);
   if (v === "drop") return dropRound(r.id);
+  if (v === "notme") {
+    if (!await confirmSheet(`${seat.name} is not you?`, "The seat goes back to the card as a name, and this round leaves your rounds and stats.", { label: "Hand it back", danger: true })) return;
+    try { await F.unclaimSeat(r.id, seat.playerId); await Y.pull(); toast("Handed back"); go("#home"); } catch (e) { toast(e.message, 5000); }
+  }
 }
 
 async function detailsSheet(r) {
@@ -310,13 +328,12 @@ export function attach(rid) {
   { back: backTo, bar: `<a class="btn primary" href="${backTo}">Done ›</a>` });
   bind(ev => {
     const b = ev.target.closest("[data-act=toggle-league]");
-    if (b) { S.setLeagueRound(b.dataset.gid, rid, b.checked); if (b.checked) S.setSetting("lastLeague", b.dataset.gid); }
+    if (b) S.setLeagueRound(b.dataset.gid, rid, b.checked);
   });
   document.getElementById("newg").addEventListener("submit", ev => {
     ev.preventDefault();
     const g = S.createLeague(ev.target.name.value.trim() || "Society", 0, S.me() ? S.me().name : null);
     S.setLeagueRound(g.id, rid, true);
-    S.setSetting("lastLeague", g.id);
     attach(rid);
   });
 }

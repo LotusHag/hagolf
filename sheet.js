@@ -4,7 +4,7 @@
 // how wide the sheet is, whether the blocks run down it or flow in two columns, in what order, where the
 // headline numbers sit and how much writing survives. One poster, ten pages. Nothing here knows what a
 // Stableford point is: a block is a height and a draw call, and this only finds it somewhere to stand.
-import { Fig, MARGIN, header, headerIn, footer, footerIn, drawMark, section, house, caps, prose, surface, isPhone, PHONE_W, headerLogoIn, brandNow } from "./draw.js";
+import { Fig, MARGIN, header, headerIn, footer, footerIn, section, house, caps, surface, isPhone, PHONE_W, headerLogoIn } from "./draw.js";
 
 /** The sheets a family can ask for: how wide, in how many columns, and how far apart those columns sit. */
 export const PAGES = {
@@ -286,8 +286,7 @@ export function sheet(T, head, blocks, opts = {}) {
   for (const g of groups) {
     body += g.wide ? g.blocks[0].h(inner, probe) + GAP_Y : place(g.blocks, cols, colW, gap, 0, 0, probe).height;
   }
-  const foot = prose(T, head.foot);
-  const footIn = footerIn(probe, foot);
+  const footIn = footerIn(probe);
   const top = headerIn(probe, head.sub, inHeader ? null : head.right) + 0.18;
   const H = top + body + footIn;
 
@@ -305,6 +304,6 @@ export function sheet(T, head, blocks, opts = {}) {
       y += r.height;
     }
   }
-  if (foot || brandNow()) footer(fig, foot); else drawMark(fig, 0.14);
+  footer(fig);
   return fig;
 }

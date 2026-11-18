@@ -1,9 +1,7 @@
 // A partner's look: the course or company whose contract a round or league carries. Fetched once per partner and
 // kept on the phone, so a branded card still draws its logo on the tenth hole with no signal.
 //
-// Inside a branded round everything its sheets can be is unlocked for whoever makes them: the full boards and
-// card, and the partner's name in the corner instead of ours. That is what the partner bought for its golfers,
-// and none of them needs a code to get it.
+// Inside a branded round its sheets carry the partner's name in the corner, with no code needed by any golfer.
 import * as A from "./auth.js";
 import * as S from "./store.js";
 import { DATA } from "./data.js";

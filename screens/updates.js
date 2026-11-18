@@ -5,7 +5,7 @@ import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
 import * as Y from "../sync.js";
-import { page, bind, esc, go, toast, plural, firstName, fmtDate, ago, ordinal, courseBy, courseTitle, ICONS, emptyState, resumeHash } from "../ui.js";
+import { page, bind, esc, go, toast, firstName, fmtDate, ago, ordinal, courseBy, courseTitle, ICONS, emptyState, resumeHash } from "../ui.js";
 
 const ICON_OF = { round_added: "card", round_shared: "card", card_public: "link", league_invite: "mail", league_joined: "users", league_round: "trophy",
   claim_made: "shield", friend_request: "friend", friend_accepted: "people", contact_linked: "people", friends_stats: "chart", round_seated: "golf", event_draw: "flag" };

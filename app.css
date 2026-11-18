@@ -38,7 +38,7 @@ h2:first-child { margin-top: 6px; }
 h2 > svg { flex: none; width: 16px; height: 16px; margin-right: -4px; fill: none; stroke: currentColor; stroke-width: calc(2px * var(--isw)); stroke-linecap: var(--icap); stroke-linejoin: var(--ijoin); }
 h3 { font-size: 17px; margin: 0 0 4px; font-weight: 700; }
 p { margin: 8px 0; }
-.muted { color: var(--ink3); } .small { font-size: 13px; } .tiny { font-size: 11px; } .center { text-align: center; }
+.muted { color: var(--ink3); } .small { font-size: 13px; } .center { text-align: center; }
 .warn { color: var(--bogey); } .acc { color: var(--green); font-weight: 700; }
 .num { font-family: var(--fd); font-variant-numeric: tabular-nums; letter-spacing: .2px; }
 .hidden { display: none !important; }
@@ -184,12 +184,6 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .inplay .k.quiet { color: var(--ink3); }
 .inplay h1 { margin: 9px 0 0; font-family: var(--fd); font-weight: 500; font-size: 31px; line-height: 1.05; letter-spacing: .4px; text-transform: uppercase; }
 .inplay .where { margin: 7px 0 0; font-size: 13px; color: var(--ink3); }
-/* the figures under the player's own hero: the card chrome stripped back to the ruled strip the board uses */
-.herostats { background: none; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; margin: 20px 0 0; padding: 13px 2px; }
-.herostats .stats { margin: 0; gap: 10px; }
-.herostats .stats div { flex: 1; align-items: center; }
-.herostats .stats b { font-family: var(--fd); font-weight: 500; font-size: 24px; line-height: 1; }
-.herostats .stats small { margin-top: 5px; }
 
 .board { margin-top: 22px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .board > div { display: flex; align-items: baseline; gap: 14px; padding: 12px 2px; border-top: 1px solid var(--line); }
@@ -241,7 +235,6 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .panel.hero .inplay .rule { display: none; }
 .panel.hero.live { padding-bottom: 16px; }
 .panel.hero .board { margin-top: 16px; border-bottom: 0; }
-.panel.hero .herostats { border-bottom: 0; margin-top: 16px; }
 .inplay.me { display: flex; align-items: center; gap: 16px; text-align: left; }
 .inplay.me h1 { margin-top: 4px; }
 .inplay.me .where { margin-top: 3px; }
@@ -252,11 +245,6 @@ button.banner { width: 100%; text-align: left; white-space: normal; font: inheri
 .lbadge.mono { background: var(--green-soft); color: var(--green); font-family: var(--fd); font-weight: 600; font-size: 15px; letter-spacing: .5px; }
 .lbadge.big { width: 60px; height: 60px; border-radius: 14px; font-size: 23px; }
 .lbadge.small { width: 30px; height: 30px; border-radius: var(--r); font-size: 12px; }
-/* the Rounds tab: start and scan side by side, and a season as one line a round */
-.startrow { display: flex; gap: 8px; margin: 12px 0 4px; }
-.startrow .btn.big { flex: 1; margin: 0; }
-.startrow .scanb { flex: none; width: 64px; min-height: 54px; padding: 4px; flex-direction: column; gap: 2px; }
-.startrow .scanb small { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--ink3); }
 .filter.mini { margin: 10px 0 2px; padding: 3px; gap: 3px; }
 .filter.mini button { min-height: 30px; font-size: 13px; }
 .panel .search { margin: 8px 0 2px; }
@@ -283,7 +271,6 @@ input::placeholder { color: var(--ink3); opacity: .8; font-weight: 400; }
 .search { margin: 6px 0 10px; font-size: 16px; border-radius: var(--r-s); padding-left: 40px; background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237A877E' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") 14px 50% / 18px no-repeat; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
 .two > .btn { align-self: stretch; }
-.addr { overflow-wrap: anywhere; }
 .two .btn { margin-top: 12px; }
 .form { display: none; } .form.open { display: block; }
 .form .btn.primary { margin-top: 16px; width: 100%; }
@@ -292,8 +279,6 @@ input::placeholder { color: var(--ink3); opacity: .8; font-weight: 400; }
 .checks label > input { margin: 2px 0 0; }
 .checks label > .muted { grid-column: 2; font-size: 13px; font-weight: 400; line-height: 1.35; margin-top: 2px; }
 .checks details { margin-top: 6px; } .checks summary { list-style: none; cursor: pointer; }
-.addbtn { width: 100%; margin: 10px 0; gap: 10px; border-style: dashed; box-shadow: none; background: transparent; }
-.addbtn .plus { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--green); color: var(--green-ink); font-size: 22px; font-weight: 800; line-height: 1; }
 details.card > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-weight: 600; }
 details.card > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); transition: transform .15s var(--ease-out); }
 details.card[open] > summary::after { transform: rotate(-90deg); }
@@ -390,8 +375,6 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 /* ---- course picker, players in a round */
 .course .name { font-size: 16px; }
 .course .away { flex: none; font-size: 13px; font-weight: 600; color: var(--ink3); }
-.recents { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 6px; }
-.recents::-webkit-scrollbar { display: none; }
 .rec { flex: 0 0 min(66vw, 230px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 1px; min-height: 94px; padding: 12px 14px; text-align: left; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card); color: var(--ink); }
 .rec:active { background: var(--card2); }
 .rec b { font-size: 16px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -409,7 +392,6 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .entry .row .name { font-size: 16px; }
 /* every field on an entry is the same tile: a small caps label over a control of one height, two to a line, so
    a card reads as a form rather than as a line of boxes each a different size and filled in a different way */
-.efields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 .efield { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .efield.wide { grid-column: 1 / -1; }
 .flab { font-size: 9px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--ink3);
@@ -529,31 +511,6 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .xfwb.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .xfwb.soft { opacity: .5; }
 
-/* the extras sheet: one switch for all of them, and it stays open while you narrow it */
-.xmaster { width: 100%; text-align: left; border: 1px solid var(--line2); border-radius: var(--r-s);
-  background: var(--card); padding: 12px 14px; display: block; }
-.xmaster b { display: block; font-size: 16px; }
-.xmaster small { display: block; color: var(--ink3); font-size: 12px; margin-top: 2px; }
-.xmaster.on { border-color: var(--green); background: var(--green-soft); }
-.xmaster.on b { color: var(--green); }
-/* before you start: a tick that turns the lot on, and a chevron that folds out what is kept and for whom --
-   so narrowing it is taps on the page in front of you rather than a trip into a sheet */
-.xpanel { padding: 4px 6px 4px 8px; }
-.xpanel:has(.xmore) { padding-bottom: 14px; }
-.xhead { display: flex; align-items: center; gap: 4px; }
-.xcheck { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 2px;
-  border: 0; background: none; text-align: left; }
-.xcheck .tick { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-xs);
-  border: 1.5px solid var(--line2); background: var(--card); color: var(--green-ink); font-size: 15px; font-weight: 700; line-height: 1; }
-.xcheck .tick.on { border-color: var(--green); background: var(--green); }
-.xcw { min-width: 0; }
-.xcw b { display: block; font-size: 15px; font-weight: 700; }
-.xcw small { display: block; color: var(--ink3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.xfold { flex: none; width: 40px; height: 40px; border: 0; background: none; color: var(--ink3); font-size: 15px; line-height: 1; }
-.xfold.open { color: var(--green); transform: rotate(180deg); }
-.xmore { padding: 2px 2px 0; border-top: 1px solid var(--line); margin-top: 2px; }
-.xmore .pickline:first-child { margin-top: 12px; }
-
 /* the hole sheet: everything that is reference rather than scoring */
 .hboard { display: flex; flex-direction: column; }
 .hrowb { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 36px;
@@ -598,14 +555,8 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .edhead { margin-bottom: 8px; }
 .editor .sval { background: var(--card); }
 
-.statpick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.statpick button { flex: 1 1 108px; height: 38px; border-radius: var(--r-xs); border: 1px solid var(--line); background: var(--card); color: var(--ink2); font-size: 13px; font-weight: 600; }
-.statpick button.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
-.statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; margin-top: 10px; }
-.stattile { background: var(--card2); border-radius: var(--r-s); padding: 8px 10px; }
-.stattile b { display: block; font-size: 20px; line-height: 1.1; }
-.stattile b.sgup, b.sgup { color: var(--under); }
-.stattile b.sgdown, b.sgdown { color: var(--bogey); }
+b.sgup { color: var(--under); }
+b.sgdown { color: var(--bogey); }
 .sgline { margin-top: 10px; font-size: 13px; color: var(--ink2); line-height: 1.45; }
 .chglist { margin-top: 4px; }
 .chgrow { padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -613,10 +564,6 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .chg { display: inline-block; margin: 3px 8px 0 0; font-size: 13px; color: var(--ink2); }
 .chg i { font-style: normal; color: var(--ink3); }
 .chg b { color: var(--ink); }
-.stattile small { display: block; font-size: 11px; color: var(--ink3); margin-top: 2px; }
-.morestats { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
-.morestats > summary { color: var(--ink3); cursor: pointer; }
-.morestats .statgrid { margin-top: 8px; }
 /* the Shots tab and the figures grid: numbers that lead, grouped by spacing, no boxes inside the card */
 .sleads { display: flex; flex-wrap: wrap; gap: 14px 26px; }
 .sleads.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 16px 18px; }
@@ -810,8 +757,6 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .res { display: flex; align-items: baseline; gap: 14px; margin-top: 6px; flex-wrap: wrap; }
 .res .big { font-size: 44px; font-weight: 600; line-height: 1; }
 .res .big small { font-size: 15px; font-weight: 600; color: var(--ink3); margin-left: 4px; font-family: inherit; }
-.h2row { display: flex; align-items: baseline; gap: 10px; }
-.h2row h2 { flex: 1; }
 .nines { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .nines span { background: var(--card2); border-radius: 2px; padding: 3px 10px; font-size: 13px; color: var(--ink2); }
 .nines b { color: var(--ink); font-weight: 600; }
@@ -821,11 +766,6 @@ input.efv.hi { text-align: center; font-weight: 600; }
 .mecard .lg { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0 0; margin-top: 9px; border-top: 1px solid var(--line); font-size: 15px; color: var(--ink); }
 .mecard .lg b { color: var(--green); }
 
-/* ---- a league's Players tab */
-.dkeywrap { padding: 0 4px; }
-.plcard.mine { border-color: var(--green); }
-.plcard .dbar { margin-top: 10px; }
-.pfoot { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 8px; font-size: 12px; color: var(--ink3); }
 .pickline { margin: 2px 4px 4px; color: var(--ink3); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
 
 /* ---- an explanation behind an "i" */
@@ -959,8 +899,6 @@ a.kv:active { background: var(--card2); }
 .fbar { position: absolute; bottom: 0; left: 22%; right: 22%; background: var(--green); border-radius: var(--r-s) 4px 0 0; }
 .fval { position: absolute; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--ink2); }
 .fcol small { font-size: 10px; white-space: nowrap; }
-/* The season: one line a player over every card, with the one being followed picked out and the rest left
-   as context behind it. Nine colours and a key do not fit a phone; one line and a name do. */
 /* The extras table carries what each figure is out of under it, because a rate over four holes and one over
    four hundred are not the same claim and a column head cannot footnote a cell. */
 .xtab td b { display: block; font-size: 16px; line-height: 1.15; }
@@ -1091,7 +1029,6 @@ a.kv:active { background: var(--card2); }
 .panel.lastout { padding-top: 18px; }
 .panel.lastout .board { border-bottom: 0; }
 .panel.lastout a.dayl { border-top: 1px solid var(--line); margin-top: 0; }
-.lmenu .lead svg { stroke: var(--green); }
 .iconpick { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
 .iconpick > div { min-width: 0; }
 .iconpick b { display: block; font-size: 15px; }
@@ -1304,7 +1241,6 @@ a.dayl:active { color: var(--green); }
 .bagrow small.muted { grid-column: 1 / -1; font-size: 12px; }
 .bagrow.on { background: var(--green-soft); }
 .bagrow.on b { color: var(--green); }
-.seatrow { display: grid !important; gap: 8px; }
 
 /* a laptop: the tabs become a rail down the left, and the organiser's screens spread out */
 @media (min-width: 900px) {

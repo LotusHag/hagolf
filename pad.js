@@ -4,7 +4,6 @@
 //
 // Both screens draw it: the scoring screen once per player, and the check screen for the hole being corrected,
 // so a number goes into a card one way and is put right the same way.
-import { esc } from "./ui.js";
 import { hasFairway, stableford, NO_SCORE, STAT_START } from "./model.js";
 
 /** Nested rings for under par, nested squares for over, plain ink for par: `scoreGlyph` in draw.js, in CSS. */
@@ -73,15 +72,4 @@ export function ptsSoFar(e, info) {
   let t = 0;
   e.scores.forEach((v, k) => { if (v) t += stableford(v, info.par[k], info.strokes[k]); });
   return t;
-}
-
-/** The way to the hole either side; the one onward turns primary once every card on this hole is in. */
-export function navBar(r, c, h, rid) {
-  const n = c.n;
-  const playing = r.entries.filter(x => (x.fromHole || 1) - 1 <= h);
-  const done = playing.length && playing.every(x => x.scores[h] !== null);
-  const onward = h < n - 1 ? `Hole ${c.first_hole + h + 1}` : "Check the card";
-  // both halves the same width: the way back and the way on are the same move, and the bar should not lean
-  return `${h === 0 ? `<a class="btn half" href="#players/${rid}">‹ Players</a>` : `<a class="btn half" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`}
-    <a class="btn half ${done ? "primary" : ""}" href="${h < n - 1 ? `#score/${rid}/${h + 1}` : `#review/${rid}`}">${esc(onward)} ›</a>`;
 }

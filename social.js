@@ -26,7 +26,6 @@ export async function refresh() {
   } catch (e) { return held(); }
 }
 
-export const isFriend = id => held().friends.some(f => f.id === id);
 export const friendById = id => held().friends.find(f => f.id === id) || null;
 
 export const search = q => A.api(`/friends/search?q=${encodeURIComponent(q)}`);
@@ -65,6 +64,7 @@ export const unshareRound = (roundId, accountId) => A.api(`/round/${encodeURICom
 export const cardLink = (roundId, reset = false) => A.api(`/round/${encodeURIComponent(roundId)}/link`, { reset });
 export const cardUnlink = roundId => A.api(`/round/${encodeURIComponent(roundId)}/unlink`, {});
 export const cardShares = roundId => A.api(`/round/${encodeURIComponent(roundId)}/shares`, {});
+export const unclaimSeat = (roundId, seat) => A.api(`/round/${encodeURIComponent(roundId)}/unclaim`, { seat });
 
 // ---------------------------------------------------------------- leagues
 export const inviteFriend = (leagueId, accountId) => A.api(`/league/${encodeURIComponent(leagueId)}/invite`, { forAccount: accountId });

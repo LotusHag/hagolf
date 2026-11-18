@@ -144,19 +144,6 @@ export const isPhone = T => !!(T && T.PHONE);
 /** Upper case where the theme sets its titles in caps, as typed where it does not. */
 export const caps = (T, s) => house(T).caps ? String(s).toUpperCase() : String(s);
 
-/**
- * How much of a written explanation this theme keeps. `full` is every word, `short` its first two
- * sentences -- the rule and nothing else -- and `none` drops it, leaving the labels to do the work.
- * The first sentence of every footer in this app says the rule, which is what makes the cut safe.
- */
-export function prose(T, text) {
-  const level = house(T).prose;
-  if (!text || level === "none") return "";
-  if (level !== "short") return text;
-  const m = String(text).match(/^[\s\S]*?\.(?:\s+[\s\S]*?\.)?(?=\s|$)/);
-  return m ? m[0].trim() : text;
-}
-
 /** A small note beside a chart or a column head: dropped by the themes that keep no prose. */
 export const note = (T, s) => house(T).prose === "none" ? "" : s;
 
@@ -465,16 +452,7 @@ export function kicker(fig, x, y, s, maxW = fig.w - x - MARGIN * fig.w) {
 export function headerRule(fig, y) {
   const T = fig.T, M = MARGIN * fig.w, R = fig.w - M;
   switch (house(T).rule) {
-    case "double": fig.line(M, y, R, y, T.ACCENT, 1.6); fig.line(M, y + 0.055, R, y + 0.055, T.LINE, 0.9); break;
-    case "slab": fig.rbox(M, y - 0.035, R - M, 0.075, T.ACCENT, 0.008); break;
     case "dashed": fig.line(M, y, R, y, T.ACCENT, 1.4, [7, 4]); break;
-    case "dots": fig.line(M, y, R, y, T.ACCENT, 2.2, [0.9, 4.5]); break;
-    case "stub": fig.rbox(M, y - 0.05, 1.15, 0.1, T.ACCENT, 0.008); fig.line(M + 1.28, y, R, y, T.LINE, 1.0); break;
-    case "glow": fig.rbox(M, y - 0.06, R - M, 0.12, T.ACCENT, 0.02, { alpha: 0.18 }); fig.line(M, y, R, y, T.ACCENT, 1.6); break;
-    case "hair": fig.line(M, y, R, y, T.INK_3, 0.7); break;
-    case "thin": fig.line(M, y, R, y, T.ACCENT, 1.0); break;
-    // three bands the width of a flag, in the theme's own three
-    case "flags": { const seg = (R - M) / 3; [T.ACCENT, T.INK_3, T.BAR].forEach((c, i) => fig.rbox(M + i * seg, y - 0.03, seg - 0.04, 0.06, c, 0.006)); break; }
     case "bar2": fig.rbox(M, y - 0.045, R - M, 0.09, T.ACCENT_2, 0); break;
     case "press": fig.line(M, y - 0.02, R, y - 0.02, T.INK, 3.2); fig.line(M, y + 0.05, R, y + 0.05, T.INK, 0.9); break;
     case "heavy": fig.rbox(M, y - 0.05, R - M, 0.1, T.INK, 0); break;
@@ -603,7 +581,7 @@ function wideHeader(fig, lg, title, kick, sub, right, rl, rw) {
 
 // ---------------------------------------------------------------- a partner's brand
 // A course or a company that took a contract puts its name on what its rounds make: its logo in the header,
-// its words in the kicker and the footer, a code to its site, and its own mark where ours would have been.
+// its words in the kicker and the footer, a code to its site, and its own mark in the corner.
 // One brand at a time, set by the caller before drawing, like the mark; null draws exactly what it always did.
 let BRAND = null;
 export function setBrand(b) { BRAND = b || null; }
@@ -703,26 +681,21 @@ export function drawCorner(fig, bottom) {
   fig.text(R, bottom, markText(), { size: MARK_SIZE, family: "display", color: fig.T.INK_3, ha: "right", va: "bottom", alpha: 0.8 });
 }
 
-// A poster's footer under a brand: the partner's line first, then the explanation, the corner to the right of both.
-const FOOT_PT = 9, BFOOT_PT = 10, BFOOT_GAP = 0.06, FOOT_BOTTOM = 0.28;
-function brandFoot(fig, text) {
-  const W = footerWidth(fig);
-  const blines = BRAND.foot ? fig.wrap(String(BRAND.foot), W, BFOOT_PT, "display") : [];
-  const lines = text ? fig.wrap(text, W, FOOT_PT) : [];
-  const lh = pt => pt / 72 * 1.5, n = lines.length;
-  const above = n ? lh(FOOT_PT) * n + BFOOT_GAP : 0;   // the partner's line ends a line and a gap over the explanation
-  const textIn = blines.length ? above + lh(BFOOT_PT) * (blines.length - 1) + 0.11 : n ? lh(FOOT_PT) * (n - 1) + 0.1 : 0;
-  return { blines, lines, above, h: Math.max(textIn, cornerIn(fig)[1]) };
+// A poster's footer under a brand: the partner's line, with the corner to the right of it.
+const BFOOT_PT = 10, FOOT_BOTTOM = 0.28;
+function brandFoot(fig) {
+  const blines = BRAND.foot ? fig.wrap(String(BRAND.foot), footerWidth(fig), BFOOT_PT, "display") : [];
+  const textIn = blines.length ? BFOOT_PT / 72 * 1.5 * (blines.length - 1) + 0.11 : 0;
+  return { blines, h: Math.max(textIn, cornerIn(fig)[1]) };
 }
 /** How tall a poster's footer is, from the top of its first line to the edge of the sheet. */
-export function footerIn(probe, text) {
-  if (!BRAND) return text ? 0.45 + 0.17 * (probe.wrap(text, footerWidth(probe), 9).length - 1) : 0.34;
-  return brandFoot(probe, text).h + FOOT_BOTTOM + 0.2;
+export function footerIn(probe) {
+  return BRAND ? brandFoot(probe).h + FOOT_BOTTOM + 0.2 : 0.34;
 }
 
 const MARK_SIZE = 8;
 
-/** A partner's corner, its baseline block ending `inchesFromBottom` up from the bottom edge; a free render carries nothing there. */
+/** A partner's corner, its baseline block ending `inchesFromBottom` up from the bottom edge; nothing without a partner. */
 export function drawMark(fig, inchesFromBottom = 0.28) {
   if (BRAND) drawCorner(fig, fig.h - inchesFromBottom);
 }
@@ -732,22 +705,11 @@ export function footerWidth(fig) {
   return fig.w * (1 - 2 * MARGIN) - (BRAND ? cornerIn(fig)[0] + 0.3 : 0);
 }
 
-export function footer(fig, text, inchesFromBottom = 0.28) {
-  const M = MARGIN * fig.w;
-  if (BRAND) {
-    const { blines, lines, above } = brandFoot(fig, text), bottom = fig.h - inchesFromBottom;
-    if (lines.length) fig.text(M, bottom, lines.join("\n"), { size: FOOT_PT, color: fig.T.INK_3, va: "bottom", lineSpacing: 1.5 });
-    if (blines.length) fig.text(M, bottom - above, blines.join("\n"), { size: BFOOT_PT, family: "display", color: fig.T.INK_2, va: "bottom", lineSpacing: 1.5 });
-    drawCorner(fig, bottom);
-    return lines.length + blines.length;
-  }
-  const lines = fig.wrap(text, footerWidth(fig), 9);
-  fig.text(M, fig.h - inchesFromBottom, lines.join("\n"), { size: 9, color: fig.T.INK_3, va: "bottom", lineSpacing: 1.5 });
-  return lines.length;
-}
-
-export function footerLines(fig, text) {
-  return fig.wrap(text, footerWidth(fig), 9).length;
+export function footer(fig, inchesFromBottom = 0.28) {
+  if (!BRAND) return;
+  const { blines } = brandFoot(fig), bottom = fig.h - inchesFromBottom;
+  if (blines.length) fig.text(MARGIN * fig.w, bottom, blines.join("\n"), { size: BFOOT_PT, family: "display", color: fig.T.INK_2, va: "bottom", lineSpacing: 1.5 });
+  drawCorner(fig, bottom);
 }
 
 export function section(ax, x, y, title, size = 12) {
@@ -819,14 +781,14 @@ export function posChip(ax, x, y, place, size = 1.0, fontsize = 13) {
     if (shape === "circle") ax.fig.disc(cx, cy, d, fc);
     else ax.fig.rbox(cx - d / 2, cy - d / 2, d, d, fc, 0);
   } else {
-    ax.rbox(x - size * 0.5, y - size * 0.36, size, size * 0.72, fc, shape === "pill" ? size : 0.1);
+    ax.rbox(x - size * 0.5, y - size * 0.36, size, size * 0.72, fc, 0.1);
   }
   ax.text(x, y, String(place), { size: fontsize, family: "display", color: on(T, fc), ha: "center", va: "center" });
 }
 
 /**
- * What a table puts behind row `i`: the tinted band every other row, a hairline under every row, the band with an
- * accent edge, or nothing at all. `y` and `h` are the row's box in data units, where the tint was drawn before.
+ * What a table puts behind row `i`: the tinted band every other row, a hairline under every row, or
+ * nothing at all. `y` and `h` are the row's box in data units, where the tint was drawn before.
  */
 export function rowBand(ax, x, y, w, h, i, r = 0.08) {
   const T = ax.fig.T, band = house(T).band;
@@ -834,7 +796,6 @@ export function rowBand(ax, x, y, w, h, i, r = 0.08) {
   if (band === "rule" || band === "dash") return void ax.line(x, y, x + w, y, T.LINE, 0.6, band === "dash" ? [3, 2.5] : null);
   if (i % 2 !== 1) return;
   ax.rbox(x, y, w, h, T.PANEL, r);
-  if (band === "edge") ax.rbox(x, y, ax.UX(0.05), h, T.ACCENT, 0, { alpha: 0.7 });
 }
 
 export function outcomeBar(ax, x, y, w, h, counts, total, gap = 0.04, label = true, fontsize = 8.5) {

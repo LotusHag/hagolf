@@ -156,7 +156,7 @@ const TABLES = {
     },
   },
   leagues: {
-    // kind, visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
+    // visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
     // them only through /league/<id>/visibility, so a phone editing the name offline cannot undo them.
     collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
       created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, brand: g.brand || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
@@ -631,14 +631,6 @@ export async function roundHistory(roundId, limit = 500) {
 export async function roundLog(roundId) {
   if (!sync.config) return [];
   return (await rest(`change_log?round_id=eq.${encodeURIComponent(roundId)}&order=at.asc&limit=2000`)) || [];
-}
-
-export function joinLink(base, organiser = false) {
-  const c = config();
-  if (!c) return null;
-  const json = JSON.stringify({ url: c.url, anonKey: c.anonKey, label: c.label, organiser });
-  const payload = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  return `${base}#join/${payload}`;
 }
 
 export function parseJoin(payload) {
