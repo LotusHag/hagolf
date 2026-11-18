@@ -127,13 +127,16 @@ function formTable(St) {
   const rows = St.players.filter(p => p.played > 1);
   if (rows.length < 1) return "";
   const mixed = mixedLengths(St.rounds);
-  return `${h2tip("Form and consistency", `<p><b>Avg</b> is points a round across the season. <b>Spread</b> is how far a typical round sits either side of that average, so a small number is a player you can predict.</p>
+  const v = p => mixed ? p.per18 : { avg: p.avgPts, spread: p.consistency, form: p.form, trend: p.trend };
+  const played = p => !mixed || !p.nines ? p.played : `${p.played}<small class="tsub">${p.nines === p.played ? "all nines" : plural(p.nines, "nine")}</small>`;
+  return `${h2tip("Form and consistency", `<p><b>Avg</b> is points ${mixed ? "per 18 holes" : "a round"} across the season. <b>Spread</b> is how far a typical round sits either side of that average, so a small number is a player you can predict.</p>
       <p><b>Last 3</b> is the average of their last three rounds, which is form rather than record, and <b>trend</b> compares the first half of their rounds with the second half: plus means the second half was better.</p>
-      ${mixed ? `<p>This society mixes nine- and eighteen-hole rounds, so read these as points a card rather than points a round.</p>` : ""}`)}
-    <div class="tscroll"><table class="stand nowrap"><thead><tr><th class="l">Player</th><th>Rounds</th><th>Avg</th><th>Spread</th><th>Last 3</th><th>Trend</th></tr></thead>
-      <tbody>${rows.map(p => `<tr><td class="l">${esc(p.name)}</td><td>${p.played}</td><td class="acc">${fix(p.avgPts)}</td>
-        <td>${p.consistency === null ? "&ndash;" : fix(p.consistency)}</td><td>${p.form === null ? "&ndash;" : fix(p.form)}</td>
-        <td>${p.trend === null ? "&ndash;" : fmtSigned(p.trend)}</td></tr>`).join("")}</tbody></table></div>`;
+      ${mixed ? `<p>This society plays both nines and eighteens, so every round is put on an eighteen-hole footing first: a nine counts double. 36 is an eighteen played to the handicap.</p>` : ""}`)}
+    <div class="tscroll"><table class="stand nowrap"><thead><tr><th class="l">Player</th><th>Rounds</th><th>${mixed ? "Avg /18" : "Avg"}</th><th>Spread</th><th>Last 3</th><th>Trend</th></tr></thead>
+      <tbody>${rows.map(p => { const x = v(p); return `<tr><td class="l">${esc(p.name)}</td><td>${played(p)}</td><td class="acc">${fix(x.avg)}</td>
+        <td>${x.spread === null ? "&ndash;" : fix(x.spread)}</td><td>${x.form === null ? "&ndash;" : fix(x.form)}</td>
+        <td>${x.trend === null ? "&ndash;" : fmtSigned(x.trend)}</td></tr>`; }).join("")}</tbody></table></div>
+    ${mixed ? `<p class="muted small" style="margin:6px 4px 0">Points per 18 holes. A nine counts double.</p>` : ""}`;
 }
 
 const MATCH_TIP = "Match play rounds count here and nowhere else on this page: a match is settled hole by hole on who won it, so its strokes and points say nothing about anyone's golf.";
@@ -185,6 +188,7 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
   const birdies = p.counts[0] + p.counts[1];
   const enough = (a, b) => a && b && a.holes >= 6 && b.holes >= 6;
   const mixed = mixedLengths(p.rounds);
+  const f = mixed ? p.per18 : { avg: p.avgPts, spread: p.consistency, form: p.form, trend: p.trend };
   // My own page is built from my rounds alone, so "the rest" and "where I finish" would only ever be me
   const society = !!gid;
   const vsField = !society ? "" : `${h2tip("Against the field", `${esc(first)} on the left of every line, everyone else in this society on the right, over the ${plural(p.played, "round")} they played together. The green end is whoever is ahead; on strokes against par and on bad holes, ahead means the lower number.${mixed ? " This society mixes nine- and eighteen-hole rounds, so read the figures given a hole at a time rather than a round at a time." : ""}`)}
@@ -205,11 +209,11 @@ function playerStats(St, p, nines = "", gid = "", cards = [], only = null) {
   const who = society ? esc(first) : "you";
   const form = one ? `<p class="muted small" style="margin:14px 4px">Form and consistency appear after a second round${society ? " here" : ""}.</p>`
     : `${h2tip("Habits", `<p><b>Either side</b> is how far a typical round sits from the average: the smaller, the steadier. ${society ? " <b>Last three</b> is form, the average of the latest three rounds. <b>Trend</b> compares the first half of the rounds with the second; plus means the second half was better. <b>Streak</b> counts the latest rounds in a row above the rest of the field." : " How each part of your game has moved over time is under Trends."}</p>
-      <p><b>Points a hole</b> splits a round in two, front half and back half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>${mixed ? "<p>These rounds mix nines and eighteens, so the points a round mix lengths too.</p>" : ""}`)}
+      <p><b>Points a hole</b> splits a round in two, front half and back half. <b>Bounce back</b> is how often the hole straight after a bogey or worse was played in par or better. <b>Blow-ups</b> counts doubles or worse in a round.</p>${mixed ? "<p>These rounds mix nines and eighteens, so the points are put on an eighteen-hole footing first: a nine counts double.</p>" : ""}`)}
     <div class="card"><div class="sleads grid">
-      ${fig(`±${fix(p.consistency)}`, "points either side", `of ${fix(p.avgPts)} on average`)}
-      ${p.form === null || !society ? "" : fig(fix(p.form), "points, last three", `${fmtSigned(p.form - p.avgPts)} on the average`)}
-      ${p.trend === null || !society ? "" : fig(fmtSigned(p.trend), "trend", "first half to second")}
+      ${fig(`±${fix(f.spread)}`, "points either side", `of ${fix(f.avg)} ${mixed ? "per 18" : "on average"}`)}
+      ${f.form === null || !society ? "" : fig(fix(f.form), `points${mixed ? " per 18" : ""}, last three`, `${fmtSigned(f.form - f.avg)} on the average`)}
+      ${f.trend === null || !society ? "" : fig(fmtSigned(f.trend), "trend", "first half to second")}
       ${fig(`${fix(p.firstHalf, 2)}<span class="to">→</span>${fix(p.lastHalf, 2)}`, "points a hole", "front half, back half")}
       ${p.bounce === null ? "" : fig(`${Math.round(p.bounce * 100)}%`, "bounce back", `after ${plural(p.bounceOf, "bad hole")}`)}
       ${fig(fix(p.blowups), "blow-ups a round", "double or worse")}

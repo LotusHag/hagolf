@@ -201,7 +201,7 @@ export class Fig {
     const T = this.T;
     const fam = family === "display" ? T.DISPLAY : T.TEXT;
     const w = weight ?? (family === "display" ? T.DISPLAY_WEIGHT : T.TEXT_WEIGHT);
-    return `${w} ${(size / 72 * this.dpi).toFixed(2)}px "${fam}"`;
+    return `${w} ${(size * (house(T).scale || 1) / 72 * this.dpi).toFixed(2)}px "${fam}"`;
   }
 
   /** Width of a string in inches at `size` points. */
@@ -282,16 +282,34 @@ export class Fig {
     ctx.globalAlpha = 1;
   }
 
-  line(x0, y0, x1, y1, color, lw = 1, dash = null) {
+  line(x0, y0, x1, y1, color, lw = 1, dash = null, cap = "butt") {
     const ctx = this.ctx;
     ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.lineWidth = lw / 72 * this.dpi;
+    ctx.lineCap = cap;
     ctx.setLineDash(dash ? dash.map(d => d / 72 * this.dpi) : []);
     ctx.moveTo(this.px(x0), this.px(y0));
     ctx.lineTo(this.px(x1), this.px(y1));
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineCap = "butt";
+  }
+
+  /** An open path through points in inches: a hand-drawn stroke, a stitched seam. */
+  stroke(pts, color, lw = 1, { alpha = 1, dash = null, cap = "round" } = {}) {
+    const ctx = this.ctx;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw / 72 * this.dpi;
+    ctx.lineCap = cap;
+    ctx.setLineDash(dash ? dash.map(d => d / 72 * this.dpi) : []);
+    pts.forEach(([x, y], i) => i ? ctx.lineTo(this.px(x), this.px(y)) : ctx.moveTo(this.px(x), this.px(y)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineCap = "butt";
+    ctx.globalAlpha = 1;
   }
 
   /** A filled (and optionally stroked) polygon through points given in inches. */
@@ -325,11 +343,13 @@ export class Fig {
     ctx.setLineDash([]);
   }
 
-  square(cx, cy, s, ec, lw) {
+  square(cx, cy, s, ec, lw, dash = null) {
     const ctx = this.ctx;
     ctx.strokeStyle = ec;
     ctx.lineWidth = lw / 72 * this.dpi;
+    ctx.setLineDash(dash ? dash.map(v => v / 72 * this.dpi) : []);
     ctx.strokeRect(this.px(cx - s / 2), this.px(cy - s / 2), this.px(s), this.px(s));
+    ctx.setLineDash([]);
   }
 
   /** matplotlib-style axes: rect [left, bottom, width, height] in figure fractions, data limits. */
@@ -464,6 +484,33 @@ export function headerRule(fig, y) {
     case "dimension": {
       fig.line(M, y, R, y, T.INK_3, 0.8);
       for (const x of [M, R]) { fig.line(x, y - 0.07, x, y + 0.07, T.INK_3, 0.8); fig.line(x - 0.04, y + 0.04, x + 0.04, y - 0.04, T.INK_3, 1.4); }
+      break;
+    }
+    case "pencil": { const rnd = wobble(y * 31); handLine(fig, M, R, y, T.INK_3, 1.1, rnd, { strands: 2, alpha: 0.7 }); break; }
+    case "chalk": { const rnd = wobble(y * 17); handLine(fig, M, R, y, T.ACCENT, 2.2, rnd, { strands: 3, alpha: 0.55, wob: 0.02 }); break; }
+    // the page header's colour bar, ending in the separated mosaic squares a teletext page draws its banners with
+    case "blocks": {
+      const end = M + (R - M) * 0.7, s = 0.05;
+      fig.rbox(M, y - 0.05, end - M, 0.1, T.ACCENT, 0);
+      for (let x = end + 0.04, i = 0; x + s <= R; x += s * 1.6, i++) {
+        if (i % 3 !== 2) fig.rbox(x, y - 0.05, s, s * 0.9, T.ACCENT_2, 0);
+        if (i % 2 === 0) fig.rbox(x, y + 0.005, s, s * 0.9, T.ACCENT_2, 0);
+      }
+      break;
+    }
+    // a running stitch in two threads, the second set off half a stitch like a hem
+    case "stitch":
+      fig.line(M, y - 0.03, R, y - 0.03, T.ACCENT, 1.8, [4.5, 3], "round");
+      fig.line(M + 0.05, y + 0.035, R, y + 0.035, T.ACCENT_2, 1.8, [4.5, 3], "round");
+      break;
+    // a course of breeze blocks: squares in the second colour, each pierced by a round hole
+    case "breeze": {
+      const s = 0.15, gap = 0.035, n = Math.floor((R - M + gap) / (s + gap)), x0 = M + (R - M - n * (s + gap) + gap) / 2;
+      for (let i = 0; i < n; i++) {
+        const x = x0 + i * (s + gap);
+        fig.rbox(x, y - s / 2, s, s, T.ACCENT_2, 0.012);
+        fig.disc(x + s / 2, y, s * 0.62, T.BG);
+      }
       break;
     }
     case "neon": {
@@ -719,6 +766,11 @@ export function posChip(ax, x, y, place, size = 1.0, fontsize = 13) {
     fig.rbox(cx - d / 2, cy + d / 2 - d * 0.14, d, d * 0.14, fc, 0);
     return void fig.text(cx, cy - d * 0.06, String(place), { size: fontsize, family: "display", color: BOARD.ink, ha: "center", va: "center" });
   }
+  if (shape === "patch") {   // a sewn-on badge: the medal colour with a stitched ring inside its edge
+    fig.disc(cx, cy, d, fc);
+    fig.stroke(ringPts(cx, cy, d * 0.8), on(T, fc), 0.9, { dash: [1.6, 1.3] });
+    return void fig.text(cx, cy, String(place), { size: fontsize - 1, family: "display", color: on(T, fc), ha: "center", va: "center" });
+  }
   if (shape === "frame") {
     fig.rbox(cx - d / 2, cy - d / 2, d, d, null, 0, { ec: fc, lw: 1.3 });
     return void fig.text(cx, cy, String(place), { size: fontsize - 1, family: "display", color: place === 1 ? T.ACCENT : T.INK_2, ha: "center", va: "center" });
@@ -786,6 +838,54 @@ export function legend(ax, x, y, items, fontsize = 8, sw = 0.028, sh = 0.018, pa
   }
 }
 
+// ---------------------------------------------------------------- marks drawn by hand
+// Seeded by where the mark sits, so a sheet drawn twice comes out the same and no two rings on it match.
+function wobble(seed) {
+  let s = (Math.abs(Math.floor(seed * 1000)) % 233279) + 1;
+  return () => (s = (s * 9301 + 49297) % 233280) / 233280 - 0.5;
+}
+
+const ringPts = (cx, cy, d, n = 48) => Array.from({ length: n + 1 }, (_, i) => {
+  const a = i / n * Math.PI * 2;
+  return [cx + Math.cos(a) * d / 2, cy + Math.sin(a) * d / 2];
+});
+const boxPts = (cx, cy, s) => { const h = s / 2; return [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h], [cx - h, cy - h]]; };
+
+/** A loop that starts anywhere, runs a little past where it began and is never quite round. */
+function handRing(fig, cx, cy, d, col, lw, rnd, { strands = 1, alpha = 1, wob = 0.05 } = {}) {
+  for (let s = 0; s < strands; s++) {
+    const a0 = rnd() * Math.PI * 2, tilt = rnd() * 0.6, sx = 1 + rnd() * wob * 2, sy = 1 + rnd() * wob * 2, n = 44;
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, a = a0 + t * Math.PI * 2.2, r = d / 2 * (1 + (t - 0.5) * wob * 1.6);
+      const x = Math.cos(a) * r * sx, y = Math.sin(a) * r * sy;
+      pts.push([cx + x * Math.cos(tilt) - y * Math.sin(tilt), cy + x * Math.sin(tilt) + y * Math.cos(tilt)]);
+    }
+    fig.stroke(pts, col, lw, { alpha });
+  }
+}
+
+/** Four separate strokes, each run a touch past the corner. */
+function handBox(fig, cx, cy, side, col, lw, rnd, { strands = 1, alpha = 1, wob = 0.05 } = {}) {
+  const h = side / 2, k = [[-h, -h], [h, -h], [h, h], [-h, h]], j = () => rnd() * side * wob;
+  for (let s = 0; s < strands; s++) for (let i = 0; i < 4; i++) {
+    const [x0, y0] = k[i], [x1, y1] = k[(i + 1) % 4], ex = (x1 - x0) * 0.05, ey = (y1 - y0) * 0.05;
+    fig.stroke([[cx + x0 - ex + j(), cy + y0 - ey + j()], [cx + x1 + ex + j(), cy + y1 + ey + j()]], col, lw, { alpha });
+  }
+}
+
+/** A rule pulled freehand across the page: a slow wave, never quite level. */
+function handLine(fig, x0, x1, y, col, lw, rnd, { strands = 1, alpha = 1, wob = 0.015 } = {}) {
+  for (let s = 0; s < strands; s++) {
+    const ph = rnd() * 6, amp = wob + rnd() * wob, n = 60, pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      pts.push([x0 + (x1 - x0) * t + rnd() * 0.01, y + Math.sin(t * 7 + ph) * amp + (t - 0.5) * rnd() * 0.02]);
+    }
+    fig.stroke(pts, col, lw, { alpha });
+  }
+}
+
 /** Scorecard notation. `cell` is the glyph size in x data units; glyphs are drawn square in inches. */
 export function scoreGlyph(ax, x, y, cell, delta, text, fontsize = 15, lw = 1.6, ink = null, colors = null) {
   const T = ax.fig.T, fig = ax.fig, style = house(T).glyph;
@@ -808,6 +908,45 @@ export function scoreGlyph(ax, x, y, cell, delta, text, fontsize = 15, lw = 1.6,
     }
   } else if (style === "bar") {   // a bar under the figure, twice as heavy for a double or an eagle
     if (delta) fig.rbox(cx - c * 0.26, cy + c * 0.28, c * 0.52, c * (two ? 0.1 : 0.05), col, 0);
+  } else if (style === "pencil" || style === "chalk") {   // ringed by hand: one soft pencil loop, or a few quick strokes of chalk
+    if (delta) {
+      const rnd = wobble(cx * 53 + cy * 29), chalk = style === "chalk";
+      const opt = chalk ? { strands: 3, alpha: 0.6, wob: 0.07 } : { strands: 2, alpha: 0.75, wob: 0.045 }, w = lw * (chalk ? 1.05 : 0.75);
+      for (let k = 0; k < (two ? 2 : 1); k++) {
+        if (delta < 0) handRing(fig, cx, cy, c * (0.7 + 0.2 * k), col, w, rnd, opt);
+        else handBox(fig, cx, cy, c * (0.66 + 0.2 * k), col, w, rnd, opt);
+      }
+    }
+  } else if (style === "stitch") {   // a running stitch of thread, a second row of it for two strokes either side
+    if (delta) for (let k = 0; k < (two ? 2 : 1); k++) {
+      const d = c * (delta < 0 ? 0.7 : 0.64) + c * 0.2 * k;
+      fig.stroke(delta < 0 ? ringPts(cx, cy, d) : boxPts(cx, cy, d), col, lw * 1.2, { dash: [2.6, 2.2] });
+    }
+  } else if (style === "mosaic") {   // a solid character cell, a frame round it for two strokes either side
+    if (delta) {
+      const w = c * 0.62, h = c * 0.78;
+      fig.rbox(cx - w / 2, cy - h / 2, w, h, col, 0);
+      if (two) fig.rbox(cx - w / 2 - c * 0.09, cy - h / 2 - c * 0.07, w + c * 0.18, h + c * 0.14, null, 0, { ec: col, lw: lw * 1.1 });
+      color = on(T, col);
+    }
+  } else if (style === "atomic") {   // a sun under par and an atomic star for an eagle; a block outlined, then filled, over it
+    if (delta < 0) {
+      const d = c * 0.66;
+      fig.disc(cx, cy, d, col);
+      if (two) for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4 + Math.PI / 8, r0 = d * 0.6, r1 = d * (k % 2 ? 0.74 : 0.84);
+        fig.line(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, col, lw, null, "round");
+      }
+      color = on(T, col);
+    } else if (delta > 0) {
+      // corners fixed, not the theme's radius, which would round a block over par into a ring
+      const s = c * 0.64, ctx = fig.ctx;
+      ctx.beginPath();
+      roundRectPath(ctx, fig.px(cx - s / 2), fig.px(cy - s / 2), fig.px(s), fig.px(s), fig.px(s * 0.22));
+      if (two) { ctx.fillStyle = col; ctx.fill(); }
+      ctx.strokeStyle = col; ctx.lineWidth = lw / 72 * fig.dpi; ctx.stroke();
+      if (two) color = on(T, col);
+    }
   } else if (style === "neon") {   // outlined in the score's colour, a double filled faintly too
     if (delta) {
       const sz = c * 0.7;

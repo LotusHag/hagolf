@@ -526,22 +526,25 @@ export function applyBrand() {
   paint(themeHere());
   B.refreshBrands().then(() => { painted = null; paint(themeHere()); });
 }
-/** One chip a look, its swatch drawn from that theme's own tokens and set in its own display face. */
+/** One chip a look: its emblem, or a swatch for a look that has none, in its own colours and display face. */
 export function tchip(input, t, label, on) {
-  return `<label class="tchip ${on ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tink:${t.INK};--tfd:'${t.DISPLAY}'">
-    ${input}<span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>${esc(label)}</label>`;
+  const pic = t.EMBLEM ? `<span class="sw em"><svg viewBox="0 0 120 80" aria-hidden="true">${t.EMBLEM}</svg></span>`
+    : `<span class="sw"><b>${esc(t.name.toUpperCase())}</b></span>`;
+  return `<label class="tchip ${on ? "on" : ""}" style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT};--tacc2:${t.ACCENT_2 || t.ACCENT};--tink:${t.INK};--tund:${t.UNDER};--tline:${t.LINE};--tfd:'${t.DISPLAY}'">
+    ${input}${pic}<span class="tn">${esc(label)}</span></label>`;
 }
+export const lookTitle = t => (t && (t.TITLE || t.name)) || "";
 /** A strip of one sliver per look, the set seen at a glance. */
 export const swatchStrip = themes => `<span class="fstrip">${themes.map(t => `<i style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT}"></i>`).join("")}</span>`;
 // each chip names its theme in that theme's own display face
 const lookGrid = chip => { loadFonts(DATA.fonts); return `<div class="tgrid">${looks().map(chip).join("")}</div>`; };
 export function themeChips(selected) {
-  return lookGrid(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name)));
+  return lookGrid(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, lookTitle(t), selected.includes(t.name)));
 }
 /** What the folded look row says it is set to: the swatches, then the name or how many. */
 const lookSays = sel => {
   const ts = sel.map(n => themeNamed(n)).filter(Boolean);
-  return `${swatchStrip(ts)}<span class="fname">${ts.length === 1 ? esc(ts[0].name) : plural(ts.length, "theme")}</span>`;
+  return `${swatchStrip(ts)}<span class="fname">${ts.length === 1 ? esc(lookTitle(ts[0])) : plural(ts.length, "theme")}</span>`;
 };
 /**
  * On a screen that is really about something else the looks are a grid to scroll past, so they fold to one row
@@ -566,7 +569,7 @@ export function themeRadios(name, sel, dflt = null) {
   const none = dflt ? tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel) : "";
   const base = sel && String(RETIRED[sel] || sel).split(":")[0];
   loadFonts(DATA.fonts);
-  return `<div class="tgrid">${none}${looks().map(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === base ? "checked" : ""}>`, t, t.name, t.name === base)).join("")}</div>`;
+  return `<div class="tgrid">${none}${looks().map(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === base ? "checked" : ""}>`, t, lookTitle(t), t.name === base)).join("")}</div>`;
 }
 export function bindChips(el, onPick = null) {
   if (!el) return;

@@ -1703,6 +1703,8 @@ export function leagueStats(results, memberIds) {
       streak++;
     }
     const half = Math.floor(rs.length / 2);
+    // a nine counted as half an eighteen, so a society that mixes the two can still average its rounds
+    const p18 = rs.map(r => r.pts * 18 / r.n);
     return {
       id, name: names.get(id), played: rs.length, rounds: rs, ...mine, rest, match: matches.get(id) || null,
       totalPts: sum(pts), avgPts: mean(pts), bestPts: pts.length ? Math.max(...pts) : null,
@@ -1715,6 +1717,9 @@ export function leagueStats(results, memberIds) {
       vsFieldTopar: vsTopar.length ? mean(vsTopar.map(r => r.topar - r.fieldTopar)) : null,
       streak, form: rs.length >= 3 ? mean(rs.slice(-3).map(r => r.pts)) : null,
       trend: rs.length >= 4 ? mean(rs.slice(half).map(r => r.pts)) - mean(rs.slice(0, half).map(r => r.pts)) : null,
+      per18: { avg: mean(p18), spread: stdev(p18), form: rs.length >= 3 ? mean(p18.slice(-3)) : null,
+        trend: rs.length >= 4 ? mean(p18.slice(half)) - mean(p18.slice(0, half)) : null },
+      nines: rs.filter(r => r.n === 9).length,
       bounce: chances ? backs / chances : null, bounceOf: chances,
       blowups: rs.length ? sum(rs.map(r => r.blowups)) / rs.length : null,
       penalties: sum(rs.map(r => r.penalties)), counted10: sum(rs.map(r => r.counted10)),

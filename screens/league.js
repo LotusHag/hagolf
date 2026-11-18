@@ -672,10 +672,10 @@ function statsView(C, keep = false) {
     if (!b) return;
     if (b.dataset.act === "numwho") {
       const every = [...document.querySelectorAll("[data-act=numwho]")].map(x => x.dataset.id).filter(Boolean);
-      const now = ui.numWho[C.gid] || every;
+      const now = ui.numWho[C.gid];
       const id = b.dataset.id;
-      // Everyone flips between all and nobody; a name goes in or out of whoever is already picked
-      const next = !id ? (every.every(x => now.includes(x)) ? [] : null) : now.includes(id) ? now.filter(x => x !== id) : [...now, id];
+      // Everyone picks all; a name tapped while everyone is shown picks just that name, otherwise it goes in or out
+      const next = !id ? null : !now ? [id] : now.includes(id) ? now.filter(x => x !== id) : [...now, id];
       ui.numWho[C.gid] = next && next.length === every.length ? null : next;
       return statsView(C, true);
     }

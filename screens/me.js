@@ -5,7 +5,7 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, lookMode, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, roundWhere } from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, lookTitle, paint, themeHere, lookMode, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, roundWhere } from "../ui.js";
 import { fmtIndex, STAT_SWITCHES, STAT_SWITCH_KEYS } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
@@ -45,7 +45,7 @@ export function me(section) {
     <div class="list">
       ${row("#me/updates", "bell", "Notifications", N.pushState() === "granted" && S.state.settings.push ? "Push on" : "Push off")}
       ${row("#me/privacy", "shield", "Privacy", acct ? `Found by ${acct.discoverable === "everyone" ? "everyone" : acct.discoverable === "nobody" ? "nobody" : "people in your societies"}` : "")}
-      ${row("#me/look", "sun", "Appearance", `${esc(appTheme().name)} theme`)}
+      ${row("#me/look", "sun", "Appearance", `${esc(lookTitle(appTheme()))} theme`)}
       ${row("#me/courses", "flag", "Courses", `${S.courses().length} courses`)}
       ${row("#me/data", "db", "Data and backup", "Export, import, download or delete")}
       ${row("#me/backend", "settings", "Connection", `${syncWord}${st.lastPull ? " · " + st.lastPull.slice(11, 16) : ""}`)}

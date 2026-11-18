@@ -84,7 +84,7 @@ export function brandTheme(b) {
   const over = Object.fromEntries(Object.entries(b.palette || {}).filter(([k, v]) => k !== "base" && /^#[0-9A-F]{6}$/i.test(v)));
   const hn = b.template && b.template.house, drawn = hn ? baseTheme(R.houses[hn] || hn) : null;
   if (!Object.keys(over).length && !drawn) return base;
-  const t = { ...base, ...over, HOUSE: (drawn || base).HOUSE, name: `${base.name}·${b.id}`, blurb: b.name, mode: undefined };
+  const t = { ...base, ...over, HOUSE: (drawn || base).HOUSE, name: `${base.name}·${b.id}`, TITLE: b.name, EMBLEM: null, blurb: b.name, mode: undefined };
   t.ui = screenPalette(t);
   BUILT.set(t.name, t);
   return t;
