@@ -22,11 +22,10 @@ import { me } from "./screens/me.js";
 import { newCourse, scan } from "./screens/course.js";
 import { board, card } from "./screens/public.js";
 import { privacy, terms } from "./screens/legal.js";
-import { shop } from "./screens/shop.js";
 import { partners, partner, admin, redeem } from "./screens/partner.js";
 import { event, newEvent } from "./screens/event.js";
 
-const screens = { home, welcome, signin, join, add, get: getApp, j: joinCard, live: liveScreen, stats, bag: bagPage, board, card, shop, play, new: newRound, loops, players, score, review, attach, graphics,
+const screens = { home, welcome, signin, join, add, get: getApp, j: joinCard, live: liveScreen, stats, bag: bagPage, board, card, play, new: newRound, loops, players, score, review, attach, graphics,
   people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan, partners, partner, admin, redeem, event, newevent: newEvent,
   legal: which => (which === "terms" ? terms() : privacy()) };
 

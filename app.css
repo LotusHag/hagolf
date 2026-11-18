@@ -696,8 +696,6 @@ input.efv.hi { text-align: center; font-weight: 600; }
 /* ---- graphics */
 .themes { display: grid; gap: 8px; }
 .tgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.shopmore { margin-top: 4px; }
-.fmtlist + .shopmore { margin-top: 10px; }
 .fstrip { display: flex; width: 56px; height: 28px; border-radius: 2px; overflow: hidden; flex: none; }
 .fstrip i { flex: 1; display: block; background: var(--tbg); position: relative; }
 .fstrip i::after { content: ""; position: absolute; left: 25%; right: 25%; top: 62%; height: 18%; background: var(--tacc); }
@@ -891,8 +889,6 @@ a.kv:active { background: var(--card2); }
 .prose h3 { color: var(--ink); margin-top: 18px; }
 .prose ul { padding-left: 20px; }
 .prose li { margin: 4px 0; }
-.skeleton { height: 14px; border-radius: 2px; background: linear-gradient(90deg, var(--card2), var(--line), var(--card2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; margin: 8px 0; }
-@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 /* ---- scorecard scanning */
 .scan-row { margin: 10px 0; padding: 12px; border-radius: var(--r-s); background: var(--card); border: 1px solid var(--line); }
@@ -986,60 +982,6 @@ a.kv:active { background: var(--card2); }
 .whochips .pchip { min-height: 40px; padding: 6px 14px; }
 .whosaid { margin: 8px 0 0; }
 
-/* ---- the shop: every item shown working on your own round before it is bought */
-.shopintro { margin: 4px 4px 10px; }
-.shopline { margin: 3px 4px 0; }
-/* the only money talk on the page: one line, the rest behind it */
-.shopwhy { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 8px 0 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); color: var(--ink2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.shopwhy span { color: var(--green); font-weight: 600; white-space: nowrap; }
-.now.pass { margin: 10px 0 6px; }
-.now button.cta { border: 0; color: inherit; cursor: pointer; font-family: inherit; }
-.shopitem { padding: 0; overflow: hidden; }
-.shopitem .body { padding: 12px 16px 14px; }
-.shopitem .body > .plain { background: none; border: 0; padding: 0; margin: 0; text-align: left; color: inherit; font: inherit; flex: 1 1 auto; min-width: 0; cursor: pointer; }
-.shopitem .peek { color: var(--green); font-size: 13px; font-weight: 600; margin-top: 6px; }
-.shopthumb { display: block; width: 100%; aspect-ratio: 16 / 7; padding: 0; margin: 0; border: 0; border-bottom: 1px solid var(--line); background: var(--card2); position: relative; overflow: hidden; cursor: pointer; }
-.shopthumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
-.shopthumb .skeleton { position: absolute; inset: 0; margin: 0; border-radius: 0; height: auto; }
-.shopthumb.swrow { display: flex; aspect-ratio: auto; height: 64px; }
-.swrow i { flex: 1; display: block; background: var(--tbg); position: relative; }
-.swrow i::after { content: ""; position: absolute; left: 20%; right: 20%; top: 36%; height: 26%; border-radius: 2px; background: var(--tpanel); border-left: 5px solid var(--tacc); }
-.shopthemes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
-.shopthemes.colls { grid-template-columns: 1fr; gap: 0; }
-.collrows { display: grid; gap: 6px; margin: 8px 0; }
-.collrow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
-.collrow > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.collrow small { font-size: 12px; }
-.collrow i { color: var(--ink3); font-size: 22px; font-style: normal; }
-.tchip.theme { width: 100%; padding-bottom: 8px; }
-.tchip.theme .sw { height: 72px; }
-.tchip small { display: block; color: var(--ink3); font-size: 12px; font-weight: 500; margin-top: -2px; }
-.prevs { margin-top: 6px; }
-.prev { margin: 0 0 14px; }
-.prev .ph { display: block; aspect-ratio: 2 / 1; border-radius: var(--r-s); margin: 0; height: auto; }
-.prev img { display: block; width: 100%; border-radius: var(--r-s); border: 1px solid var(--line); cursor: zoom-in; }
-.prev figcaption { font-size: 13px; color: var(--ink2); margin-top: 6px; }
-.prev.err figcaption { color: var(--danger); }
-.thememock { background: var(--bg); color: var(--ink); border: 1px solid var(--line2); border-radius: var(--r); padding: 8px 12px 0; margin: 8px 0 14px; overflow: hidden; }
-.thememock .mtop { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 4px; }
-.thememock .brand { font-family: var(--fd); font-weight: 600; font-size: 22px; letter-spacing: .5px; color: var(--green); }
-.thememock svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: calc(1.9px * var(--isw)); stroke-linecap: var(--icap); stroke-linejoin: var(--ijoin); }
-.thememock .mbell { color: var(--ink2); display: flex; gap: 10px; }
-.thememock .now { margin: 8px 0; }
-.thememock h2 { margin: 12px 4px 6px; }
-.thememock .card { margin: 0; padding: 0; }
-.thememock .pl + .pl { border-top: 1px solid var(--line); }
-.thememock .mtabs { display: flex; justify-content: space-around; margin: 12px -12px 0; padding: 6px 4px 8px; background: var(--card); border-top: 1px solid var(--line); }
-.thememock .mtabs span { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--ink3); }
-.thememock .mtabs span.on { color: var(--green); }
-.thememock.tiny { zoom: .5; margin: 0; pointer-events: none; }
-.themegrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
-.themegrid button { padding: 0; border: 0; background: none; text-align: center; font: inherit; font-weight: 600; font-size: 13px; color: var(--ink); cursor: pointer; }
-.themegrid button span { display: block; margin-top: 4px; }
-.themegrid .board { position: relative; aspect-ratio: 2.2 / 1; margin-top: 6px; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden; background: var(--card2); }
-.themegrid .board img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
-.themegrid .board .skeleton { position: absolute; inset: 0; margin: 0; border-radius: var(--r-s); height: auto; }
-
 /* ---- which images: a tile a kind, each with an example of it */
 .ggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; }
 .gtile { position: relative; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px 6px 8px; border-radius: var(--r-s); border: 2px solid var(--line); background: var(--card); color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.25; font-family: inherit; text-align: left; cursor: pointer; }
@@ -1054,10 +996,6 @@ a.kv:active { background: var(--card2); }
 .gtile.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .gtile.on .gcheck { display: grid; }
 .gtile:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; }
-.gtile.locked { color: var(--ink2); }
-.gtile.locked .gimg img { opacity: .5; }
-.gtile .glock { display: flex; align-items: center; gap: 4px; padding: 0 2px; color: var(--ink3); font-size: 12px; font-weight: 600; }
-.gtile .glock svg { width: 13px; height: 13px; }
 .gmore { margin-top: 8px; }
 /* ticking the lot is a second thought, not a second button: a quiet line under the grid it acts on */
 .gbulk { display: flex; justify-content: flex-end; margin-top: 2px; }
@@ -1079,7 +1017,6 @@ a.kv:active { background: var(--card2); }
 .lookfold > summary::after { content: "›"; color: var(--ink3); font-size: 22px; transform: rotate(90deg); }
 .lookfold[open] > summary::after { transform: rotate(-90deg); }
 .lookfold > .themes { gap: 0; padding-bottom: 6px; }
-.lookfold .lookfold .shopmore { margin-top: 8px; }
 .lookwhy { margin: -2px 2px 8px; }
 
 /* ---------------------------------------------------------------- a league, as ruled rows

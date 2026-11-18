@@ -7,8 +7,7 @@ import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import * as N from "./notify.js";
-import * as E from "./entitlements.js";
-import { loadFonts, makeTheme, pickTheme, phone, setMarked, setMarkText } from "./draw.js";
+import { loadFonts, makeTheme, pickTheme, phone } from "./draw.js";
 import { isNative } from "./native.js";
 
 export const app = document.getElementById("app");
@@ -206,7 +205,6 @@ export const ICONS = {
   golf: I(`<path d="M7 21V4l9 3.5L7 11"/><ellipse cx="12" cy="21" rx="7" ry="1.5"/>`),
   // a stand bag, tilted on its leg, three clubs out of the top
   bag: I(`<g transform="rotate(-16 12 12)"><path d="M7.5 8.5h8V20a1.8 1.8 0 0 1-1.8 1.8H9.3A1.8 1.8 0 0 1 7.5 20z"/><path d="M7.5 11.5h8"/><path d="M9.6 8.5V3.8l-2.2-.8"/><path d="M11.5 8.5V2.3h2.3"/><path d="M13.4 8.5V4.3l2.1-.8"/></g><path d="M16.2 12.6 19.3 21.2"/>`),
-  shop: I(`<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`),
   // the Shots tab follows the ball: a shot gaining ground, the tee, the approach, the bunker, the putt.
   // A dotted flight is a dash of length zero every 3.2, which only shows with round caps.
   gained: I(`<circle cx="6" cy="17.5" r="2.5"/><path d="M8.5 15.5C11 10 14.5 7 20 5"/><path d="M15.5 4.5 20 5l-1.6 4.3"/>`),
@@ -522,10 +520,8 @@ export function paint(t) {
   if (meta) meta.content = t.ui.bg;
 }
 darkQuery.addEventListener("change", () => { if (lookMode() === "auto") paint(themeHere()); });
-/** What the account brings to the look: the mark, and a course's theme unless the phone chose its own. */
+/** What the account brings to the look: a course's theme unless the phone chose its own. */
 export function applyBrand() {
-  setMarkText(null);
-  setMarked(E.marked());
   painted = null;
   paint(themeHere());
   B.refreshBrands().then(() => { painted = null; paint(themeHere()); });
@@ -537,25 +533,10 @@ export function tchip(input, t, label, on) {
 }
 /** A strip of one sliver per look, the set seen at a glance. */
 export const swatchStrip = themes => `<span class="fstrip">${themes.map(t => `<i style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT}"></i>`).join("")}</span>`;
-// A picker shows what this account may use and nothing else: a look it does not hold is absent, not a padlock
-// wearing a price. What is missing is one button at the foot instead, and that button opens the shop over the
-// screen rather than sending the phone to the Shop tab and losing its place. `keep` are the looks already
-// chosen, which stay on the list however they were come by -- a league keeps wearing what it was given.
-const usable = keep => looks().filter(t => E.canTheme(t.name) || keep.includes(t.name));
-const looksMissing = keep => DATA.themes.filter(t => !E.canTheme(t.name) && !keep.includes(t.name)).length;
-/** A button that opens the shop over whatever is on screen; `skus` is what it should open on. */
-export const shopBtn = (label, skus = "themes") => `<button class="btn soft wide shopmore" type="button" data-shop="${esc([].concat(skus).join(","))}">${esc(label)}</button>`;
-const moreLooks = keep => { const n = looksMissing(keep); return n ? shopBtn(`${plural(n, "more theme")} in the shop`) : ""; };
-document.addEventListener("click", async ev => {
-  const b = ev.target.closest("[data-shop]");
-  if (!b || b.disabled) return;
-  b.disabled = true;
-  try { await (await import("./screens/shop.js")).shopOver(b.dataset.shop.split(",")); } finally { b.disabled = false; }
-});
 // each chip names its theme in that theme's own display face
-const lookGrid = (chip, keep = []) => { loadFonts(DATA.fonts); return `<div class="tgrid">${usable(keep).map(chip).join("")}</div>`; };
+const lookGrid = chip => { loadFonts(DATA.fonts); return `<div class="tgrid">${looks().map(chip).join("")}</div>`; };
 export function themeChips(selected) {
-  return lookGrid(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name)), selected) + moreLooks(selected);
+  return lookGrid(t => tchip(`<input type="checkbox" name="theme" value="${t.name}" ${selected.includes(t.name) ? "checked" : ""}>`, t, t.name, selected.includes(t.name)));
 }
 /** What the folded look row says it is set to: the swatches, then the name or how many. */
 const lookSays = sel => {
@@ -585,7 +566,7 @@ export function themeRadios(name, sel, dflt = null) {
   const none = dflt ? tchip(`<input type="radio" name="${name}" value="" ${sel ? "" : "checked"}>`, dflt.theme, dflt.label, !sel) : "";
   const base = sel && String(RETIRED[sel] || sel).split(":")[0];
   loadFonts(DATA.fonts);
-  return `<div class="tgrid">${none}${usable(base ? [base] : []).map(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === base ? "checked" : ""}>`, t, t.name, t.name === base)).join("")}</div>` + moreLooks(base ? [base] : []);
+  return `<div class="tgrid">${none}${looks().map(t => tchip(`<input type="radio" name="${name}" value="${t.name}" ${t.name === base ? "checked" : ""}>`, t, t.name, t.name === base)).join("")}</div>`;
 }
 export function bindChips(el, onPick = null) {
   if (!el) return;

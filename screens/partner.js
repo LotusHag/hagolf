@@ -17,10 +17,6 @@ import { fmtToPar } from "../model.js";
 import { previewPage } from "./gate.js";
 
 const KIND_WORD = { course: "Golf course", company: "Company" };
-const PACK_NAMES = { pass: "Everything", nomark: "No mark", themes: "Every theme", boards: "Full boards", card: "Full card", matchplay: "Match play pack", grandprix: "Grand Prix pack", season: "Season pack" };
-const skuName = s => PACK_NAMES[s] || (s.startsWith("theme:") ? `The ${s.slice(6)} theme` : s.startsWith("collection:") ? `The ${s.slice(11)} collection` : s);
-const PERK_WORDS = { themes: "every theme, everywhere", pass: "everything in the shop, everywhere" };
-const perkLine = c => c.perks && c.perks.length ? `Your seat carries ${c.perks.map(p => PERK_WORDS[p] || p).join(" and ")}.` : "Its rounds are made in full for everyone on them.";
 const card = (title, body) => `<div class="card">${title ? `<div class="name" style="margin-bottom:6px">${esc(title)}</div>` : ""}${body}</div>`;
 // a name typed as =HYPERLINK(...) would run in the partner's spreadsheet, so text that starts like a formula is quoted
 const csvCell = v => { let s = v === null || v === undefined ? "" : String(v); if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -32,7 +28,7 @@ export function brandField(name, selected) {
   const mine = B.myBrands();
   if (!mine.length && !selected) return "";
   const kept = selected && !mine.some(b => b.id === selected) ? (B.brandById(selected) || { id: selected, name: "A course or company's look" }) : null;
-  return `<label>Course or company look <span class="muted">(its logo and colours on every sheet, made in full for everyone on it)</span>
+  return `<label>Course or company look <span class="muted">(its logo and colours on every sheet)</span>
     <select name="${name}" id="${name}"><option value="">None</option>${[...mine, ...(kept ? [kept] : [])].map(b =>
       `<option value="${esc(b.id)}" ${b.id === selected ? "selected" : ""}>${esc(b.name)}${b === kept ? " (kept)" : ""}</option>`).join("")}</select></label>`;
 }
@@ -93,19 +89,19 @@ export async function partners() {
   page("Courses and companies", `
     <div class="card"><form id="codef"><label style="margin-top:0">Have a code?<input name="code" placeholder="ABCD2345" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="12"></label>
       <button class="btn primary wide" type="submit" style="margin-top:12px">Use the code</button></form>
-      <p class="muted small" style="margin:8px 0 0">A course or a company gives you one to put its look on the rounds you set up; a gift code gives you something from the shop.</p></div>
+      <p class="muted small" style="margin:8px 0 0">A course or a company gives you one to put its look on the rounds you set up.</p></div>
     ${clubs.length ? `${sect("Yours")}${clubs.map(c => `<div class="card">
         <div class="row"><div><div class="name">${esc(c.name)}</div><div class="muted small">${esc(KIND_WORD[c.kind] || "Partner")} · ${c.role === "owner" ? "you run it" : c.role === "organiser" ? "you organise it" : "member"}${c.live ? "" : " · contract ended"}</div></div>
           ${["owner", "organiser"].includes(c.role) ? `<a class="btn small primary" href="#partner/${esc(c.id)}">Dashboard</a>` : ""}</div>
-        <p class="muted small" style="margin:8px 0">${c.live ? `Rounds and societies you set up can wear its look. ${perkLine(c)}` : "Its look stays on the rounds it was on; new ones go without."}</p>
+        <p class="muted small" style="margin:8px 0">${c.live ? "Rounds and societies you set up can wear its look." : "Its look stays on the rounds it was on; new ones go without."}</p>
         ${c.live ? `<div class="btnrow"><button class="btn small" data-act="scan" data-club="${esc(c.id)}">${ICONS.camera || ""} Scan a paper card</button><button class="btn small" data-act="society" data-club="${esc(c.id)}">${ICONS.trophy || ""} Start a society</button></div>
         <p class="muted small" style="margin:6px 0 0">${c.kind === "company" ? "Play on paper and photograph the card afterwards, no tournament to set up; or start a friendly competition with colleagues." : "Photograph a paper card afterwards, or start a society for your members."} Either way it wears ${esc(c.name)}'s look.</p>` : ""}
         <label class="switch"><span>Keep all my rounds from its dashboard</span><input type="checkbox" data-act="optall" data-club="${esc(c.id)}" ${keptFrom(c.id) ? "checked" : ""}></label>
         ${c.role === "owner" ? "" : `<div class="btnrow"><button class="btn small" data-act="leave" data-club="${esc(c.id)}">Leave</button></div>`}</div>`).join("")}`
       : `<p class="muted small center" style="margin:18px 0">You are not in a course or company yet.</p>`}
     ${sect("Card scans")}<div class="card"><div class="row"><div><div class="name">${sc.used} of ${sc.quota} this month</div>
-      <div class="muted small">Photographing a paper card. ${sc.quota > (sc.free || 10) ? "Raised by what you hold." : "A course or company contract, or the Everything pass, raises it."}</div></div></div></div>
-    ${acct.admin ? `${sect("Hagolf")}<div class="list"><a href="#admin"><span class="lead">${ICONS.settings}<div><div class="name">Operator desk</div><div class="muted small">Gifts, codes, partners and enquiries</div></div></span><span class="chev">›</span></a></div>` : ""}`,
+      <div class="muted small">Photographing a paper card. ${sc.quota > (sc.free || 10) ? "Raised by your course or company contract." : "A course or company contract raises it."}</div></div></div></div>
+    ${acct.admin ? `${sect("Hagolf")}<div class="list"><a href="#admin"><span class="lead">${ICONS.settings}<div><div class="name">Operator desk</div><div class="muted small">Partners and enquiries</div></div></span><span class="chev">›</span></a></div>` : ""}`,
     { back: "#me" });
   document.getElementById("codef").addEventListener("submit", ev => { ev.preventDefault(); const c = ev.target.code.value.trim(); if (c) go(`#redeem/${encodeURIComponent(c)}`); });
   app.querySelectorAll("[data-act=optall]").forEach(i => i.addEventListener("change", async () => {
@@ -118,7 +114,7 @@ export async function partners() {
     if (s) return (await import("./leagues.js")).newLeagueSheet(s.dataset.club);
     const b = ev.target.closest("[data-act=leave]");
     if (!b) return;
-    if (!await confirmSheet("Leave?", "Its look goes from the rounds you set up from now on, and anything your seat carried goes too. Your rounds stay yours.", { label: "Leave", danger: true })) return;
+    if (!await confirmSheet("Leave?", "Its look goes from the rounds you set up from now on. Your rounds stay yours.", { label: "Leave", danger: true })) return;
     try { await A.api("/club/leave", { club: b.dataset.club }); await A.whoami(); applyBrand(); toast("Left"); } catch (e) { toast(e.message, 5000); }
     partners();
   });
@@ -139,9 +135,7 @@ export async function redeem(code = "") {
   }
   await A.whoami();
   applyBrand();
-  const gave = [r.club ? `A seat in <b>${esc(r.club.name)}</b>: rounds and societies you set up can wear its look.` : "",
-    r.skus.length ? `${r.skus.map(s => `<b>${esc(skuName(s))}</b>`).join(", ")}${r.lasts ? `, for ${plural(r.lasts, "day")}` : ", for good"}.` : ""].filter(Boolean);
-  page("A code", `<div class="card"><div class="name">Done</div><p>${gave.join("</p><p>") || "Nothing new: you held all of it already."}</p></div>
+  page("A code", `<div class="card"><div class="name">Done</div><p>A seat in <b>${esc(r.club.name)}</b>: rounds and societies you set up can wear its look.</p></div>
     <div class="btnrow"><a class="btn primary" href="#home">Home</a><a class="btn" href="#partners">Courses and companies</a></div>`, { back: "#partners" });
 }
 
@@ -438,75 +432,22 @@ function shrinkLogo(file, W = 640, H = 256) {
 }
 
 // ---------------------------------------------------------------- the operator's desk
-const DESK = [["give", "Give"], ["codes", "Codes"], ["partners", "Partners"], ["enquiries", "Enquiries"]];
+const DESK = [["partners", "Partners"], ["enquiries", "Enquiries"]];
 
-export async function admin(tab = "give") {
+export async function admin(tab = "partners") {
   if (!A.signedIn()) return previewPage("Operator", `<h3>The operator's desk</h3><p class="muted">Sign in with an operator's account.</p>`, `#admin/${tab}`);
   if (!(A.account() || {}).admin) return page("Operator", `<div class="banner warn">This account is not an operator.</div>`, { back: "#partners", wide: true });
   page("Operator", `${subtabs(DESK.map(([t, l]) => `<button data-act="tab" data-t="${t}" class="${t === tab ? "on" : ""}">${l}</button>`).join(""))}<div id="dpane"><p class="muted center" style="margin:30px 0">Loading…</p></div>`,
     { back: "#partners", wide: true, sub: "Hagolf" });
   bind(ev => { const b = ev.target.closest("[data-act=tab]"); if (b) go(`#admin/${b.dataset.t}`); });
   const pane = document.getElementById("dpane");
-  try { await (DESKS[tab] || DESKS.give)(pane); } catch (e) { pane.innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
+  try { await (DESKS[tab] || DESKS.partners)(pane); } catch (e) { pane.innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
 }
 
 const DESKS = {
-  async give(pane) {
-    const cat = ui.adminCat || (ui.adminCat = await A.api("/admin/catalogue"));
-    const pick = (sku, label, extra = "") => `<label><input type="checkbox" name="sku" value="${esc(sku)}"> ${esc(label)}${extra}</label>`;
-    pane.innerHTML = `<form id="givef"><div class="dgrid">
-      <div class="card"><div class="name">What</div><div class="checks">${cat.skus.map(s => pick(s.sku, s.name, ` <span class="muted small">${esc(s.blurb || "")}</span>`)).join("")}</div>
-        <p class="muted small">Or single themes:</p>
-        <div class="checks">${cat.themes.map(t => pick(t.sku, t.name)).join("")}</div></div>
-      <div class="card"><div class="name">To whom</div>
-        <div class="segpick"><button type="button" data-act="mode" data-m="emails" class="${ui.giveMode !== "codes" ? "on" : ""}">Addresses</button><button type="button" data-act="mode" data-m="codes" class="${ui.giveMode === "codes" ? "on" : ""}">Codes</button></div>
-        ${ui.giveMode === "codes" ? `<div class="two"><label>How many codes<input name="count" inputmode="numeric" value="1"></label><label>Uses each<input name="uses" inputmode="numeric" value="1"></label></div>
-            <label>Redeemable until <span class="muted">(optional)</span><input name="expires" type="date"></label>`
-          : `<label>Email addresses <span class="muted">(one a line, or commas; someone without an account gets it on their first sign-in)</span><textarea name="emails" rows="6"></textarea></label>`}
-        <label>Lasts <span class="muted">(days once given; empty is for good)</span><input name="lastsDays" inputmode="numeric" placeholder="for good"></label>
-        <label>Note <span class="muted">(why: press, prize, tester)</span><input name="note" maxlength="120"></label>
-        <button class="btn primary wide" type="submit" style="margin-top:12px">Give</button>
-        <div id="gaveout"></div></div></div></form>`;
-    pane.querySelectorAll("[data-act=mode]").forEach(b => b.addEventListener("click", () => { ui.giveMode = b.dataset.m; DESKS.give(pane); }));
-    pane.querySelector("#givef").addEventListener("submit", async ev => {
-      ev.preventDefault();
-      const fd = new FormData(ev.target), skus = fd.getAll("sku");
-      if (!skus.length) return toast("Tick something to give");
-      const common = { skus, lastsDays: Number(fd.get("lastsDays")) || null, note: String(fd.get("note") || "").trim() };
-      const out = pane.querySelector("#gaveout");
-      try {
-        if (ui.giveMode === "codes") {
-          const r = await A.api("/admin/codes", { ...common, count: Number(fd.get("count")) || 1, uses: Number(fd.get("uses")) || 1, expires: fd.get("expires") || null });
-          out.innerHTML = `<h3>${plural(r.codes.length, "code")}</h3><p class="muted small">Each gives ${esc(r.skus.map(s => s.name).join(", "))}, ${plural(r.uses, "use")}. Shown once.</p>
-            <div class="linkbox mono">${r.codes.map(esc).join("<br>")}</div><div class="btnrow"><button type="button" class="btn small" data-act="copy">Copy all</button><button type="button" class="btn small" data-act="csvc">Download CSV</button></div>`;
-          out.querySelector("[data-act=copy]").addEventListener("click", () => navigator.clipboard.writeText(r.codes.join("\n")).then(() => toast("Copied")));
-          out.querySelector("[data-act=csvc]").addEventListener("click", () => downloadCsv("hagolf codes", [["code", "link", "gives"], ...r.codes.map(c => [c, `${appBase()}#redeem/${c}`, r.skus.map(s => s.name).join("; ")])]));
-        } else {
-          const r = await A.api("/admin/grant", { ...common, emails: String(fd.get("emails") || "") });
-          out.innerHTML = `<h3>Given</h3><p>${r.granted.length ? `Now: ${esc(r.granted.map(g => g.name || g.email).join(", "))}.` : ""}</p>${r.pending.length ? `<p>On their first sign-in: ${esc(r.pending.join(", "))}.</p>` : ""}`;
-        }
-      } catch (e) { toast(e.message, 6000); }
-    });
-  },
-
-  async codes(pane) {
-    const [{ codes }, { gifts }] = await Promise.all([A.api("/admin/codes"), A.api("/admin/gifts")]);
-    pane.innerHTML = `${sect("Gift codes")}${codes.length ? `<div class="dtable"><table><thead><tr><th>Code</th><th>Gives</th><th class="n">Used</th><th>Until</th><th>Lasts</th><th>Note</th><th></th></tr></thead><tbody>
-      ${codes.map(c => `<tr><td class="mono">…${esc(c.hint || "")}</td><td>${esc(c.skus.map(skuName).join(", "))}</td><td class="n">${c.uses} of ${c.uses_max}</td><td>${c.expires ? esc(fmtDate(c.expires)) : ""}</td>
-        <td>${c.lasts_days ? plural(c.lasts_days, "day") : "for good"}</td><td>${esc(c.note || "")}</td><td>${c.revoked ? "revoked" : `<button class="btn small" data-act="revoke" data-id="${esc(c.id)}">Revoke</button>`}</td></tr>`).join("")}</tbody></table></div>`
-      : `<p class="muted small">None yet.</p>`}
-      ${sect("Waiting for a first sign-in")}${gifts.length ? `<div class="dtable"><table><thead><tr><th>Address</th><th>Gives</th><th>Note</th><th>Since</th></tr></thead><tbody>
-      ${gifts.map(g => `<tr><td>${esc(g.email)}</td><td>${esc(g.skus.map(skuName).join(", "))}</td><td>${esc(g.note || "")}</td><td>${esc(fmtDate(g.created.slice(0, 10)))}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small">Nobody.</p>`}`;
-    pane.onclick = async ev => {
-      const b = ev.target.closest("[data-act=revoke]");
-      if (!b || !await confirmSheet("Revoke this code?", "Nobody new can use it; what was already given stays.", { label: "Revoke", danger: true })) return;
-      try { await A.api(`/admin/codes/${b.dataset.id}/revoke`, {}); admin("codes"); } catch (e) { toast(e.message, 5000); }
-    };
-  },
-
   async partners(pane) {
     const { partners: list } = await A.api("/admin/partners");
-    const contracts = (ui.adminCat || (ui.adminCat = await A.api("/admin/catalogue"))).contracts;
+    const contracts = (ui.adminContracts || (ui.adminContracts = await A.api("/admin/contracts"))).contracts;
     const tierSel = (name, sel) => `<select name="${name}">${contracts.map(k => `<option value="${k.key}" ${k.key === sel ? "selected" : ""}>${esc(k.name)} · ${k.seats} seats</option>`).join("")}</select>`;
     pane.innerHTML = `${list.length ? `<div class="dtable"><table><thead><tr><th>Partner</th><th>Kind</th><th>Contract</th><th class="n">Seats</th><th>Until</th><th>Owner</th><th></th></tr></thead><tbody>
       ${list.map(p => `<tr><td><a href="#partner/${esc(p.id)}">${esc(p.name)}</a>${p.plan ? `<br><span class="muted small">${esc(p.plan)}</span>` : ""}</td><td>${esc(KIND_WORD[p.kind] || p.kind)}</td><td>${esc(p.tier)}${p.live ? "" : " · <b>ended</b>"}</td>

@@ -149,7 +149,7 @@ export async function api(path, body, method) {
 
 // ---------------------------------------------------------------- what this backend offers
 let cfg = null;
-/** Which ways in this backend has, fetched once: the Google client id, the push key, whether the shop is on. */
+/** Which ways in this backend has, fetched once: the Google client id and the push key. */
 export async function config() {
   if (cfg) return cfg;
   try { cfg = await call("/auth/config"); } catch (e) { cfg = { google: null, push: null, email: true }; }
@@ -202,11 +202,9 @@ export async function signInWithPasskey(email = null) {
   return session.account;
 }
 
-// What an account holds can change without this phone doing anything: another phone buys something, a club
-// seat is taken away, an operator grants the lot by hand. The entitlement list travels inside the session, so
-// left alone a phone goes on showing the free tier until its access token next turns over -- up to fifteen
-// minutes, and longer if nothing asks the backend for anything. `recheck` is what closes that gap.
-const held = a => a ? `${a.shop ? 1 : 0}|${[...(a.entitlements || [])].sort().join()}` : "";
+// A partner seat can be given or taken away without this phone doing anything, and the seats travel inside the
+// session, so left alone a phone goes on wearing the old look until its access token next turns over.
+const held = a => a ? JSON.stringify((a.clubs || []).map(c => [c.id, c.live])) : "";
 let lastCheck = 0;
 
 /**

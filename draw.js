@@ -548,7 +548,7 @@ export function brandKick(s) {
 export const brandTitle = (key, s) => (BRAND && BRAND.titles && BRAND.titles[key]) || s;
 const DATE_SEP = "  ·  ";
 export const brandDate = s => BRAND && BRAND.date ? (s ? `${s}${DATE_SEP}${BRAND.date}` : BRAND.date) : s;
-const markText = () => BRAND ? String(BRAND.mark || BRAND.name || "").slice(0, 40) : MARK_TEXT;
+const markText = () => String(BRAND.mark || BRAND.name || "").slice(0, 40);
 
 /** The logo's size fitted inside a box, aspect kept; null without one. */
 export function logoFit(maxW, maxH) {
@@ -650,33 +650,19 @@ export function footerIn(probe, text) {
   return brandFoot(probe, text).h + FOOT_BOTTOM + 0.2;
 }
 
-// The mark a free render carries, bottom right. One definition, so a poster and a card wear it identically.
-export const MARK = "hagolf.app";
 const MARK_SIZE = 8;
 
-// Whether renders carry the mark at all. Paying removes it; the app sets this from what the account holds, once,
-// rather than every poster and card asking. On until told otherwise, so a phone with no account is marked.
-let MARK_ON = true;
-let MARK_TEXT = MARK;   // a club's members carry the club's name here instead
-export function setMarked(on) { MARK_ON = !!on; }
-export function setMarkText(text) { MARK_TEXT = String(text || MARK).slice(0, 40); }
-export const marked = () => MARK_ON;
-
-/** Draws the mark with its baseline block ending `inchesFromBottom` up from the bottom edge. */
+/** A partner's corner, its baseline block ending `inchesFromBottom` up from the bottom edge; a free render carries nothing there. */
 export function drawMark(fig, inchesFromBottom = 0.28) {
-  if (BRAND) return drawCorner(fig, fig.h - inchesFromBottom);
-  if (!MARK_ON) return;
-  fig.text(fig.w - MARGIN * fig.w, fig.h - inchesFromBottom, MARK_TEXT,
-    { size: MARK_SIZE, family: "display", color: fig.T.INK_3, ha: "right", va: "bottom", alpha: 0.8 });
+  if (BRAND) drawCorner(fig, fig.h - inchesFromBottom);
 }
 
-/** Width the footer text may use: the mark sits at the right end of the same line, so it is wrapped clear of it. */
-export function footerWidth(fig, mark = MARK_ON) {
-  if (BRAND) return fig.w * (1 - 2 * MARGIN) - cornerIn(fig)[0] - 0.3;
-  return fig.w * (1 - 2 * MARGIN) - (mark ? fig.measure(MARK_TEXT, MARK_SIZE, "display") + 0.18 : 0);
+/** Width the footer text may use: a partner's corner sits at the right end of the same line, so it is wrapped clear of it. */
+export function footerWidth(fig) {
+  return fig.w * (1 - 2 * MARGIN) - (BRAND ? cornerIn(fig)[0] + 0.3 : 0);
 }
 
-export function footer(fig, text, inchesFromBottom = 0.28, mark = MARK_ON) {
+export function footer(fig, text, inchesFromBottom = 0.28) {
   const M = MARGIN * fig.w;
   if (BRAND) {
     const { blines, lines, above } = brandFoot(fig, text), bottom = fig.h - inchesFromBottom;
@@ -685,14 +671,13 @@ export function footer(fig, text, inchesFromBottom = 0.28, mark = MARK_ON) {
     drawCorner(fig, bottom);
     return lines.length + blines.length;
   }
-  const lines = fig.wrap(text, footerWidth(fig, mark), 9);
+  const lines = fig.wrap(text, footerWidth(fig), 9);
   fig.text(M, fig.h - inchesFromBottom, lines.join("\n"), { size: 9, color: fig.T.INK_3, va: "bottom", lineSpacing: 1.5 });
-  if (mark) drawMark(fig, inchesFromBottom);
   return lines.length;
 }
 
-export function footerLines(fig, text, mark = true) {
-  return fig.wrap(text, footerWidth(fig, mark), 9).length;
+export function footerLines(fig, text) {
+  return fig.wrap(text, footerWidth(fig), 9).length;
 }
 
 export function section(ax, x, y, title, size = 12) {

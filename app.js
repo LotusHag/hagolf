@@ -57,9 +57,8 @@ if (A.signedIn()) { N.refresh(); F.refresh(); }
 Y.start();
 route();
 
-// What the account holds is read again whenever the app is opened or looked at again, and the screen redrawn
-// only if it changed. Without this a theme that became yours a minute ago goes on saying "in the shop" until
-// the session happens to turn over, which is the one moment the app looks broken to somebody who just paid.
+// The account is read again whenever the app is opened or looked at again, and the screen redrawn only if its
+// partner seats changed.
 const recheck = async () => { if (await A.recheck() && undisturbed()) route(); };
 recheck();
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recheck(); });

@@ -2,9 +2,8 @@
 // tiles of what each sheet looks like, a fold that says who is on them, the look folded to a row, and a button
 // that says how many images the tap will make.
 import * as S from "../store.js";
-import * as E from "../entitlements.js";
 import * as B from "../brand.js";
-import { page, bind, esc, go, toast, plural, courseBy, noCourse, themePicker, bindLook, themeNamed, darkNow, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, sizedLooks, sizedName, shopBtn, app, ICONS } from "../ui.js";
+import { page, bind, esc, go, toast, plural, courseBy, noCourse, themePicker, bindLook, themeNamed, darkNow, themeForRound, themeFor, leagueTheme, runJobs, slugFile, makeTheme, sizedLooks, sizedName, app, ICONS } from "../ui.js";
 import { compute, leagueStats } from "../model.js";
 import { grossLeaderboard, stablefordLeaderboard, bothBoards, holesPoster, standingsPoster } from "../posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster, statsExtrasPoster } from "../statsposters.js";
@@ -18,8 +17,8 @@ import { ui } from "../ui.js";
 const KINDS = [
   { key: "stbl", name: "Stableford leaderboard" },
   { key: "gross", name: "Gross leaderboard" },
-  { key: "both", name: "Both boards on one sheet", full: true },
-  { key: "holes", name: "How the holes played", full: true },
+  { key: "both", name: "Both boards on one sheet" },
+  { key: "holes", name: "How the holes played" },
   { key: "cards", name: "Player cards", card: true },
 ];
 // The season's sheets, in the order they are made. `nines` and `extras` are only there when there is something
@@ -31,26 +30,16 @@ const SHEETS = [
   { key: "players", name: "One image a player" },
 ];
 
-const exampleOf = (k, basic) => `${k.key}${basic && !k.full ? "-basic" : ""}`;
 const exImg = file => `<span class="gimg"><img src="img/examples/${file}.webp" alt="" width="400" height="200" loading="lazy" decoding="async"></span>`;
 
 /** One tickable tile: an example of the image, what it is called, and the tick in the corner. */
 const tile = (name, value, label, file, on, extra = "") =>
   `<label class="gtile ${on ? "on" : ""}"><input type="checkbox" name="${name}" value="${esc(value)}" ${on ? "checked" : ""}>${exImg(file)}<span class="gname">${esc(label)}${extra}</span><span class="gcheck" aria-hidden="true">${ICONS.check}</span></label>`;
-/** A sheet the account cannot make still shows what it would be, and opens the shop rather than ticking. */
-const lockedTile = (label, file, sku) =>
-  `<button type="button" class="gtile locked" data-shop="${esc(sku)}">${exImg(file)}<span class="gname">${esc(label)}</span><span class="glock">${ICONS.lock}In the shop</span></button>`;
 /** A fold whose summary says what is inside it, so a closed one never hides the answer. */
 const fold = (label, says, rows) =>
   `<details class="foldrow" id="whose"><summary><b>${esc(label)}</b><span class="says">${esc(says)}</span></summary><div class="checks">${rows}</div></details>`;
 /** Ticking the whole grid is the grid's own action, so it sits with the grid. */
 const bulkRow = `<div class="gbulk"><button class="btn small" type="button" data-act="tick-all">Everything, every look</button></div>`;
-
-const kindTile = (k, on, extra = "", open = false) => {
-  const basic = !open && (k.card ? E.cardTier() !== "full" : E.boardTier() !== "full");
-  if (k.full && basic) return lockedTile(k.name, exampleOf(k, basic), "boards");
-  return tile("g", k.key, k.name, exampleOf(k, basic), on, extra);
-};
 
 // Full is the sheet as it has always been, Phone the same sheet one column wide and read down the screen
 const SIZES = [
@@ -126,30 +115,26 @@ export function graphics(rid) {
   // a partner's round makes everything for everybody on it, in the partner's look and nothing else
   const brand = B.brandOfRound(rid), brandT = brand && B.brandTheme(brand);
   const themeLeague = leagues.find(leagueTheme);
-  const boardTier = brand ? "full" : E.boardTier(), cardTier = brand ? "full" : E.cardTier();
   const offered = KINDS.filter(k => !B.kindsOf(brand) || B.kindsOf(brand).includes(k.key));
-  // what was made last time on this phone, less anything the account no longer holds
+  // what was made last time on this phone
   const saved = S.imageChoice();
-  const can = k => !k.full || boardTier === "full";
   const bsHere = brand ? ["dayout", "personal"].flatMap(kind => BRAND_STYLES[kind].map(s => `bs:${kind}:${s.key}`)) : [];
-  const kinds = [...offered.filter(k => can(k)).map(k => k.key), ...bsHere].filter(v => (saved.kinds || []).includes(v));
+  const kinds = [...offered.map(k => k.key), ...bsHere].filter(v => (saved.kinds || []).includes(v));
   const picked = kinds.length ? kinds : brand ? [`bs:dayout:${styleOf(brand, "dayout")}`] : [offered[0].key];
-  const savedThemes = (saved.themes || []).filter(n => themeNamed(n) && E.canTheme(n));
+  const savedThemes = (saved.themes || []).filter(n => themeNamed(n));
   const themes = brand ? [(brandT || themeForRound(rid)).name] : themeLeague || !savedThemes.length ? [themeForRound(rid).name] : savedThemes;
-  const missing = [...(boardTier === "full" ? [] : ["boards"]), ...(cardTier === "full" ? [] : ["card"])];
   const whose = () => { const n = ticked("card").length; return n === M.players.length ? "Everyone" : n ? `${n} of ${M.players.length}` : "Nobody"; };
   const body = `
     ${brand ? `<h2>${esc(brand.name)}'s own</h2><p class="muted small gsays">Few words, the logo at the centre.</p>
       <div class="ggrid">${brandTiles(brand, "g", ["dayout", "personal"], picked, { personal: ` <small>${M.field}</small>` })}</div><h2>Every board and card</h2>` : `<h2>Which images</h2>`}
-    <div class="ggrid">${offered.map(k => kindTile(k, picked.includes(k.key), k.card ? ` <small>${M.field}</small>` : "", !!brand)).join("")}</div>
+    <div class="ggrid">${offered.map(k => tile("g", k.key, k.name, k.key, picked.includes(k.key), k.card ? ` <small>${M.field}</small>` : "")).join("")}</div>
     ${bulkRow}
     <div class="card checks gmore" id="opts">
       ${fold("Whose cards", whose(), M.players.map(p => `<label><input type="checkbox" name="card" value="${esc(p.name)}" checked> ${esc(p.name)}</label>`).join(""))}
-      ${M.stats_on && cardTier === "full"
+      ${M.stats_on
         ? `<label><input type="checkbox" name="cx" ${S.statsOnImages() ? "checked" : ""}> Putts, fairways and the rest on the cards <span class="muted">&nbsp;(${plural(M.players.filter(p => p.statline.any).length, "card")} kept them)</span></label>`
         : ""}
     </div>
-    ${missing.length ? shopBtn("More images in the shop", missing) : ""}
     ${sizeField()}
     ${brand ? "" : modeField()}
     <h2>Look</h2>
@@ -180,7 +165,7 @@ export function graphics(rid) {
     if (b.dataset.act === "imode") { pickMode(b); paint(); return; }
     if (b.dataset.act !== "generate") return;
     const want = ticked("g");
-    const chosen = brand ? themes : ticked("theme").filter(n => E.canTheme(n) || themes.includes(n));
+    const chosen = brand ? themes : ticked("theme");
     const cardNames = ticked("card");
     const cx = document.querySelector("input[name=cx]");
     const cardOpts = { extras: !!(cx && cx.checked) };
@@ -192,13 +177,12 @@ export function graphics(rid) {
     const jobs = [];
     for (const tn of chosen) for (const [T, vtag] of brand ? [[makeTheme(themeNamed(tn)), ""]] : versionsOf(tn)) {
       const prefix = chosen.length > 1 ? `${tn}/` : "";
-      const tier = boardTier;
       const add = (label, make) => sized(jobs, T, `${prefix}${sizedName(label, vtag)}`, make);
-      if (want.includes("gross")) add("1_leaderboard_gross.png", Tz => grossLeaderboard(M, Tz, tier));
-      if (want.includes("stbl")) add("2_leaderboard_stableford.png", Tz => stablefordLeaderboard(M, Tz, tier));
-      if (want.includes("holes") && tier === "full") add("3_holes.png", Tz => holesPoster(M, Tz));
-      if (want.includes("both") && tier === "full") add("4_leaderboard_both.png", Tz => bothBoards(M, Tz));
-      if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) add(renderCards(M, T, [p.name], cardTier, cardOpts)[0].file, Tz => renderCards(M, Tz, [p.name], cardTier, cardOpts)[0].fig);
+      if (want.includes("gross")) add("1_leaderboard_gross.png", Tz => grossLeaderboard(M, Tz));
+      if (want.includes("stbl")) add("2_leaderboard_stableford.png", Tz => stablefordLeaderboard(M, Tz));
+      if (want.includes("holes")) add("3_holes.png", Tz => holesPoster(M, Tz));
+      if (want.includes("both")) add("4_leaderboard_both.png", Tz => bothBoards(M, Tz));
+      if (want.includes("cards")) for (const p of M.players.filter(p => cardNames.includes(p.name))) add(renderCards(M, T, [p.name], "full", cardOpts)[0].file, Tz => renderCards(M, Tz, [p.name], "full", cardOpts)[0].fig);
       for (const { kind, style } of bsOf(want)) {
         if (kind === "dayout") add(`0_day_out_${style}.png`, Tz => dayOutSheet(M, Tz, style));
         if (kind === "personal") M.players.filter(p => cardNames.includes(p.name)).forEach((p, i, ps) => {
@@ -223,12 +207,11 @@ const bsOf = want => want.filter(v => v.startsWith("bs:")).map(v => { const [, k
 /** In a partner's round the look is the partner's: one fixed row instead of the picker, saying whose. */
 const brandLook = (b, t) => `<div class="card brandlook"><input type="checkbox" name="theme" value="${esc(t.name)}" checked hidden>
   <span class="fstrip"><i style="--tbg:${t.BG};--tpanel:${t.PANEL};--tacc:${t.ACCENT}"></i></span>
-  <div><div class="name">${esc(b.name)}</div><div class="muted small">This round wears ${esc(b.name)}'s look, so every board and card is made in full for everyone on it.</div></div></div>`;
+  <div><div class="name">${esc(b.name)}</div><div class="muted small">This round wears ${esc(b.name)}'s look.</div></div></div>`;
 
 /**
  * A league's images: its standings first, then the season's sheets. One screen, because both are the same
  * question -- what do I post about this league -- and splitting them meant knowing the answer before asking.
- * Without the season pack the sheets are still tiles of what they would be, which open the shop.
  */
 export function leagueImages(gid) {
   const g = S.getLeague(gid);
@@ -240,7 +223,6 @@ export function leagueImages(gid) {
   const N = ninesForPoster(leagueRounds(gid), members);
   const anyX = St.field.statline.any;
   const brand = B.brandOfLeague(g), brandT = brand && B.brandTheme(brand);
-  const season = brand || E.seasonAllowed();
   const sheets = SHEETS.filter(k => (k.key !== "nines" || N.length) && (k.key !== "extras" || anyX));
   const extraOf = { field: plural(St.field.cards, "card"), nines: plural(N.length, "loop"),
     extras: `${plural(St.players.filter(p => p.statline.any).length, "player")} keep them`, players: plural(St.players.length, "player") };
@@ -248,10 +230,10 @@ export function leagueImages(gid) {
   const themes = [(brandT || themeFor(g)).name];
   // the tiles are one list under one name, so what was picked last time is one list to remember
   const bsHere = brand ? BRAND_STYLES.league.map(s => `bs:league:${s.key}`) : [];
-  const here = [...bsHere, ...formats.map(f => `standings:${f}`), ...(season ? sheets.map(k => `stats:${k.key}`) : [])];
+  const here = [...bsHere, ...formats.map(f => `standings:${f}`), ...sheets.map(k => `stats:${k.key}`)];
   const saved = (S.imageChoice().league || []).filter(v => here.includes(v));
   const picked = saved.length ? saved : brand ? [`bs:league:${styleOf(brand, "league")}`]
-    : [...formats.map(f => `standings:${f}`), ...(season ? ["stats:field", ...(who ? ["stats:players"] : [])] : [])];
+    : [...formats.map(f => `standings:${f}`), "stats:field", ...(who ? ["stats:players"] : [])];
   const whose = () => { const n = ticked("sp").length; return n === St.players.length ? "Everyone" : n ? `${n} of ${St.players.length}` : "Nobody"; };
   page("Images", `
     <h2>Which images</h2>
@@ -259,14 +241,12 @@ export function leagueImages(gid) {
       <div class="ggrid">${brandTiles(brand, "gi", ["league"], picked)}</div><h2>Every sheet</h2>` : ""}
     <div class="ggrid">
       ${formats.map(f => tile("gi", `standings:${f}`, FORMAT_NAMES[f], `st-${f}`, picked.includes(`standings:${f}`))).join("")}
-      ${sheets.map(k => season ? tile("gi", `stats:${k.key}`, k.name, `sf-${k.key === "players" ? "player" : k.key}`, picked.includes(`stats:${k.key}`), ` <small>${extraOf[k.key]}</small>`)
-        : lockedTile(k.name, `sf-${k.key === "players" ? "player" : k.key}`, "season")).join("")}
+      ${sheets.map(k => tile("gi", `stats:${k.key}`, k.name, `sf-${k.key === "players" ? "player" : k.key}`, picked.includes(`stats:${k.key}`), ` <small>${extraOf[k.key]}</small>`)).join("")}
     </div>
-    ${season ? `${bulkRow}<div class="card checks gmore" id="opts">
+    ${bulkRow}<div class="card checks gmore" id="opts">
       ${fold("Whose sheets", whose(), St.players.map(p => `<label><input type="checkbox" name="sp" value="${esc(p.id)}" ${!who || p.id === who ? "checked" : ""}> ${esc(p.name)} <span class="muted">&nbsp;(${plural(p.played, "round")})</span></label>`).join(""))}
       ${anyX ? `<label><input type="checkbox" name="sx" ${S.statsOnImages() ? "checked" : ""}> Put the extras on the sheets too <span class="muted">&nbsp;(a band at the foot, never in the headline figures)</span></label>` : ""}
-    </div>` : `<p class="muted small gsays">The season pack makes the sheets above: how the society scores, the nines walked, and one image a player.</p>
-      ${shopBtn("See what the season pack makes", "season")}`}
+    </div>
     ${sizeField()}
     ${brand ? "" : modeField()}
     <h2>Look</h2>
@@ -289,7 +269,7 @@ export function leagueImages(gid) {
     if (b.dataset.act !== "generate") return;
     const want = ticked("gi");
     const pids = want.includes("stats:players") ? ticked("sp") : [];
-    const chosen = brand ? themes : ticked("theme").filter(n => E.canTheme(n) || themes.includes(n));
+    const chosen = brand ? themes : ticked("theme");
     const sx = document.querySelector("input[name=sx]");
     const opts = { extras: !!(sx && sx.checked) };
     if (sx) S.setStatsOnImages(opts.extras);

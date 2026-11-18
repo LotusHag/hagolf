@@ -26,7 +26,7 @@ export function privacy() {
       <li>Nobody sees your email address, your friends list, or your inbox.</li>
     </ul>
     <h3>Who we work with</h3>
-    <p>The backend runs on Cloudflare (Workers and D1, in the EU where possible). Sign-in is by Google. Scorecard photographs are read by Anthropic. Purchases, where the shop is on, go through Stripe, which handles your payment details; we only learn what was bought. Nobody else receives your data, and nothing is sold to anybody.</p>
+    <p>The backend runs on Cloudflare (Workers and D1, in the EU where possible). Sign-in is by Google. Scorecard photographs are read by Anthropic. Nobody else receives your data, and nothing is sold to anybody.</p>
     <h3>How long</h3>
     <p>Your account and your golf are kept until you delete them. Sign-in sessions last 90 days. Invite links expire after 30 days. Updates in your inbox are kept for about 90 days. A nightly copy of the database is kept for recovery.</p>
     <h3>Your rights</h3>
@@ -38,7 +38,7 @@ export function privacy() {
     </ul>
     <h3>On your phone</h3>
     <p>The app keeps a copy of your data in the browser's storage so it works without a signal. It uses no advertising and no tracking. Signing out on this phone removes the session; the data stays until you clear it.</p>
-    <p class="muted small">Last changed 28 September 2026.</p></div>`, { back: back(), bell: false });
+    <p class="muted small">Last changed 18 November 2026.</p></div>`, { back: back(), bell: false });
 }
 
 export function terms() {
@@ -53,8 +53,8 @@ export function terms() {
     <h3>What we promise, and do not</h3>
     <p>We work to keep the service up and your data safe, and to fix what breaks. We do not promise that it is never down, that a handicap worked out here is the one your club would give you, or that a rating for a course is correct: check the card in the clubhouse before a competition.</p>
     <h3>Ending</h3>
-    <p>You can delete your account at any time. We may close accounts that break these terms. Purchases, where the shop is on, are one-off and not refunded after use unless the law says otherwise.</p>
+    <p>You can delete your account at any time. We may close accounts that break these terms.</p>
     <h3>Changes</h3>
     <p>If these terms change in a way that matters, the app says so before you continue.</p>
-    <p class="muted small">Last changed 28 September 2026.</p></div>`, { back: back(), bell: false });
+    <p class="muted small">Last changed 18 November 2026.</p></div>`, { back: back(), bell: false });
 }

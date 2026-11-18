@@ -5,10 +5,9 @@
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
-import * as E from "../entitlements.js";
 import * as F from "../social.js";
 import { brandField } from "./partner.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, shopBtn, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, roundStatus, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, paint, themeHere, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
 import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
@@ -717,8 +716,6 @@ function adminView(C) {
 function settingsBody(C, formats) {
   const { g, gid, runs } = C;
   const member = S.myMembership(gid);
-  const mine = S.FORMATS.filter(f => E.formatAllowed(f) || formats.includes(f));
-  const missing = [...new Set(S.FORMATS.filter(f => !mine.includes(f)).map(f => E.FORMAT_SKU[f]))];
   return `${runs ? `${sect("How it is scored")}
     <form id="gform" class="card form open">
       <div class="iconpick"><span id="liconprev">${leagueBadge(g, "big")}</span><div><b>Icon</b><small>Beside the society's name on every member's phone</small>
@@ -726,8 +723,7 @@ function settingsBody(C, formats) {
         ${g.icon ? `<button type="button" class="btn small" data-act="icon-clear">Remove</button>` : ""}</div></div></div>
       <label>Society name<input name="name" value="${esc(g.name)}"></label>
       <label>Scored by <span class="muted">(pick as many as you like; the first is what the society opens on)</span></label>
-      <div class="fmtlist">${mine.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
-      ${missing.length ? shopBtn("More ways of ranking in the shop", missing) : ""}
+      <div class="fmtlist">${S.FORMATS.map(f => `<label><input type="checkbox" name="fmt" value="${f}" ${formats.includes(f) ? "checked" : ""}> <span><b>${FORMAT_NAMES[f]}</b><small>${FORMAT_MODE[f]} · ${FORMAT_BLURB[f]}</small></span></label>`).join("")}</div>
       <label>Rounds that count towards the total <span class="muted">(0 = all)</span><input name="bestN" inputmode="numeric" value="${g.bestN}"></label>
       ${brandField("lbrand", g.brand)}
       <label>Theme <span class="muted">(what this society wears on screen and in its images${g.brand ? ", unless a course or company look is on" : ""})</span></label>

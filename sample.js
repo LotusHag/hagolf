@@ -1,4 +1,4 @@
-// The showcase: the round and the league every shop preview is drawn on. Nothing here is real. Heron's Reach
+// The showcase: the invented round and league the example images and partner previews are drawn on. Nothing here is real. Heron's Reach
 // is an invented course, the four players are invented, and their cards were written by hand so that one round
 // shows everything the graphics can do: an ace, an eagle, a penalty badge, a blow-up hole, the extras kept on
 // some cards and not others, and a gross board in a different order from the Stableford board. The three

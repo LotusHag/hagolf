@@ -4,7 +4,6 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import * as E from "../entitlements.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, toast, ui, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, paint, themeHere, lookMode, applyBrand, parseHI, hiOk, app, ICONS, roundStatus, roundWhere } from "../ui.js";
 import { fmtIndex, STAT_SWITCHES, STAT_SWITCH_KEYS } from "../model.js";
@@ -39,9 +38,8 @@ export function me(section) {
       ${acct ? row("#people", "people", "Friends", held.incoming.length ? `${plural(held.incoming.length, "request")} waiting` : `${plural(held.friends.length, "friend")}`) : ""}
       ${row("#me/keep", "chart", "Stats I keep", esc(keepWord))}
       ${acct ? row("#me/seats", "check", "Were you on these cards?", "Cards with your name that need a yes or no") : ""}
-      ${Y.enabled() ? row("#shop", "shop", "Shop", "Looks, sheets and the season pass") : ""}
       ${acct ? row("#partners", "users", "Courses and companies", (acct.clubs || []).length ? esc(acct.clubs.map(c => c.name).join(", ")) : "Have a code? Use it here") : ""}
-      ${acct && acct.admin ? row("#admin", "settings", "Operator desk", "Gifts, codes, partners and enquiries") : ""}
+      ${acct && acct.admin ? row("#admin", "settings", "Operator desk", "Partners and enquiries") : ""}
     </div>
     <h2>Settings</h2>
     <div class="list">
