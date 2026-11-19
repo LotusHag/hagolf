@@ -112,8 +112,12 @@ function approachSection(x) {
   const extra = [];
   if (x.birdies && x.birdies.holes >= 6) extra.push(lead(fmtPct(x.birdies.pct), "greens turned into birdies", `${x.birdies.made} of ${x.birdies.holes}`));
   if (x.fromGir) extra.push(lead(fix(x.fromGir.edge, 2), "strokes a green saves", `${fmtSigned(x.fromGir.hit.topar, 2)} on, ${fmtSigned(x.fromGir.miss.topar, 2)} off`));
-  return `${h2tip("Into the green", `<p><b>Greens in regulation</b>: on the green with two strokes still left for par. Worked out from your strokes and your putts, never asked for.</p>
-      <p><b>Greens turned into birdies</b> is how often a green in regulation became a birdie or better. <b>Strokes a green saves</b> is how much better against par you play a hole where you hit the green than one where you missed it.</p>`, "approach")}
+  return `${h2tip("Into the green", `<p><b>Greens in regulation</b>: on the green with two strokes still left for par, so a par 3 in one, a par 4 in two, a par 5 in three. Worked out from your strokes and your putts, never asked for: your score less your putts, two under par or better. Only holes played out with putts kept count; a hole picked up does not.</p>
+      <p>As a rough guide, a tour player hits about two greens in three, a scratch golfer a little over half, a 10 handicap about one in three and a 20 handicap about one in six.</p>
+      <p><b>Greens a round</b> is your rate scaled to 18 holes.</p>
+      <p><b>By the kind of hole</b> splits the same greens between par 3s, 4s and 5s, for each kind you have played at least three of. The bar is the share of those holes where you were on in regulation.</p>
+      <p><b>Greens turned into birdies</b> is how often a green in regulation became a birdie or better, which is mostly down to the putter.</p>
+      <p><b>Strokes a green saves</b> is how much better against par you play a hole where you hit the green than one where you missed it. Under it, <b>on</b> is your average against par on greens hit and <b>off</b> on greens missed; the big number is the gap between them.</p>`, "approach")}
     <div class="card">
       ${leads([lead(fmtPct(g.pct), "greens in regulation", `${g.hit} of ${g.holes}`), lead(fix((g.hit / g.holes) * 18, 1), "greens a round")])}
       ${pars.length > 1 ? `<div class="subhead">By the kind of hole</div>${pars.map(k => meter(`Par ${k}s`, x.girByPar[k].hit, x.girByPar[k].holes, "up")).join("")}` : ""}
