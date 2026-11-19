@@ -186,7 +186,7 @@ export function keepPage() {
     </div>
     ${adv ? `<div class="card checks">${STAT_SWITCHES.map(s => `<label><input type="checkbox" name="kind" value="${s.key}" ${k[s.key] ? "checked" : ""}> ${esc(s.label)}</label>`).join("")}</div>
     <p class="muted small">Greens in regulation, up and down and sand saves are worked out from these.</p>` : ""}
-    <p class="muted small">This follows you onto every card. One round can be switched under its options; a guest from their row.</p>`,
+    <p class="muted small">This follows you onto every card. Who's playing keeps them for nobody, you or everyone on that card.</p>`,
     { back: "#me", bell: false });
   document.querySelector("main").addEventListener("change", ev => {
     if (ev.target.name === "keep") {

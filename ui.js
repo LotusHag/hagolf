@@ -150,6 +150,8 @@ export function arrive() {
 export function land(el) { if (el && !stillPlease()) el.classList.add("run"); }
 
 const SETUP = /^#(new|scan|j)(\/|$)/;
+// a link that acts once: left on the path, back would land on it and it would send you on again, for ever
+const ONCE = /^#(add|join|you)\//;
 /** Screens that are one place seen different ways: the holes and check of a card, the stats tabs, a society's boards. */
 function placeOf(h) {
   const [n, a, b] = h.slice(1).split("/");
@@ -173,7 +175,7 @@ export function go(hash) {
   if (TABS.some(t => t[1] === to)) { tabJump = true; return rebase(to === "#home" || norm(trail[0]) !== "#home" ? 0 : 1, to); }
   for (let k = at - 1; k >= 0; k--) if (trail[k] && samePlace(to, norm(trail[k]))) return rebase(k, to);
   const players = from.match(/^#players\/([^/]+)/);
-  if (samePlace(to, from) || (SETUP.test(from) && /^#(players|score|review)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
+  if (samePlace(to, from) || ONCE.test(from) || (SETUP.test(from) && /^#(players|score|review)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
   location.hash = to;
 }
 document.addEventListener("click", ev => {

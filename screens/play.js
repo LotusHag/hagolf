@@ -165,7 +165,7 @@ export function newRound(slug = null) {
 function addMe(r, c, tees) {
   const me = S.me();
   if (me && S.currentIndex(me) !== null && S.currentIndex(me) !== undefined) {
-    S.addEntry(r, c.n, { name: me.name, hi: S.currentIndex(me), tee: S.lastTee(me.id, r.course, tees) || r.defaultTee, gender: me.gender || "m", courseHandicap: null, accountId: S.myAccount(), trackStats: S.keepsAny(S.myKeep()) });
+    S.addEntry(r, c.n, { name: me.name, hi: S.currentIndex(me), tee: S.lastTee(me.id, r.course, tees) || r.defaultTee, gender: me.gender || "m", courseHandicap: null, accountId: S.myAccount(), trackStats: S.keepsAny(S.myKeep()) || !!S.state.settings.statsEveryone });
   }
 }
 

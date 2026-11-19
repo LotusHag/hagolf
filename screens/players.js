@@ -102,6 +102,13 @@ function countsPick(r) {
     <span><b>${esc(g.name)}</b><small>${on.has(g.id) ? "in its match play and Elo tables" : "a friendly: this society never sees it"}</small></span></label>`).join("")}</div>`;
 }
 
+/** Whose putts, fairways and the rest this card keeps, in one row; "Me" only when I have a seat on it. */
+function statsPick(r, who) {
+  const ws = [["off", "Nobody"], ...(S.mySeat(r) ? [["me", "Me"]] : []), ["all", "Everyone"]];
+  return `<div class="efield statswho"><span class="flab">Putts, fairways and the rest for</span><div class="eseg">${ws.map(([w, label]) =>
+    `<button data-act="statswho" data-w="${w}" class="${who === w ? "on" : ""}" aria-pressed="${who === w}">${label}</button>`).join("")}</div></div>`;
+}
+
 // ---------------------------------------------------------------- the screen
 export function players(rid, only = 0, keep = false) {
   const r = S.getRound(rid);
@@ -119,12 +126,13 @@ export function players(rid, only = 0, keep = false) {
   const people = r.entries.filter(e => e.role !== "team" && inG(e));
   const showGroups = people.length > 4 || people.some(e => (e.group || 1) > 1);
   const match = Mo.isMatchFormat(fmt);
+  const who = S.cardStatsWho(r);
 
   const row = e => {
     const i = r.entries.indexOf(e);
     const info = seatInfo(r, c, e);
     const sub = [e.accountId && e.accountId === me ? "you" : "",
-      info.error || match ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", e.trackStats ? "advanced stats" : ""].filter(Boolean).join(" · ");
+      info.error || match ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", who === "some" && e.trackStats ? "putts and the rest" : ""].filter(Boolean).join(" · ");
     const side = sidedMatch(fmt) ? `<div class="eseg sides">${["A", "B"].map(sd => `<button data-act="side" data-i="${i}" data-s="${sd}" class="${e.side === sd ? "on" : ""}">${sd}</button>`).join("")}</div>` : "";
     return `<div class="card who" data-i="${i}">
       <div class="whotop"><button class="wname" data-act="psheet" data-i="${i}"><b>${esc(e.name)}</b><small>${esc(sub)}${info.error ? ` <span class="warn">${esc(info.error)}</span>` : ""}</small></button>
@@ -159,7 +167,7 @@ export function players(rid, only = 0, keep = false) {
       ${teams.length && !vs ? `<p class="muted small">Team handicaps follow the World Handicap System: 35% and 15% for two, 30/20/10 for three, 25/20/15/10 for four.</p>` : ""}`;
   } else rows = people.map(row).join("");
 
-  const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 && !match ? `${r.allowance}%` : "", S.cardKeepsStats(r) ? "advanced stats" : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
+  const opts = [formatLabel(fmt), courseTitle(c), r.date === S.today() ? "today" : fmtDate(r.date), r.allowance !== 100 && !match ? `${r.allowance}%` : "", lg.length ? `counts: ${lg.map(g => g.name).join(", ")}` : ""].filter(Boolean).join(" · ");
   const ready = sidedMatch(fmt) ? people.some(e => e.side === "A") && people.some(e => e.side === "B")
     : Mo.isTeamFormat(fmt) && !scrambleMatch(fmt) ? r.entries.some(e => e.role === "team" && inG(e) && e.members.length)
     : scrambleMatch(fmt) ? ["A", "B"].every(sd => r.entries.some(e => e.role === "team" && inG(e) && e.side === sd && e.members.length)) && !r.entries.some(e => e.role === "team" && inG(e) && e.side !== "A" && e.side !== "B" && e.members.length)
@@ -172,6 +180,7 @@ export function players(rid, only = 0, keep = false) {
     ${rows || `<p class="muted center small">Nobody in this group.</p>`}`
     : `
     <button class="optline" data-act="options"><span>${esc(opts)}</span><span class="chev">›</span></button>
+    ${statsPick(r, who)}
     ${rows || `<p class="muted center small">Nobody yet.</p>`}
     <div class="btnrow"><button class="btn" data-act="add">+ Add player</button><button class="btn" data-act="invite">Invite to this card</button></div>
     ${dropBtn(r)}`,
@@ -188,6 +197,7 @@ export function players(rid, only = 0, keep = false) {
       return go(`#score/${r.id}/${S.holeOf(r)}`);
     }
     if (act === "drop-round") return dropRound(rid);
+    if (act === "statswho") { S.setCardStats(r, b.dataset.w); return players(rid, only, true); }
     if (act === "options") { await optionsSheet(r, c); return players(rid, only, true); }
     if (act === "add") { await addSheet(r, c); return players(rid, only, true); }
     if (act === "invite") return inviteSheet(r);
@@ -252,9 +262,6 @@ async function optionsSheet(r, c) {
       <label>Name<input name="name" value="${esc(r.name)}"></label>
       <div class="two"><label>Date<input name="date" type="date" value="${esc(r.date || "")}"></label>
       ${Mo.isMatchFormat(r.format) ? "" : `<label>Allowance<select name="allow">${[100, 95, 90, 85, 75].map(a => `<option value="${a}" ${Number(r.allowance) === a ? "selected" : ""}>${a}%</option>`).join("")}</select></label>`}</div>
-      <p class="pickline" style="margin-top:16px">Stats</p>
-      <div class="card radios">${[["simple", "Simple", "just the score"], ["advanced", "Advanced", "putts, fairways, bunker shots and penalties as well"]].map(([v, label, sub]) =>
-        `<label class="radiorow"><input type="radio" name="stats" value="${v}" ${(v === "advanced") === S.cardKeepsStats(r) ? "checked" : ""}><span><b>${label}</b><small>${sub}</small></span></label>`).join("")}</div>
       ${brandField("rbrand", r.brand || null)}
       ${gs.length && !r.leagueId ? `<p class="pickline">Counts for</p><div class="checks">${gs.map(g => `<label><input type="checkbox" name="lg" value="${g.id}" ${on.has(g.id) ? "checked" : ""}> ${esc(g.name)}</label>`).join("")}</div>` : ""}
     </form>`,
@@ -275,14 +282,6 @@ async function optionsSheet(r, c) {
   if (f.get("rbrand") !== null) r.brand = f.get("rbrand") || null;
   S.state.settings.lastFormat = r.format;
   S.saveRound(r);
-  const adv = f.get("stats") === "advanced";
-  if (adv !== S.cardKeepsStats(r)) {
-    for (const e of r.entries) if (!!e.trackStats !== adv) S.setTrackStats(r, e, adv);
-    // the score screen would otherwise switch my seat back to what Stats I keep says
-    S.state.settings.trackAsked = { ...(S.state.settings.trackAsked || {}), [r.id]: 1 };
-    if (adv && S.state.settings.statsRound) delete S.state.settings.statsRound[r.id];
-    S.save();
-  }
   if (gs.length && !r.leagueId) {
     const want = new Set(f.getAll("lg"));
     for (const g of gs) if (want.has(g.id) !== on.has(g.id)) S.setLeagueRound(g.id, r.id, want.has(g.id));
@@ -305,8 +304,9 @@ async function askIndex(name) {
 function seat(r, c, p, hi, accountId) {
   const tees = Object.keys(c.tees);
   const people = r.entries.filter(e => e.role !== "team");
+  const all = S.cardStatsWho(r) === "all" || !people.length && !!S.state.settings.statsEveryone;
   const e = S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null,
-    accountId, trackStats: accountId && accountId === S.myAccount() ? S.keepsAny(S.myKeep()) : false });
+    accountId, trackStats: all || (accountId && accountId === S.myAccount() ? S.keepsAny(S.myKeep()) : false) });
   if (sidedMatch(r.format)) S.setSide(r, e, people.filter(x => x.side === "A").length <= people.filter(x => x.side === "B").length ? "A" : "B");
   return e;
 }

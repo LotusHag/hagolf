@@ -567,6 +567,25 @@ export const imageSize = () => IMAGE_SIZES.includes(imageChoice().size) ? imageC
  */
 export const cardKeepsStats = r => r.entries.some(e => e.trackStats);
 
+/** Whose putts and the rest this card keeps: "off", "me", "all", or "some" when picked player by player. */
+export function cardStatsWho(r) {
+  const people = r.entries.filter(e => e.role !== "team"), on = people.filter(e => e.trackStats), mine = mySeat(r);
+  if (!on.length) return "off";
+  if (on.length < people.length) return on.length === 1 && mine && mine.trackStats ? "me" : "some";
+  // on a card with only me on it, "me" and "everyone" look alike: the last answer on this phone tells them apart
+  return people.length === 1 && mine && !state.settings.statsEveryone ? "me" : "all";
+}
+
+export function setCardStats(r, who) {
+  const mine = mySeat(r);
+  for (const e of r.entries) { const on = who === "all" || who === "me" && e === mine; if (!!e.trackStats !== on) setTrackStats(r, e, on); }
+  state.settings.statsEveryone = who === "all";
+  // the score screen would otherwise switch my seat back to what Stats I keep says
+  state.settings.trackAsked = { ...(state.settings.trackAsked || {}), [r.id]: 1 };
+  if (who !== "off" && state.settings.statsRound) delete state.settings.statsRound[r.id];
+  save();
+}
+
 export function deleteRound(id) {
   const r = state.rounds.find(x => x.id === id);
   if (r) { r.deleted = true; delete state.settings.holes[id]; if (state.settings.statsRound) delete state.settings.statsRound[id]; touch("rounds", r); save(); }
