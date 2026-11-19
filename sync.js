@@ -158,10 +158,10 @@ const TABLES = {
   leagues: {
     // visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
     // them only through /league/<id>/visibility, so a phone editing the name offline cannot undo them.
-    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, season_start: g.seasonStart || null, created_by: g.createdBy || null,
+    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, season_start: g.seasonStart || null, show_golfers: !!g.showGolfers, created_by: g.createdBy || null,
       created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, brand: g.brand || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
     apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, seasonStart: r.season_start || null, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null, brand: r.brand || null,
-      visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0,
+      visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0, showGolfers: !!r.show_golfers,
       deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_rounds: {

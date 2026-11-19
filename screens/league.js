@@ -119,7 +119,7 @@ function boardRow(C, r, move, Sx) {
   const arrow = d === undefined ? "" : d === null ? `<i class="mv new">new</i>`
     : d > 0 ? `<i class="mv up">▲${d}</i>` : d < 0 ? `<i class="mv dn">▼${-d}</i>` : `<i class="mv">·</i>`;
   return `<a class="hrow lrow${mine ? " me" : ""}${r.place <= 3 ? " pod" : ""}" href="#league/${C.gid}/p/${esc(r.id)}" data-flip="${esc(r.id)}">
-    <span class="lp num">${r.place}</span>
+    <span class="lp num">${r.place}</span>${C.g.showGolfers ? avatar(r.name, "", F.lookOf(r.id)) : ""}
     <span class="t"><b>${esc(r.name)}</b><span>${esc(L.sub)}</span></span>
     ${arrow}<span class="v num">${esc(L.value)}<small class="u">${esc(L.unit)}</small></span></a>`;
 }
@@ -347,6 +347,13 @@ function boardView(C, keepScroll) {
     ${lastDay(C, move, nCards)}`;
   shell(g, g.name, body, { keepScroll, runs: C.runs, seg: "" });
   wireBoard(C, Sx);
+  freshGolfers(C, `#league/${gid}`, () => boardView(ctx(g), true));
+}
+
+/** A board that shows golfers asks for the members' latest ones, and draws again if any changed. */
+function freshGolfers(C, hash, redraw) {
+  if (!C.g.showGolfers || !A.signedIn()) return;
+  F.membersOf(C.gid).then(r => { if (r.looksChanged && location.hash === hash) redraw(); }).catch(() => {});
 }
 
 /**
@@ -374,6 +381,7 @@ function tableView(C, fmt, keep = false) {
     <div class="btnrow"><button class="btn small" data-act="board-cols">Every column ›</button>
       <button class="btn small" data-act="send-table" data-kind="${esc(kind)}">Send the table</button></div>`,
     { back: `#league/${C.gid}`, runs: C.runs, keepScroll: keep });
+  freshGolfers(C, location.hash, () => tableView(ctx(C.g), fmt, true));
   bind(async ev => {
     if (await common(C, ev)) return;
     const b = ev.target.closest("[data-act]");
@@ -759,6 +767,7 @@ function adminView(C, keep = false) {
       <div class="themes">${themeRadios("ltheme", leagueTheme(g) ? g.theme : "", { theme: appTheme(), label: "Each phone's own" })}</div>
       <div class="lmode"${g.theme ? "" : " hidden"}><label>Light or dark</label>${segs3("lmode", themePin(g.theme) || "auto", [["auto", "Like each phone"], ["light", "Light"], ["dark", "Dark"]])}</div>
     </details>
+    <label class="switch"><span>Golfers on the board<small>Each member's golfer beside their name, on screen only</small></span><input type="checkbox" id="showgolf" ${g.showGolfers ? "checked" : ""}></label>
     ${A.signedIn() ? `${sect("Who can read the table")}
       ${segs3("vis", vis, [["private", "Private"], ["link", "Link"], ["public", "Public"]])}
       <p class="muted small says">${VIS_SAYS[vis]}</p>
@@ -888,6 +897,7 @@ function wireSettings(C) {
   bindChips(look.querySelector(".themes"), v => { const pin = themePin(g.theme); g.theme = v ? (pin ? `${v}:${pin}` : v) : null; relook(); });
   const brand = document.getElementById("lbrand");
   if (brand) brand.addEventListener("change", () => { g.brand = brand.value || null; relook(); });
+  document.getElementById("showgolf").addEventListener("change", ev => { g.showGolfers = ev.target.checked; S.saveLeague(g); redraw(); });
   const hcp = document.getElementById("showhcp");
   if (hcp) hcp.addEventListener("change", async () => {
     hcp.disabled = true;

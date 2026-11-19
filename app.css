@@ -996,6 +996,7 @@ a.kv:active { background: var(--card2); }
 .lboard .lrow { align-items: flex-start; gap: 10px; }
 .lrow .lp { flex: none; width: 22px; padding-top: 2px; font-family: var(--fd); font-size: 0.9375rem; font-weight: 500; color: var(--ink3); }
 .lrow .t b { font-weight: 600; }
+.lrow .avatar { width: 34px; height: 34px; margin-top: 1px; font-size: 0.8125rem; }
 .lrow .t span { color: var(--ink2); }
 .lrow .v { align-self: center; text-align: right; }
 .lrow .v .u { display: block; margin-top: 1px; font-size: 0.625rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--ink3); }

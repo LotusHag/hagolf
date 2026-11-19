@@ -17,7 +17,7 @@ const emit = () => listeners.forEach(fn => fn());
 
 /** Asks the backend. Quiet about failure: the cached copy stands. */
 export async function refresh() {
-  if (!A.signedIn()) { if (held().friends.length) { keep(EMPTY); emit(); } return held(); }
+  if (!A.signedIn()) { try { localStorage.removeItem(LOOKS); } catch (e) { /* blocked */ } if (held().friends.length) { keep(EMPTY); emit(); } return held(); }
   try {
     const r = await A.api("/friends");
     const next = { ...EMPTY, ...r };
@@ -32,7 +32,21 @@ export function lookOf(id) {
   const me = A.account();
   if (me && me.id === id) return me.look || null;
   const h = held();
-  return ([...h.friends, ...h.incoming, ...h.outgoing].find(p => p.id === id) || {}).look || null;
+  return ([...h.friends, ...h.incoming, ...h.outgoing].find(p => p.id === id) || {}).look || memberLooks()[id] || null;
+}
+
+// society members' golfers, as the members list last gave them, so a board draws them at once and offline
+const LOOKS = "hagolf-member-looks";
+function memberLooks() {
+  try { return JSON.parse(localStorage.getItem(LOOKS)) || {}; } catch (e) { return {}; }
+}
+/** Keeps the golfers a members list carries. True when any of them changed. */
+function keepLooks(members) {
+  const had = memberLooks(), next = { ...had };
+  for (const m of members) if (m.id) { if (m.look) next[m.id] = m.look; else delete next[m.id]; }
+  if (JSON.stringify(next) === JSON.stringify(had)) return false;
+  try { localStorage.setItem(LOOKS, JSON.stringify(next)); } catch (e) { /* full */ }
+  return true;
 }
 
 export const search = q => A.api(`/friends/search?q=${encodeURIComponent(q)}`);
@@ -81,7 +95,11 @@ export const revokeInvite = (leagueId, id) => A.api(`/league/${encodeURIComponen
 export const joinLeague = token => A.api("/league/join", { token });
 export const declineInvite = token => A.api("/league/decline", { token });
 export const leaveLeague = leagueId => A.api(`/league/${encodeURIComponent(leagueId)}/leave`, {});
-export const membersOf = leagueId => A.api(`/league/${encodeURIComponent(leagueId)}/members`);
+export async function membersOf(leagueId) {
+  const r = await A.api(`/league/${encodeURIComponent(leagueId)}/members`);
+  r.looksChanged = keepLooks(r.members || []);
+  return r;
+}
 export const candidatesOf = leagueId => A.api(`/league/${encodeURIComponent(leagueId)}/candidates`);
 export const claim = (leagueId, name) => A.api(`/league/${encodeURIComponent(leagueId)}/claim`, { name });
 export const unclaim = (leagueId, accountId = null) => A.api(`/league/${encodeURIComponent(leagueId)}/unclaim`, accountId ? { accountId } : {});
