@@ -386,15 +386,17 @@ function render(groups, C, S, frame, ground, size, seedKey) {
   return `<svg viewBox="0 0 48 48" aria-hidden="true" style="width:100%;height:100%;display:block;stroke:none"><defs><clipPath id="${id}c">${frameShape(frame, S)}</clipPath>${defs}</defs><g clip-path="url(#${id}c)"><g fill="${ground}">${frameShape(frame, S)}</g>${out}${stitched}</g></svg>`;
 }
 
-/** A golfer from its parts, in theme T, drawn for about `size` pixels. */
-export function golferSvg(sp, T, size) {
+/** A golfer from its parts, in theme T, drawn for about `size` pixels; `facing` 1 or -1 turns them right or left. */
+export function golferSvg(sp, T, size, facing = 0) {
   const S = style(T), g = S.ground;
   const C = { top: inkOf(T, "top", sp.top), bottom: inkOf(T, "bottom", sp.bottom), hat: inkOf(T, "hat", sp.hat), hair: inkOf(T, "hair", sp.hairc), skin: inkOf(T, "skin", sp.skin),
     ball: inkOf(T, "ball", "white"), flag: T.UNDER, club: mix(T.INK_3, g, 0.15), clubhead: T.INK_2 };
   // a cap is small and sits at the top against the frame, so it keeps a little more contrast than the clothes
   for (const k in C) C[k] = settle(S, C[k], g, k, k === "hat" ? 1.35 : 1.25);
-  const key = [sp.pose, sp.fig, sp.legs, sp.head, sp.hair].join(".");
-  return render(place(golfer(sp), S.frame, `${key}.${S.frame}`, S.bulk), C, S, S.frame, g, size, key);
+  const key = [sp.pose, sp.fig, sp.legs, sp.head, sp.hair].join("."), P = POSES[sp.pose];
+  const turn = !!facing && facing !== (P.look || P.face);
+  const groups = turn ? golfer(sp).map(gr => ({ ...gr, prims: gr.prims.map(flip) })) : golfer(sp);
+  return render(place(groups, S.frame, `${key}.${S.frame}${turn ? ".m" : ""}`, S.bulk), C, S, S.frame, g, size, key);
 }
 
 /** A society's crest, in theme T: on a bold field in a theme that fills its marks, on the pale frame in one that draws them. */

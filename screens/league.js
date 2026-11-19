@@ -624,6 +624,10 @@ function playerView(C, pid, keep = false) {
 }
 
 // ---------------------------------------------------------------- two players
+// the two golfers face each other across the score
+const vsFace = (C, id, name, side, facing) => C.g.showGolfers && F.lookOf(id) ? avatar(name, "big", F.lookOf(id), facing)
+  : `<span class="vsdisc ${side}">${esc(inits(name))}</span>`;
+
 function vsView(C, a, b) {
   const nameOf = id => { for (const M of C.Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
   if (!C.members.includes(a) || !C.members.includes(b) || a === b) {
@@ -655,9 +659,9 @@ function vsView(C, a, b) {
     const widest = H.winsA >= H.winsB ? H.widestA : H.widestB;
     const num = v => v === null ? "NR" : v;
     const hero = `<div class="card vscard"><div class="modeline mid"><span class="modetag">Stroke play</span><span>rounds won on ${esc(basisWord(basis))}</span></div><div class="vsverdict">${verdict}</div>
-      <div class="vs"><div class="vsside"><span class="vsdisc a">${esc(inits(A_))}</span><span class="vsname">${esc(A_)}</span></div>
+      <div class="vs${C.g.showGolfers ? " figs" : ""}"><div class="vsside">${vsFace(C, a, A_, "a", 1)}</div>
         <div class="vsnum"><b class="num">${H.winsA}</b><s>&#8211;</s><b class="num">${H.winsB}</b><small>rounds won · ${H.ties ? plural(H.ties, "halved") : "none halved"}</small></div>
-        <div class="vsside"><span class="vsdisc b">${esc(inits(B_))}</span><span class="vsname">${esc(B_)}</span></div></div>
+        <div class="vsside">${vsFace(C, b, B_, "b", -1)}</div></div>
       <div class="tug"><i class="a" style="width:${pc(H.winsA)}"></i><i class="t" style="width:${pc(H.ties)}"></i><i class="b" style="width:${pc(H.winsB)}"></i></div>
       <div class="vsline">${plural(H.rounds.length, "round")} together &middot; ${streak}</div></div>`;
     const formStrip = `${h2tip("Round by round", `Every round they played together, oldest first. Each square carries the initials of whoever took it on ${esc(basisWord(basis))}; = means they tied. Tap one to see that card.`)}<div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${num(r.scoreA)}&#8211;${num(r.scoreB)}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A_ : B_))}</a>`).join("")}</div>`;
@@ -681,6 +685,7 @@ function vsView(C, a, b) {
     ${C.members.length > 2 ? `${sect(`${fA} against`)}<div class="rows">${C.members.filter(m => m !== a && m !== b).slice(0, 5).map(m => `<a class="hrow" href="#league/${C.gid}/vs/${esc(a)}/${esc(m)}">
       <span class="t"><b>${esc(firstName(nameOf(m)))}</b></span><span class="chev">›</span></a>`).join("")}</div>` : ""}`,
     { runs: C.runs, seg: "vs" });
+  freshGolfers(C, location.hash, () => vsView(ctx(C.g), a, b));
   bind(async ev => {
     if (await common(C, ev)) return;
     const el = ev.target.closest("[data-act]");
@@ -767,7 +772,7 @@ function adminView(C, keep = false) {
       <div class="themes">${themeRadios("ltheme", leagueTheme(g) ? g.theme : "", { theme: appTheme(), label: "Each phone's own" })}</div>
       <div class="lmode"${g.theme ? "" : " hidden"}><label>Light or dark</label>${segs3("lmode", themePin(g.theme) || "auto", [["auto", "Like each phone"], ["light", "Light"], ["dark", "Dark"]])}</div>
     </details>
-    <label class="switch"><span>Golfers on the board<small>Each member's golfer beside their name, on screen only</small></span><input type="checkbox" id="showgolf" ${g.showGolfers ? "checked" : ""}></label>
+    <label class="switch"><span>Golfers on the board<small>Each member's golfer beside their name on the board and head to head, on screen only</small></span><input type="checkbox" id="showgolf" ${g.showGolfers ? "checked" : ""}></label>
     ${A.signedIn() ? `${sect("Who can read the table")}
       ${segs3("vis", vis, [["private", "Private"], ["link", "Link"], ["public", "Public"]])}
       <p class="muted small says">${VIS_SAYS[vis]}</p>

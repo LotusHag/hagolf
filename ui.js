@@ -588,9 +588,9 @@ window.addEventListener("resize", cueTabs);
 let shown = null;
 const onScreen = () => shown || appTheme();
 /** A person's face: their golfer when they have made one, else their initials. */
-export const avatar = (name, cls = "", look = null) => {
+export const avatar = (name, cls = "", look = null, facing = 0) => {
   const sp = parseLook(look);
-  return sp ? `<span class="avatar fig ${cls}" aria-hidden="true">${golferSvg(sp, onScreen(), cls.includes("big") ? 64 : 40)}</span>`
+  return sp ? `<span class="avatar fig ${cls}" aria-hidden="true">${golferSvg(sp, onScreen(), cls.includes("big") ? 64 : 40, facing)}</span>`
     : `<span class="avatar ${cls}" aria-hidden="true">${esc(inits(name) || "?")}</span>`;
 };
 // only an image the phone itself shrank is drawn, so a league row can never carry a script into a src
