@@ -124,7 +124,7 @@ function derive(T) {
 }
 
 // The hand-operated board's own colours, the same in both versions of the theme that draws on it
-const BOARD = { cell: "#FBFAF4", ink: "#1A1A1A", under: "#C8102E", over: "#006747" };
+const BOARD = { cell: "#FBFAF4", ink: "#1A1A1A", under: "#94700A", over: "#006747" };
 
 export function on(T, fill) {
   return lum(fill) > 0.30 ? T.TEXT_ON_LIGHT : T.TEXT_ON_DARK;
