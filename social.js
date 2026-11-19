@@ -27,6 +27,13 @@ export async function refresh() {
 }
 
 export const friendById = id => held().friends.find(f => f.id === id) || null;
+/** The golfer an account has made, where this phone knows it: mine, a friend's, or one asking or asked. */
+export function lookOf(id) {
+  const me = A.account();
+  if (me && me.id === id) return me.look || null;
+  const h = held();
+  return ([...h.friends, ...h.incoming, ...h.outgoing].find(p => p.id === id) || {}).look || null;
+}
 
 export const search = q => A.api(`/friends/search?q=${encodeURIComponent(q)}`);
 export const game = id => A.api(`/friends/${encodeURIComponent(id)}/game`);

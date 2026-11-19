@@ -45,8 +45,8 @@ export const myBrands = () => ((A.account() && A.account().clubs) || []).filter(
 export const brandForCourse = slug => myBrands().find(b => (b.courses || []).includes(slug)) || null;
 
 // ---------------------------------------------------------------- the colours, as build.py mixes them
-const SCREEN_SCORES = { under: "#1F8A5B", par: "#5B6A61", bogey: "#D9931A", double: "#C8433A", pick: "#8A6D3B", danger: "#C8433A", ok: "#2E8B57", gold: "#E5A80B",
-  "sc-eagle": "#073B26", "sc-birdie": "#1F8A5B", "sc-par": "#9AA1A5", "sc-bogey": "#E0A020", "sc-double": "#C4362C", "sc-triple": "#78221C" };
+const FIXED = { pick: "#8A6D3B", danger: "#C8433A", ok: "#2E8B57", gold: "#E5A80B" };
+const STEPS = ["eagle", "birdie", "par", "bogey", "double", "triple"];
 const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const hexa = c => "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("").toUpperCase();
 const mix = (a, b, t) => { const x = rgb(a), y = rgb(b); return hexa(x.map((v, i) => v + (y[i] - v) * t)); };
@@ -54,18 +54,22 @@ const luminance = h => { const [r, g, b] = rgb(h).map(c => { c /= 255; return c 
 const contrast = (a, b) => { const la = luminance(a), lb = luminance(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
 const readable = (fill, over, ink, target = 4.5) => { for (const t of [0, .15, .3, .45, .6, .75, .9, 1]) { const c = mix(fill, ink, t); if (contrast(c, over) >= target) return c; } return ink; };
 
-/** The CSS custom properties app.css reads, mixed from one theme's tokens: build.py's screen_palette, in JS. */
+/** build.py's screen_palette, in JS, over a partner's colours. The score steps stay the base theme's, which build.py
+ * checked; a partner cannot change them, so only the writing mixed from them is worked out again. */
 export function screenPalette(t) {
   const bg = t.BG, ink = t.INK, dark = luminance(bg) < 0.45;
   const on = fill => luminance(fill) > 0.30 ? t.TEXT_ON_LIGHT : t.TEXT_ON_DARK;
-  const ui = Object.fromEntries(Object.entries(SCREEN_SCORES).map(([k, v]) => [k, dark ? mix(v, ink, 0.32) : v]));
+  const legible = c => readable(c, [bg, t.PANEL, t.PANEL_2].reduce((a, s) => contrast(c, s) < contrast(c, a) ? s : a), ink);
+  const ui = Object.fromEntries(Object.entries(FIXED).map(([k, v]) => [k, dark ? mix(v, ink, 0.32) : v]));
+  for (const k of STEPS) ui[`sc-${k}`] = t.ui[`sc-${k}`];
   return Object.assign(ui, {
-    bg, card: t.PANEL, card2: t.PANEL_2, line: t.LINE, line2: mix(t.LINE, ink, 0.14), ink, ink2: t.INK_2, ink3: t.INK_3,
+    bg, card: t.PANEL, card2: t.PANEL_2, line: t.LINE, line2: mix(t.LINE, ink, 0.14), ink, ink2: t.INK_2, ink3: legible(t.INK_3),
+    "sc-birdie-ink": legible(ui["sc-birdie"]), "sc-bogey-ink": legible(ui["sc-bogey"]),
     green: t.ACCENT, green2: t.ACCENT_2 || t.ACCENT, "green-dark": mix(t.ACCENT, "#000000", 0.20), "green-soft": mix(t.ACCENT, bg, 0.86), "green-ink": on(t.ACCENT),
     "green-hi": readable(ui.gold, t.ACCENT, on(t.ACCENT)), bronze: t.BRONZE, "on-bronze": on(t.BRONZE),
-    "on-ink": on(ink), "on-double": on(ui.double), "on-gold": on(ui.gold),
-    "gold-soft": mix(SCREEN_SCORES.gold, bg, 0.86), "gold-ink": dark ? ui.gold : mix(SCREEN_SCORES.gold, "#000000", 0.55),
-    "danger-soft": mix(SCREEN_SCORES.danger, bg, 0.88), scheme: dark ? "only dark" : "only light",
+    "on-ink": on(ink), "on-gold": on(ui.gold),
+    "gold-soft": mix(FIXED.gold, bg, 0.86), "gold-ink": dark ? ui.gold : mix(FIXED.gold, "#000000", 0.55),
+    "danger-soft": mix(FIXED.danger, bg, 0.88), scheme: dark ? "only dark" : "only light",
   });
 }
 

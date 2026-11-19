@@ -4,6 +4,7 @@
 import { DATA } from "./data.js";
 import { STAT_SWITCH_KEYS, emptyStat, blankStat, UNLISTED_TEE } from "./model.js";
 import { mirror } from "./idb.js";
+import { crestOf, crestKey } from "./avatar.js";
 
 const KEY = "hagolf-v2";
 const OLD_KEYS = ["hagolf-v1", "apeliotes-golf-v1"];
@@ -11,7 +12,10 @@ const DIRTY_KEY = "hagolf-dirty";
 
 export const state = load();
 let onSave = null;
-const now = () => new Date().toISOString();
+// newest-wins only works if every phone tells the same time, so a phone whose clock is off writes the server's
+let clockSkew = 0;
+export const setServerTime = ms => { const off = ms - Date.now(); clockSkew = Math.abs(off) > 60000 ? off : 0; };
+const now = () => new Date(Date.now() + clockSkew).toISOString();
 
 /** The sync module registers here so every save schedules a push. */
 export function setOnSave(fn) { onSave = fn; }
@@ -569,6 +573,19 @@ export function deleteRound(id) {
   if (r && (courseBy(r.course) || {}).unlisted) removeCourse(r.course);
 }
 
+export function restoreRound(id) {
+  const r = state.rounds.find(x => x.id === id);
+  if (!r) return;
+  r.deleted = false;
+  touch("rounds", r);
+  const c = state.courses.find(x => x.slug === r.course);
+  if (c && c.deleted && c.data && c.data.unlisted) { c.deleted = false; touch("courses", c, c.slug); }
+  save();
+}
+
+const DELETED_SHOWN_FOR = 30 * 864e5;
+export const recentlyDeleted = () => state.rounds.filter(r => r.deleted && !r.stub && Date.now() - new Date(r.updated_at).getTime() < DELETED_SHOWN_FOR);
+
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */
 export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1, trackStats = null, side = null, accountId = undefined }) {
   const known = findPlayer(name);  // a scan of an old card must not rewrite the index they play off today
@@ -789,6 +806,7 @@ export const cleanFormats = f => { const x = Array.isArray(f) ? [...new Set(f)].
 
 export function createLeague(name, bestN = 0, createdBy = null, formats = ["stableford"]) {
   const g = { id: uid(), owner: myAccount(), name, bestN: Number(bestN) || 0, createdBy, created: today(), deleted: false, formats: cleanFormats(formats), theme: null, icon: null, brand: null };
+  g.icon = crestKey(crestOf(g));   // decided now and kept, so a later rename never changes it
   state.leagues.push(g);
   touch("leagues", g);
   save();

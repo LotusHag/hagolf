@@ -55,6 +55,19 @@ const hexa = c => "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toS
 /** `t` of b into a, straight in sRGB: close enough for a tint or a hairline, and it needs no colour library. */
 export const mix = (a, b, t) => { const x = chans(a), y = chans(b); return hexa(x.map((v, i) => v + (y[i] - v) * t)); };
 
+// OKLab, for the few places that must keep a colour's lightness apart from its hue (a golfer's shirt in a theme's ink)
+const lin = v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+const gam = v => { v = Math.min(1, Math.max(0, v)); return v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055; };
+export function oklab(hex) {
+  const [r, g, b] = chans(hex).map(v => lin(v / 255));
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+export function fromOklab([L, a, b]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return hexa([4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s].map(v => gam(v) * 255));
+}
+
 function toHsl(h) {
   const [r, g, b] = chans(h).map(v => v / 255);
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
@@ -828,7 +841,7 @@ export function legend(ax, x, y, items, fontsize = 8, sw = 0.028, sh = 0.018, pa
 
 // ---------------------------------------------------------------- marks drawn by hand
 // Seeded by where the mark sits, so a sheet drawn twice comes out the same and no two rings on it match.
-function wobble(seed) {
+export function wobble(seed) {
   let s = (Math.abs(Math.floor(seed * 1000)) % 233279) + 1;
   return () => (s = (s * 9301 + 49297) % 233280) / 233280 - 0.5;
 }

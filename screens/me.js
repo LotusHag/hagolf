@@ -5,11 +5,12 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, lookTitle, arrive, paint, themeHere, lookMode, parseHI, hiOk, app, ICONS, roundWhere } from "../ui.js";
+import { TEXT_SIZES, page, bind, esc, go, toast, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, lookTitle, arrive, paint, themeHere, lookMode, parseHI, hiOk, app, ICONS, roundWhere } from "../ui.js";
 import { fmtIndex, STAT_SWITCHES } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
 import { keepPage } from "./mine.js";
+import { CLOTH, HAIR, STANCES, BLANK, swatchOf, parseLook, lookString } from "../avatar.js";
 
 const row = (href, icon, title, sub = "") => `<a href="${href}"><span class="lead">${ICONS[icon]}<div><div class="name">${esc(title)}</div>${sub ? `<div class="muted small">${sub}</div>` : ""}</div></span><span class="chev">›</span></a>`;
 
@@ -30,10 +31,11 @@ export function me(section) {
   const keepWord = !S.keepsAny(keep) ? "Simple: score only" : S.keepPreset(keep) === "all" ? "Advanced" : `Advanced: ${STAT_SWITCHES.filter(k => keep[k.key]).map(k => k.short).join(", ")}`;
   const clubs = S.bag().length;
   page("Me", `
-    ${acct ? `<div class="person">${avatar(acct.name || "?", "big")}<div class="who"><div class="name">${esc(acct.name || "No name yet")}</div>
+    ${acct ? `<div class="person"><a href="#me/golfer" aria-label="Your golfer">${avatar(acct.name || "?", "big", acct.look)}</a><div class="who"><div class="name">${esc(acct.name || "No name yet")}</div>
       <div class="handle">${[acct.hi !== null && acct.hi !== undefined ? `index ${esc(fmtIndex(Number(acct.hi)))}` : "no index yet"].filter(Boolean).join(" · ")}</div></div><a class="btn small" href="#me/account">Edit</a></div>`
       : `<div class="card"><div class="muted small">Not signed in.</div><a class="btn primary" href="#welcome" style="margin-top:8px">Sign in</a></div>`}
     <div class="list">
+      ${acct ? row("#me/golfer", "golf", "Your golfer", acct.look ? "How friends and societies see you" : "Initials for now: make one") : ""}
       ${row("#bag", "bag", "My bag", clubs ? `${plural(clubs, "club")} with distances` : "Your club distances, on every hole")}
       ${acct ? row("#people", "people", "Friends", held.incoming.length ? `${plural(held.incoming.length, "request")} waiting` : `${plural(held.friends.length, "friend")}`) : ""}
       ${row("#me/keep", "chart", "Stats I keep", esc(keepWord))}
@@ -115,6 +117,42 @@ function account() {
   });
 }
 
+// ---------------------------------------------------------------- your golfer
+// What you are being dressed in, until Save sends it to the account; leaving and coming back starts again from the account.
+let draft = null;
+function golfer(keep = false) {
+  const a = A.account();
+  if (!a) return go("#me");
+  if (!keep) draft = parseLook(a.look) || { ...BLANK, fig: a.gender === "f" ? "f" : "m" };
+  const sp = draft, T = themeHere(), on = (k, v) => String(sp[k]) === String(v);
+  const label = t => `<p class="pickline">${t}</p>`;
+  const segs = (k, opts) => `<div class="segpick">${opts.map(([v, l]) => `<button data-act="set" data-k="${k}" data-v="${v}" class="${on(k, v) ? "on" : ""}" aria-pressed="${on(k, v)}">${l}</button>`).join("")}</div>`;
+  const swatches = (k, slot, names) => `<div class="swatches">${names.map(n => `<button data-act="set" data-k="${k}" data-v="${n}" style="--c:${swatchOf(T, slot, n)}" class="${on(k, n) ? "on" : ""}" aria-pressed="${on(k, n)}" aria-label="${slot === "skin" ? `skin tone ${n}` : n}"><i></i></button>`).join("")}</div>`;
+  const cloth = Object.keys(CLOTH), legs = { trousers: "Trousers", shorts: "Shorts", skirt: "Skirt" };
+  sub("Your golfer", `
+    <div class="person">${avatar(a.name, "big", lookString(sp))}<div class="who"><div class="name">${esc(a.name || "")}</div><div class="handle">How friends and societies see you, drawn by whichever theme they use</div></div></div>
+    <div class="figform">${label("Golfer")}${segs("fig", [["m", "Man"], ["f", "Woman"]])}
+    ${label("Stance")}<div class="figgrid">${Object.entries(STANCES).map(([k, l]) => `<button class="figpick ${on("pose", k) ? "on" : ""}" data-act="set" data-k="pose" data-v="${k}" aria-pressed="${on("pose", k)}">${avatar("", "", lookString({ ...sp, pose: k }))}<span>${l}</span></button>`).join("")}</div>
+    ${label("Shirt")}${swatches("top", "top", cloth)}
+    ${label("Below")}${segs("legs", Object.entries(legs))}
+    ${label(legs[sp.legs])}${swatches("bottom", "bottom", cloth)}
+    ${label("On the head")}${segs("head", [["cap", "Cap"], ["visor", "Visor"], ["none", "Nothing"]])}
+    ${sp.head !== "none" ? `${label(sp.head === "cap" ? "Cap" : "Visor")}${swatches("hat", "hat", cloth)}` : ""}
+    ${label("Hair")}${segs("hair", [["short", "Short"], ["tied", "Tied back"], ["long", "Long"]])}
+    ${label("Hair colour")}${swatches("hairc", "hair", Object.keys(HAIR))}
+    ${label("Skin")}${swatches("skin", "skin", [1, 2, 3, 4, 5])}</div>
+    <div class="btnrow" style="margin-top:20px"><button class="btn primary" data-act="save">Save</button>${a.look ? `<button class="btn" data-act="initials">Use my initials</button>` : ""}</div>`, { keepScroll: keep });
+  bind(async ev => {
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    if (b.dataset.act === "set") { draft = { ...sp, [b.dataset.k]: b.dataset.k === "skin" ? Number(b.dataset.v) : b.dataset.v }; return golfer(true); }
+    b.disabled = true;
+    b.textContent = "Saving…";
+    try { await A.update({ look: b.dataset.act === "save" ? lookString(sp) : null }); toast("Saved"); golfer(); }
+    catch (e) { toast(e.message, 5000); golfer(true); }
+  });
+}
+
 // ---------------------------------------------------------------- updates
 function updatesSettings() {
   const a = A.account();
@@ -157,13 +195,16 @@ function look() {
   sub("Appearance", `<p class="muted small" style="margin:4px 4px 10px">The look of the app itself, and of every poster and card it makes. A society that has picked its own wears that instead.</p>
     <h2>Light or dark</h2>
     <div class="segpick">${[["auto", "Like the phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<button data-act="mode" data-v="${v}" class="${lookMode() === v ? "on" : ""}">${l}</button>`).join("")}</div>
+    <h2>Text size</h2>
+    <div class="segpick">${TEXT_SIZES.map(([v, l]) => `<button data-act="text" data-v="${v}" class="${(S.state.settings.textSize || 1) === v ? "on" : ""}">${l}</button>`).join("")}</div>
     <h2>Theme</h2>
     <div class="themes">${themeRadios("apptheme", appTheme().name)}</div>`);
   bindChips(app.querySelector(".themes"), v => { S.setSetting("theme", v); S.setSetting("themeChosen", true); paint(themeHere()); arrive(); toast("Saved"); });
   bind(ev => {
-    const b = ev.target.closest("[data-act=mode]");
+    const b = ev.target.closest("[data-act=mode], [data-act=text]");
     if (!b) return;
-    S.setSetting("mode", b.dataset.v);
+    if (b.dataset.act === "text") S.setSetting("textSize", Number(b.dataset.v));
+    else S.setSetting("mode", b.dataset.v);
     paint(themeHere());
     look();
   });
@@ -189,11 +230,14 @@ function courses() {
 function data() {
   const acct = A.account();
   const done = S.rounds().filter(r => r.status === "done");
+  const gone = S.recentlyDeleted().filter(r => r.status !== "done" || S.iPlayed(r));
   sub("Data and backup", `
     <div class="card"><div class="muted small">${S.players().length} players · ${S.rounds().length} rounds · ${S.leagues().length} societies${S.state.settings.lastExport ? ` · last export ${S.state.settings.lastExport.slice(0, 16).replace("T", " ")}` : ""}</div>
       <div class="two"><button class="btn primary" data-act="export">Export backup</button><label class="btn">Import backup<input type="file" id="imp" accept="application/json,.json" hidden></label></div></div>
     ${acct ? `<h2>Your account</h2><div class="card"><p class="muted small" style="margin:0 0 8px">Everything the account can see, as one file; or the account and everything that is its own, gone for good. Other people's records of you stay theirs, with your name taken off.</p>
       <div class="two"><button class="btn" data-act="export-me">Download my data</button><button class="btn danger" data-act="erase-me">Delete my account</button></div></div>` : ""}
+    ${gone.length ? `<h2>Recently deleted</h2>
+    <div class="list">${gone.map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(roundWhere(r))} · ${esc(fmtDate(r.date))}</div></div><button class="btn small" data-act="restore" data-rid="${r.id}">Restore</button></div>`).join("")}</div>` : ""}
     <h2>For the desktop kit</h2>
     <p class="muted small" style="margin:-4px 4px 8px">A round as a tournament.yaml file for the desktop scripts.</p>
     <div class="list">${done.slice(0, 20).map(r => `<div><div><div class="name">${esc(r.name)}</div><div class="muted small">${esc(roundWhere(r))} · ${esc(fmtDate(r.date))}</div></div><button class="btn small" data-act="yaml" data-rid="${r.id}">tournament.yaml</button></div>`).join("") || `<div class="muted small">No finished rounds yet.</div>`}</div>
@@ -204,6 +248,7 @@ function data() {
     const act = b.dataset.act;
     if (act === "export") { await saveFiles([new File([S.exportJSON()], `hagolf-backup-${S.today()}.json`, { type: "application/json" })], "Hagolf backup"); return data(); }
     if (act === "yaml") { const r = S.getRound(b.dataset.rid); return saveFiles([new File([S.toYAML(r)], `${slugFile(r.name).toLowerCase()}-tournament.yaml`, { type: "text/plain" })], r.name); }
+    if (act === "restore") { S.restoreRound(b.dataset.rid); toast("Restored on every phone"); return data(); }
     if (act === "clear-q") { S.state.quarantine = []; S.save(); return data(); }
     if (act === "export-me") {
       try { const d = await A.api("/account/export"); await saveFiles([new File([JSON.stringify(d, null, 1)], `hagolf-${d.exported.slice(0, 10)}.json`, { type: "application/json" })], "My Hagolf data"); } catch (e) { toast(e.message, 5000); }
@@ -263,4 +308,4 @@ function about() {
     <div class="list">${row("#legal/privacy", "shield", "Privacy policy")}${row("#legal/terms", "info", "Terms")}</div>`);
 }
 
-const SECTIONS = { account, updates: updatesSettings, privacy: privacySettings, look, scoring: () => go("#me/keep"), keep: keepPage, courses, data, club: () => go("#partners"), backend, about };
+const SECTIONS = { account, golfer: () => golfer(), updates: updatesSettings, privacy: privacySettings, look, scoring: () => go("#me/keep"), keep: keepPage, courses, data, club: () => go("#partners"), backend, about };

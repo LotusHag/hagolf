@@ -25,6 +25,23 @@ export function haptic() {
   else if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) { /* not allowed here */ } }
 }
 
+// The screen stays on while a card is being scored or a board is on the wall; the phone lets go when the app is hidden, so it is asked again on return.
+let wake = null, wantAwake = false;
+async function holdAwake() {
+  if (!wantAwake || wake || document.visibilityState !== "visible" || !navigator.wakeLock) return;
+  try {
+    wake = await navigator.wakeLock.request("screen");
+    wake.addEventListener("release", () => { wake = null; });
+    if (!wantAwake) keepAwake(false);
+  } catch (e) { wake = null; }
+}
+export function keepAwake(on) {
+  wantAwake = on;
+  if (on) holdAwake();
+  else if (wake) { wake.release().catch(() => {}); wake = null; }
+}
+document.addEventListener("visibilitychange", holdAwake);
+
 // A universal link tapped elsewhere opens the app, not the page: follow it, keeping the fragment the route lives in.
 plugin("App")?.addListener?.("appUrlOpen", ({ url }) => {
   let u;

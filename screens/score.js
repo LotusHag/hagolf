@@ -214,7 +214,8 @@ export function score(rid, hArg) {
     ${matchStrip(r, c, h, gf)}
     ${noPar ? `<p class="muted center">What par is hole ${c.first_hole + h}? Pick it above and the scores open.</p>`
       : `<div class="prows" id="rows">${shown.map(([e, i]) => block(r, c, e, i, h, kinds)).join("")}</div>`}
-    ${seats.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}`;
+    ${seats.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}
+    <p class="sr" id="said" aria-live="polite"></p>`;
   const onward = h < n - 1 ? `Hole ${c.first_hole + h + 1}` : "Finish";
   const done = () => { const p = seats.filter(x => (x.fromHole || 1) - 1 <= h); return p.length && p.every(x => x.scores[h] !== null); };
   const bar = `${h === 0 ? `<a class="btn half" href="#players/${rid}">‹ Players</a>` : `<a class="btn half" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`}
@@ -286,6 +287,8 @@ export function score(rid, hArg) {
       else return;
       if (e.role !== "team") seedStats(r, e, h, c, kinds);
       refresh(i);
+      const said = document.getElementById("said");
+      if (said) said.textContent = `${e.name}: ${e.scores[h]}, ${Mo.SCORE_BUCKETS[Mo.scoreBucket(e.scores[h] - par)].label.toLowerCase()}`;
       return land(document.querySelector(`.prow[data-i="${i}"] .sval .mk`));
     }
     if (act === "x-inc" || act === "x-dec") { statStep(r, e, h, b.dataset.k, act === "x-inc" ? 1 : -1, c, kinds); return refresh(i); }

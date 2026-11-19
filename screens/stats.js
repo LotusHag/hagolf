@@ -3,7 +3,7 @@ import * as S from "../store.js";
 import { esc, plural, firstName, ordinal, fmtDate, shortDate, courseBy, h2tip as tipHead, infoBtn, safeCompute, ui, ICONS } from "../ui.js";
 import { compute, computeNine, leagueStats, rivals, SCORE_BUCKETS, fmtToPar, fmtSigned, fix, strokesGained, leagueCards, statReadings, STRIP_KEYS, NO_SCORE, isTeamFormat, isMatchFormat } from "../model.js";
 import { sgWords } from "./extras.js";
-import { H2H_BASES, basisUnit } from "./formats.js";
+import { H2H_BASES, basisUnit, seasonRounds, shownSeason } from "./formats.js";
 import { nineName } from "./play.js";
 import { shotsBody, barRows, markKey, lead, leads } from "./shots.js";
 import { trendsBody } from "./trends.js";
@@ -37,7 +37,7 @@ export function donut(counts, big, small) {
   }).join("");
   // fitDonuts() in charts.js wraps or shrinks these once the theme's font is known
   return `<svg class="donut" viewBox="0 0 140 140" role="img" aria-label="Scoring distribution, given as numbers beside it">
-    <g transform="rotate(-90 70 70)">${total ? arcs : `<circle class="dseg par" cx="70" cy="70" r="${R}" stroke-width="${W}"></circle>`}</g>
+    <g transform="rotate(-90 70 70)">${total ? arcs : `<circle class="dseg none" cx="70" cy="70" r="${R}" stroke-width="${W}"></circle>`}</g>
     <text class="dbig" x="70" y="70">${esc(big)}</text><text class="dsmall" x="70" y="89">${esc(small)}</text></svg>`;
 }
 function donutKey(counts, per = 0, unit = "round") {
@@ -376,8 +376,8 @@ export function playerRounds(pid) {
 }
 
 export function leagueRounds(gid) {
-  const ids = new Set(S.leagueRoundIds(gid));
-  return S.rounds().filter(r => ids.has(r.id) && r.status === "done").sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const g = S.getLeague(gid);
+  return seasonRounds(g, shownSeason(g)).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 }
 
 function ninesFieldBlock(gid, rounds, only = null) {

@@ -31,23 +31,23 @@ export function people() {
   const me = S.me();
   const friendIds = new Set(held.friends.map(f => f.id));
   const contacts = S.players().filter(p => (!me || p.id !== me.id) && !friendIds.has(p.linkedAccount)).sort((a, b) => a.name.localeCompare(b.name));
-  const personRow = (p, sub, href, extra = "") => `<a href="${href}"><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">${esc(sub)}</div></div></span>${extra}<span class="chev">›</span></a>`;
+  const personRow = (p, sub, href, extra = "") => `<a href="${href}"><span class="lead">${avatar(p.name, "", p.look)}<div><div class="name">${esc(p.name)}</div><div class="muted small">${esc(sub)}</div></div></span>${extra}<span class="chev">›</span></a>`;
   const friends = [...held.friends].sort((x, y) => lastDate(y).localeCompare(lastDate(x)) || x.name.localeCompare(y.name));
   const q = ui.search || "";
   const found = ui.found;
   page("People", `
     ${acct ? `<input id="q" class="search" placeholder="Find someone you've played with" value="${esc(q)}" autocomplete="off" autocapitalize="off">
-    ${q.trim().length >= 2 ? `<div class="list" id="found">${found === null ? `<div class="muted small">Searching…</div>` : found.length ? found.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">${p.league ? "in a society with you" : "played with you"}</div></div></span>
+    ${q.trim().length >= 2 ? `<div class="list" id="found">${found === null ? `<div class="muted small">Searching…</div>` : found.length ? found.map(p => `<div><span class="lead">${avatar(p.name, "", p.look)}<div><div class="name">${esc(p.name)}</div><div class="muted small">${p.league ? "in a society with you" : "played with you"}</div></div></span>
         ${p.state === "accepted" ? `<a class="btn small" href="#person/${esc(p.id)}">Friend</a>` : p.state === "requested" ? `<span class="muted small">Asked</span>` : `<button class="btn small primary" data-act="request" data-id="${esc(p.id)}">Add</button>`}</div>`).join("")
         : `<div class="muted small">Nobody by that name you've shared a card or a society with. Send them your link instead.</div>`}</div>` : ""}` : `<div class="banner"><a href="#welcome">Sign in</a> to add friends.</div>`}
-    ${held.incoming.length ? `<h2>Requests</h2><div class="list">${held.incoming.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">wants to be your friend</div></div></span>
+    ${held.incoming.length ? `<h2>Requests</h2><div class="list">${held.incoming.map(p => `<div><span class="lead">${avatar(p.name, "", p.look)}<div><div class="name">${esc(p.name)}</div><div class="muted small">wants to be your friend</div></div></span>
       <span class="btnrow" style="margin:0;flex:none"><button class="btn small primary" data-act="accept" data-id="${esc(p.id)}">Accept</button><button class="btn small" data-act="decline" data-id="${esc(p.id)}">No</button></span></div>`).join("")}</div>` : ""}
     ${friends.length ? `<h2>Friends</h2><div class="list">${friends.map(f => personRow(f, friendSub(f), `#person/${esc(f.id)}`)).join("")}</div>`
       : acct ? emptyState("people", "No friends yet", "Find someone you've played with above, or send them your link.") : ""}
     ${acct ? `<div class="btnrow"><button class="btn" data-act="mylink">${ICONS.link} Send my link</button><button class="btn" data-act="myqr">${ICONS.qr} My QR code</button></div>` : ""}
-    ${held.outgoing.length ? `<h2>Asked</h2><div class="list">${held.outgoing.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">waiting for them</div></div></span><button class="btn small" data-act="decline" data-id="${esc(p.id)}">Cancel</button></div>`).join("")}</div>` : ""}
+    ${held.outgoing.length ? `<h2>Asked</h2><div class="list">${held.outgoing.map(p => `<div><span class="lead">${avatar(p.name, "", p.look)}<div><div class="name">${esc(p.name)}</div><div class="muted small">waiting for them</div></div></span><button class="btn small" data-act="decline" data-id="${esc(p.id)}">Cancel</button></div>`).join("")}</div>` : ""}
     ${contacts.length ? `<h2>On your cards</h2><div class="list">${contacts.map(p => personRow(p, [p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))}` : "", plural(S.roundsOf(p.id).filter(r => r.status === "done").length, "round")].filter(Boolean).join(" · "), `#player/${p.id}`)).join("")}</div>` : ""}
-    ${held.blocked.length ? `<h2>Blocked</h2><div class="list">${held.blocked.map(p => `<div><span class="lead">${avatar(p.name)}<div><div class="name">${esc(p.name)}</div><div class="muted small">cannot find you, ask you or send you cards</div></div></span><button class="btn small" data-act="unblock" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Unblock</button></div>`).join("")}</div>` : ""}`,
+    ${held.blocked.length ? `<h2>Blocked</h2><div class="list">${held.blocked.map(p => `<div><span class="lead">${avatar(p.name, "", p.look)}<div><div class="name">${esc(p.name)}</div><div class="muted small">cannot find you, ask you or send you cards</div></div></span><button class="btn small" data-act="unblock" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Unblock</button></div>`).join("")}</div>` : ""}`,
     { back: "#me", bell: false });
   const qEl = document.getElementById("q");
   if (qEl) qEl.addEventListener("input", () => {
@@ -137,7 +137,7 @@ export async function person(id, topic) {
     return `<a href="#review/${r.id}"><div><div class="name">${esc(roundClub(r))}</div><div class="muted small">${loop ? `${esc(loop)} · ` : ""}${esc(fmtDate(r.date))}${them ? ` · ${esc(first)} ${them.pts} pts` : ""}${us ? ` · you ${us.pts} pts` : ""}</div></div><span class="chev">›</span></a>`;
   };
   const draw = (G, keep) => page(name, `
-    <div class="person">${avatar(name, "big")}<div class="who"><div class="name">${esc(name)}</div><div class="handle">${f ? esc(friendSub(f)) : incoming ? "wants to be your friend" : outgoing ? "asked, waiting for them" : "not a friend yet"}</div></div></div>
+    <div class="person">${avatar(name, "big", F.lookOf(id))}<div class="who"><div class="name">${esc(name)}</div><div class="handle">${f ? esc(friendSub(f)) : incoming ? "wants to be your friend" : outgoing ? "asked, waiting for them" : "not a friend yet"}</div></div></div>
     ${incoming ? `<div class="btnrow"><button class="btn primary" data-act="accept">Accept</button><button class="btn" data-act="decline">No</button></div>` : ""}
     ${!f && !incoming && !outgoing && A.signedIn() ? `<div class="btnrow"><button class="btn primary" data-act="request">${ICONS.friend} Add as a friend</button></div>` : ""}
     ${f ? `${subtabs(TOPICS.map(([k, label]) => `<button data-act="tab" data-t="${k}" class="${k === on ? "on" : ""}">${label}</button>`).join(""))}
@@ -236,7 +236,7 @@ export function player(id) {
   const ownName = !isMe && A.signedIn() && p.owner === S.myAccount();
   const first = firstName(p.name);
   page(isMe ? "My rounds" : p.name, `
-    <div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">${p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))} · ` : ""}${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(rs.length, "round")}${linkedTo ? ` · <a href="#person/${esc(p.linkedAccount)}">friend</a>` : ""}</div></div></div>
+    <div class="person">${avatar(p.name, "big", isMe ? F.lookOf(S.myAccount()) : linkedTo && linkedTo.look)}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">${p.hi !== null && p.hi !== undefined ? `index ${fmtIndex(Number(p.hi))} · ` : ""}${p.gender === "f" ? "women's rating" : "men's rating"} · ${plural(rs.length, "round")}${linkedTo ? ` · <a href="#person/${esc(p.linkedAccount)}">friend</a>` : ""}</div></div></div>
     ${ownName && !p.linkedAccount ? `<div class="btnrow"><button class="btn primary" data-act="send-rounds">${ICONS.share} Send ${esc(first)} their rounds</button></div>` : ""}
     ${ownName && p.linkedAccount ? `<div class="btnrow"><button class="btn small" data-act="not-them">Not ${esc(first)}?</button></div>` : ""}
     ${stats}

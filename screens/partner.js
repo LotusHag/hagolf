@@ -10,6 +10,7 @@ import { page, bind, esc, go, toast, ui, plural, fmtDate, avatar, sheet, confirm
 import { loadFonts } from "../draw.js";
 import { BRAND_STYLES, dayOutSheet, personalSheet, leagueSheet } from "../brandsheets.js";
 import { showcaseRound, showcaseLeague } from "../sample.js";
+import { lookOf } from "../social.js";
 import { buildRound, courseOf } from "./public.js";
 import { standingsFor, standingsTable, FORMAT_NAMES } from "./formats.js";
 import { fmtToPar } from "../model.js";
@@ -299,7 +300,7 @@ const PANES = {
     const r = await A.api(`/club/${C.id}/members`);
     const owner = C.role === "owner" || C.role === "operator";
     pane.innerHTML = `<div class="dtable"><table><thead><tr><th>Golfer</th><th>Role</th><th>Since</th><th></th></tr></thead><tbody>
-      ${r.members.map(m => `<tr><td><span class="lead">${avatar(m.name || "?")}<span>${esc(m.name || "Somebody")}<br><span class="muted small">${esc(m.email || "")}</span></span></span></td><td>${esc(m.role)}</td><td>${esc(fmtDate((m.joined || "").slice(0, 10)))}</td>
+      ${r.members.map(m => `<tr><td><span class="lead">${avatar(m.name || "?", "", lookOf(m.id))}<span>${esc(m.name || "Somebody")}<br><span class="muted small">${esc(m.email || "")}</span></span></span></td><td>${esc(m.role)}</td><td>${esc(fmtDate((m.joined || "").slice(0, 10)))}</td>
         <td>${m.role === "owner" ? "" : `<div class="btnrow tight">${owner ? `<button class="btn small" data-act="role" data-a="${esc(m.id)}" data-r="${m.role === "organiser" ? "member" : "organiser"}">${m.role === "organiser" ? "Make member" : "Make organiser"}</button>` : ""}
           <button class="btn small danger" data-act="remove" data-a="${esc(m.id)}">Remove</button></div>`}</td></tr>`).join("")}</tbody></table></div>
       <p class="muted small">Organisers see this dashboard and make codes. ${C.contract.name} has ${plural(C.contract.organisers, "organiser")}, the owner included.</p>`;

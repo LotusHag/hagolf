@@ -359,7 +359,7 @@ export async function add(handle) {
   page("Add a friend", `<p class="muted center">Looking…</p>`, { bare: !A.signedIn() });
   let p;
   try { p = (await F.previewHandle(handle)).person; } catch (e) { if (!A.signedIn()) return previewPage("Add a friend", `<h3>Nobody by that link</h3>`, "#people"); toast("Nobody by that link", 4000); return go("#people"); }
-  const who = `<div class="person">${avatar(p.name, "big")}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">wants to be your friend on Hagolf</div></div></div>`;
+  const who = `<div class="person">${avatar(p.name, "big", p.look)}<div class="who"><div class="name">${esc(p.name)}</div><div class="handle">wants to be your friend on Hagolf</div></div></div>`;
   if (!A.signedIn()) return previewPage("Add a friend", who, `#add/${handle}`);
   if (F.held().friends.some(f => f.handle === p.handle)) { toast(`${firstName(p.name)} is already a friend`); return go("#people"); }
   const v = await sheet({ title: `Add ${firstName(p.name)}?`, body: who, actions: [{ label: "Add as a friend", value: "ok", kind: "primary" }, { label: "Not now", value: "no" }] });

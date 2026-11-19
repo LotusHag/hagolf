@@ -10,7 +10,7 @@ import { standingsPoster } from "../posters.js";
 import { statsFieldPoster, statsNinesPoster, statsPlayerPoster, statsExtrasPoster } from "../statsposters.js";
 import { renderCards } from "../cards.js";
 import { BRAND_STYLES, dayOutSheet, personalSheet, leagueSheet } from "../brandsheets.js";
-import { FORMAT_NAMES, leagueResults, standingsFor } from "./formats.js";
+import { FORMAT_NAMES, leagueResults, standingsFor, shownSeason } from "./formats.js";
 import { ninesForPoster, leagueRounds } from "./stats.js";
 import { ROUND_IMAGES, roundKinds, roundDefault } from "../images.js";
 
@@ -206,7 +206,7 @@ const brandLook = (b, t) => `<div class="card brandlook"><input type="checkbox" 
 export function leagueImages(gid, want = "") {
   const g = S.getLeague(gid);
   if (!g) return go("#leagues");
-  const { Ms, members } = leagueResults(g);
+  const { Ms, members } = leagueResults(g, shownSeason(g));
   const St = leagueStats(Ms, members);
   if (!St.rounds.length) return page("Images", `<p class="muted center" style="margin:30px 0">No finished rounds in this society yet.</p>`, { back: `#league/${gid}`, sub: g.name });
   const formats = S.cleanFormats(g.formats);

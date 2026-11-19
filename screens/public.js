@@ -5,7 +5,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, ui, plural, courseBy, subtabs, tip, paint, themeNamed, appTheme, fmtDate } from "../ui.js";
 import { compute, fmtToPar, fmtHcp, outcome, NO_SCORE, isMatchFormat, golfersOf } from "../model.js";
-import { FORMAT_NAMES, FORMAT_NOTES, standingsFor, standingsTable, readsMatches } from "./formats.js";
+import { FORMAT_NAMES, FORMAT_NOTES, standingsFor, standingsTable, readsMatches, currentSeason, inSeason, seasonName } from "./formats.js";
 
 export const courseOf = (slug, list) => courseBy(slug) || (() => { const k = (list || []).find(x => x.slug === slug); return k && k.data ? { ...k.data, slug } : null; })();
 
@@ -32,8 +32,10 @@ export async function board(token) {
   let P;
   try { P = await F.publicBoard(token); }
   catch (e) { return page("Board", `<div class="banner warn">${e.status === 404 ? "This board is private, or the link is not right." : esc(e.message)}</div>`, { back: "#home", brand: true, bell: false }); }
+  const g = { id: P.league.id, name: P.league.name, formats: S.cleanFormats(P.league.formats), bestN: P.league.bestN || 0, seasonStart: P.league.seasonStart || null, theme: P.league.theme || null };
+  const season = currentSeason(g), rounds = P.rounds.filter(r => inSeason(g, r.date, season));
   const Ms = [];
-  for (const r of P.rounds) {
+  for (const r of rounds) {
     const course = courseOf(r.course, P.courses);
     if (!course) continue;
     // a team is nobody's round in a society, as in the app's own tables, except a scramble match it won or lost
@@ -41,7 +43,6 @@ export async function board(token) {
     try { Ms.push(buildRound(P, r, P.entries.filter(e => e.roundId === r.id && (teams || e.role !== "team")), P.scores.filter(s => s.roundId === r.id), course)); }
     catch (e) { console.warn("board: round left out", r.id, e.message); }
   }
-  const g = { id: P.league.id, name: P.league.name, formats: S.cleanFormats(P.league.formats), bestN: P.league.bestN || 0, theme: P.league.theme || null };
   paint(themeNamed(g.theme) || appTheme());
   // as leagueResults: a society with no table for match play never sees a match, and a match's golfers are its players
   if (!g.formats.some(readsMatches)) Ms.splice(0, Ms.length, ...Ms.filter(M => !isMatchFormat(M.format)));
@@ -53,7 +54,7 @@ export async function board(token) {
       ${tip(FORMAT_NOTES[pick], "How this table is scored")}`
     : `<p class="muted center" style="margin:30px 0 14px">No finished rounds on this board yet.</p>`;
   page(g.name, `${body}<p class="muted small center" style="margin-top:18px">${P.league.showHandicaps ? "" : "Handicaps are not shown on this board. "}Shared from Hagolf.${signInLine()}</p>`,
-    { back: "#home", brand: true, bell: false, sub: `${plural(P.rounds.length, "round")} · ${g.formats.map(f => FORMAT_NAMES[f]).join(", ")}` });
+    { back: "#home", brand: true, bell: false, sub: `${season === null ? "" : `Season ${seasonName(g, season)} · `}${plural(rounds.length, "round")} · ${g.formats.map(f => FORMAT_NAMES[f]).join(", ")}` });
   bind(ev => { const b = ev.target.closest("[data-act=bfmt]"); if (b) { ui.boardFmt = b.dataset.f; board(token); } });
 }
 

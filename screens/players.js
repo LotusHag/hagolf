@@ -19,15 +19,13 @@ export function dropBtn(r) {
   return `<p class="center" style="margin-top:18px"><button class="btn small danger" data-act="drop-round" data-rid="${r.id}">${r.status === "done" ? "Delete this round" : "Discard this round"}</button></p>`;
 }
 
-export async function dropRound(rid) {
+// no question first: Undo is right there, and Me › Data and backup brings it back for 30 days after that
+export function dropRound(rid) {
   const r = S.getRound(rid);
   if (!r) return go("#home");
-  const scored = r.entries.reduce((n, e) => n + e.scores.filter(v => v !== null).length, 0);
-  const yes = await confirmSheet(r.status === "done" ? "Delete this round?" : "Discard this round?",
-    `${r.name} goes from every phone${scored ? `, with ${plural(scored, "score")} in it` : ""}. This cannot be undone.`, { label: r.status === "done" ? "Delete" : "Discard", danger: true });
-  if (!yes) return;
+  const back = r.status === "done" ? `#review/${rid}` : r.status === "setup" ? `#players/${rid}` : `#score/${rid}/${S.holeOf(r)}`;
   S.deleteRound(r.id);
-  toast(`${r.name} deleted`);
+  toast(`${r.name} ${r.status === "done" ? "deleted" : "discarded"}`, 8000, { label: "Undo", fn: () => { S.restoreRound(rid); go(back); } });
   go("#home");
 }
 
@@ -325,14 +323,14 @@ export async function addSheet(r, c) {
   const friends = F.held().friends.filter(f => !onCardAccounts.has(f.id) && f.id !== S.myAccount())
     .sort((a, b) => (lastWith.get(b.id) || "").localeCompare(lastWith.get(a.id) || "") || a.name.localeCompare(b.name));
   const roster = S.players().filter(p => !onCard.has(p.id) && !(p.linkedAccount && onCardAccounts.has(p.linkedAccount)) && !friends.some(f => f.id === p.linkedAccount)).sort((a, b) => a.name.localeCompare(b.name));
-  const line = (kind, id, name, sub) => `<button class="addrow" data-sheet="${kind}:${esc(id)}" data-q="${esc(name.toLowerCase())}">${avatar(name)}<span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="plus">+</span></button>`;
+  const line = (kind, id, name, sub, look = null) => `<button class="addrow" data-sheet="${kind}:${esc(id)}" data-q="${esc(name.toLowerCase())}">${avatar(name, "", look)}<span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="plus">+</span></button>`;
   const hiSub = hi => hi !== null && hi !== undefined ? `index ${fmtIndex(Number(hi))}` : "no index yet";
   const v = await sheet({ title: "Add a player", body: `
     <input id="aq" class="search" placeholder="Search, or type a new name" autocomplete="off">
     <div id="alist">
-      ${me && !onCard.has(me.id) ? line("roster", me.id, me.name, "you") : ""}
-      ${friends.length ? `<p class="pickline">Friends</p>${friends.map(f => line("friend", f.id, f.name, hiSub(f.hi))).join("")}` : ""}
-      ${roster.filter(p => !me || p.id !== me.id).length ? `<p class="pickline">Played with</p>${roster.filter(p => !me || p.id !== me.id).map(p => line("roster", p.id, p.name, hiSub(S.currentIndex(p)))).join("")}` : ""}
+      ${me && !onCard.has(me.id) ? line("roster", me.id, me.name, "you", F.lookOf(S.myAccount())) : ""}
+      ${friends.length ? `<p class="pickline">Friends</p>${friends.map(f => line("friend", f.id, f.name, hiSub(f.hi), f.look)).join("")}` : ""}
+      ${roster.filter(p => !me || p.id !== me.id).length ? `<p class="pickline">Played with</p>${roster.filter(p => !me || p.id !== me.id).map(p => line("roster", p.id, p.name, hiSub(S.currentIndex(p)), p.linkedAccount && F.lookOf(p.linkedAccount))).join("")}` : ""}
     </div>
     <button class="addrow new" id="anew" data-sheet="new:" hidden><span class="plus">+</span><span><b id="anewname"></b><small>add to the card</small></span></button>`,
     onOpen: el => {

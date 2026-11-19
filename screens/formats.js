@@ -1,6 +1,6 @@
 // The ways a league is scored, in words, and the one place every standings table is computed.
 import * as S from "../store.js";
-import { esc, plural, safeCompute } from "../ui.js";
+import { esc, plural, safeCompute, ui } from "../ui.js";
 import { compute, isMatchFormat, standings, strokeStandings, matchStandings, gpStandings, eloStandings, GP_POINTS, ELO, leagueCards, golfersOf, fmtToPar, fix } from "../model.js";
 
 export const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", match: "Matchplay (stroke)",
@@ -81,12 +81,24 @@ export const FORMAT_NOTES = {
 
 const forKind = (Ms, kind) => readsMatches(kind) ? Ms : Ms.filter(M => !isMatchFormat(M.format));
 
-/** Computed rounds attached to a league (finished ones), the players in them, and the standings. */
-export function leagueResults(g) {
+// A society in seasons starts a fresh table on the first of its month every year; the year a season starts in names it.
+export const seasonOf = (g, date) => { const [y, m] = String(date).split("-").map(Number); return m >= g.seasonStart ? y : y - 1; };
+export const seasonName = (g, y) => g.seasonStart === 1 ? String(y) : `${y}–${String(y + 1).slice(2)}`;
+export const currentSeason = g => g.seasonStart ? seasonOf(g, S.today()) : null;
+export const shownSeason = g => g.seasonStart ? ui.season[g.id] ?? currentSeason(g) : null;
+export const inSeason = (g, date, season) => season === null || (!!date && seasonOf(g, date) === season);
+
+/** A society's finished rounds, in one season when it keeps them; `null` is every round. */
+export function seasonRounds(g, season = currentSeason(g)) {
   const ids = new Set(S.leagueRoundIds(g.id));
+  return S.rounds().filter(r => ids.has(r.id) && r.status === "done" && inSeason(g, r.date, season));
+}
+
+/** Computed rounds attached to a league (finished ones), the players in them, and the standings. */
+export function leagueResults(g, season = currentSeason(g)) {
   const matches = S.cleanFormats(g.formats).some(readsMatches);
   const Ms = [];
-  for (const r of S.rounds().filter(r => ids.has(r.id) && r.status === "done" && (matches || !isMatchFormat(r.format)))) {
+  for (const r of seasonRounds(g, season).filter(r => matches || !isMatchFormat(r.format))) {
     const M = safeCompute(compute, r, true);   // a league counts claimed contacts as one golfer, not one per address book
     if (M) Ms.push(M);
   }

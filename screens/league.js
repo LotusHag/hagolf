@@ -9,7 +9,8 @@ import * as F from "../social.js";
 import { brandField } from "./partner.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
-import { FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
+import { ANIMALS, FIELDS, choices, crestOf, crestKey, swatchOf, isCrest } from "../avatar.js";
+import { seasonOf, seasonName, currentSeason, shownSeason, seasonRounds, FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
 import { claimSheet } from "./gate.js";
 import { sendTable, sendSeason, sendDay } from "../images.js";
@@ -30,7 +31,7 @@ export async function inviteSheet(g) {
   const friends = F.held().friends;
   const runs = runsIt(g);
   const v = await sheet({ title: `Invite people to ${g.name}`, lead: "Friends get it in their inbox. A link works for anyone: paste it in the group chat.",
-    body: friends.length ? `<div class="list">${friends.map(f => `<label style="margin:0;font:inherit"><span class="lead">${avatar(f.name)}<div><div class="name">${esc(f.name)}</div></div></span><input type="checkbox" name="fr" value="${esc(f.id)}"></label>`).join("")}</div>` : "",
+    body: friends.length ? `<div class="list">${friends.map(f => `<label style="margin:0;font:inherit"><span class="lead">${avatar(f.name, "", f.look)}<div><div class="name">${esc(f.name)}</div></div></span><input type="checkbox" name="fr" value="${esc(f.id)}"></label>`).join("")}</div>` : "",
     actions: [...(friends.length ? [{ label: "Invite ticked friends", value: "friends", kind: "primary" }] : []),
       { label: runs ? "Share a link for the group" : "Share an invite link", value: "link", kind: friends.length ? "" : "primary" },
       { label: "Show a QR code", value: "qr" }, { label: "Cancel", value: "no" }],
@@ -53,7 +54,7 @@ export async function inviteSheet(g) {
 
 async function boardShare(g, kind) {
   const v = await sheet({ title: "Share", lead: g.name, body: `<div class="list">
-      ${leagueCards(leagueResults(g).Ms).length ? `<button data-sheet="table"><span class="lead">${ICONS.image}<div><div class="name">Send the table</div><div class="muted small">An image for the group chat, seen before it goes</div></div></span><span class="chev">›</span></button>` : ""}
+      ${leagueCards(leagueResults(g, shownSeason(g)).Ms).length ? `<button data-sheet="table"><span class="lead">${ICONS.image}<div><div class="name">Send the table</div><div class="muted small">An image for the group chat, seen before it goes</div></div></span><span class="chev">›</span></button>` : ""}
       <button data-sheet="link"><span class="lead">${ICONS.link}<div><div class="name">Send a link to the board</div><div class="muted small">Anyone can read it, no sign-in</div></div></span><span class="chev">›</span></button>
       <button data-sheet="images"><span class="lead">${ICONS.chart}<div><div class="name">Other images…</div><div class="muted small">Every table and the season's sheets, in any look</div></div></span><span class="chev">›</span></button></div>` });
   if (v === "table") return sendTable(g.id, kind);
@@ -70,7 +71,7 @@ async function boardShare(g, kind) {
 // ---------------------------------------------------------------- the pieces every view shares
 /** Everything a view needs, computed once: a league is expensive enough that twice is worth avoiding. */
 function ctx(g) {
-  const { Ms, members } = leagueResults(g);
+  const { Ms, members } = leagueResults(g, shownSeason(g));
   const formats = S.cleanFormats(g.formats);
   const kind = formats.includes(ui.boardOf[g.id]) ? ui.boardOf[g.id] : formats[0];
   return { g, gid: g.id, Ms, members, formats, kind, me: S.me(), runs: runsIt(g) };
@@ -89,7 +90,8 @@ const segs = (gid, on) => `<div class="filter lsegs">${[["", "Board"], ["days", 
   .map(([v, l]) => `<a href="#league/${gid}${v ? `/${v}` : ""}" class="${on === v ? "on" : ""}">${l}</a>`).join("")}</div>`;
 
 function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = runsIt(g), seg = null, wide = false, gear = true } = {}) {
-  page(title, `${seg !== null ? segs(g.id, seg) : ""}${body}`, { back, actions: headActions(runs && gear), bell: false, keepScroll, wide });
+  const season = seg !== null && seg !== "members" && g.seasonStart ? `<p class="center"><button class="btn small" data-act="season">Season ${esc(seasonName(g, shownSeason(g)))} ›</button></p>` : "";
+  page(title, `${seg !== null ? segs(g.id, seg) : ""}${season}${body}`, { back, actions: headActions(runs && gear), bell: false, keepScroll, wide });
 }
 
 /** Today: the society's day card, or the way to start it. One card a day, every group on it. */
@@ -717,6 +719,7 @@ function statsView(C, keep = false) {
 // ---------------------------------------------------------------- running the league
 // Settings is for whoever runs the society. Every control saves the moment it is touched: no form, no Save.
 const BEST_N = [0, 3, 4, 5, 6, 8, 10, 12, 15, 20];
+const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleString("en-GB", { month: "long" }));
 const countsBest = fs => fs.some(f => !(f in MATCH_BASIS) && !(f in ELO_BASIS));
 const VIS_SAYS = { private: "Only members see the table.", link: "Anyone with the link can read the table, without signing in.", public: "Anyone can find the table and read it. Reading is not joining." };
 const segs3 = (act, on, opts) => `<div class="segpick">${opts.map(([v, l]) => `<button type="button" data-act="${act}" data-v="${v}" class="${on === v ? "on" : ""}" aria-pressed="${on === v}">${l}</button>`).join("")}</div>`;
@@ -742,12 +745,14 @@ function adminView(C, keep = false) {
   const bests = [...new Set([...BEST_N, g.bestN || 0])].sort((a, b) => a - b);
   shell(g, "Settings", `<div class="${onDesk() ? "dgrid" : ""}"><div class="lset">
     <label for="lname">Name</label><input id="lname" value="${esc(g.name)}" autocomplete="off">
-    <div class="iconrow"><span id="liconprev">${leagueBadge(g, "big")}</span><span class="t"><b>Icon</b><span>Beside the name on every member's phone</span></span>
-      <label class="btn small">${g.icon ? "Change" : "Upload"}<input type="file" accept="image/*" id="liconfile" hidden></label>
-      ${g.icon ? `<button class="btn small" data-act="icon-clear">Remove</button>` : ""}</div>
+    <div class="iconrow"><span id="liconprev">${leagueBadge(g, "big")}</span><span class="t"><b>Icon</b><span>${uploaded(g) ? "A picture you uploaded" : `Its crest, the ${crestOf(g).animal}`}, beside the name on every member's phone</span></span>
+      ${uploaded(g) ? "" : `<a class="btn small" href="#league/${gid}/crest">Crest</a>`}
+      <label class="btn small" id="liconpick">${uploaded(g) ? "Change" : "Upload"}<input type="file" accept="image/*" id="liconfile" hidden></label>
+      ${uploaded(g) ? `<button class="btn small" data-act="icon-clear">Remove</button>` : ""}</div>
     ${sect("Scoring")}
     ${fmtRows(C)}
     ${countsBest(C.formats) ? `<label for="lbest">Rounds that count</label><select id="lbest">${bests.map(k => `<option value="${k}" ${k === (g.bestN || 0) ? "selected" : ""}>${k ? `Each player's best ${k}` : "Every round"}</option>`).join("")}</select>` : ""}
+    <label for="lseason">Seasons</label><select id="lseason"><option value="0">Off: one table over every round</option>${MONTHS.map((m, i) => `<option value="${i + 1}" ${g.seasonStart === i + 1 ? "selected" : ""}>A new table every 1 ${m}</option>`).join("")}</select>
     ${sect("Look")}
     <details class="lookfold" id="llook"${ui.lookOpen === gid ? " open" : ""}><summary>${lookLine(g)}</summary>
       ${brandField("lbrand", g.brand)}
@@ -764,6 +769,28 @@ function adminView(C, keep = false) {
     <div class="center"><button class="btn ghost quietdanger" data-act="del-league">Delete this society</button></div>
   </div>${onDesk() ? preview : ""}</div>`, { back: `#league/${gid}`, runs: C.runs, wide: onDesk(), keepScroll: keep, gear: false });
   wireSettings(C);
+}
+
+/** The society's crest: any of the ten animals or one its name unlocks, on any field, kept as its icon. */
+function crestView(C) {
+  const { g, gid } = C;
+  if (!C.runs) return go(`#league/${gid}`);
+  const now = crestOf(g), T = themeHere(), drawn = animal => leagueBadge({ ...g, icon: crestKey({ ...now, animal }) });
+  shell(g, "Crest", `
+    <div class="iconrow crestnow">${leagueBadge(g, "big")}${leagueBadge(g)}<span class="t"><b>The ${esc(now.animal)}</b><span>${uploaded(g) ? "Picking a crest takes the place of the uploaded picture" : "Kept when the society is renamed"}</span></span></div>
+    ${sect("Animal")}
+    <div class="crestgrid">${choices(g).map(({ animal, word }) => `<button class="crestpick ${animal === now.animal ? "on" : ""}" data-act="crest" data-animal="${animal}" aria-pressed="${animal === now.animal}">
+      ${drawn(animal)}<span>${esc(animal[0].toUpperCase() + animal.slice(1))}</span>${word ? `<small>from “${esc(word)}”</small>` : ""}</button>`).join("")}</div>
+    ${sect("Field")}
+    <div class="swatches">${FIELDS.map(f => `<button style="--c:${swatchOf(T, "field", f)}" data-act="crest" data-field="${f}" aria-label="${f}" aria-pressed="${f === now.field}" class="${f === now.field ? "on" : ""}"><i></i></button>`).join("")}</div>`,
+    { back: `#league/${gid}/admin`, runs: C.runs, gear: false });
+  bind(ev => {
+    const b = ev.target.closest("[data-act=crest]");
+    if (!b) return;
+    g.icon = crestKey({ ...now, animal: ANIMALS[b.dataset.animal] ? b.dataset.animal : now.animal, field: b.dataset.field || now.field });
+    S.saveLeague(g);
+    crestView(ctx(g));
+  });
 }
 
 /** Which finished rounds count for the society: taken out by whoever played them or runs it. */
@@ -803,20 +830,22 @@ function roundsView(C, keep = false) {
   });
 }
 
+const uploaded = g => !!g.icon && !isCrest(g.icon);
+
 // Square, small and re-encoded on the phone: every member pulls the league row, so the icon has to stay a few kB.
+// Fitted, not cropped, and see-through where the file is: a wide logo keeps its sides and sits on the theme. A phone
+// that cannot write webp writes png, which keeps the transparency jpeg would lose.
 function shrinkIcon(file, size = 128) {
   return new Promise((ok, no) => {
     const url = URL.createObjectURL(file), img = new Image();
     img.onload = () => {
       const c = document.createElement("canvas");
       c.width = c.height = size;
-      const x = c.getContext("2d"), k = Math.min(img.naturalWidth, img.naturalHeight);
-      x.fillStyle = "#fff";   // a transparent logo sits on white, the same whether this phone writes webp or only jpeg
-      x.fillRect(0, 0, size, size);
-      x.drawImage(img, (img.naturalWidth - k) / 2, (img.naturalHeight - k) / 2, k, k, 0, 0, size, size);
+      const k = size / Math.max(img.naturalWidth, img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
+      c.getContext("2d").drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
       URL.revokeObjectURL(url);
       const webp = c.toDataURL("image/webp", 0.82);
-      ok(webp.startsWith("data:image/webp") ? webp : c.toDataURL("image/jpeg", 0.85));
+      ok(webp.startsWith("data:image/webp") ? webp : c.toDataURL("image/png"));
     };
     img.onerror = () => { URL.revokeObjectURL(url); no(new Error("That file is not an image this phone can read")); };
     img.src = url;
@@ -832,18 +861,23 @@ function wireSettings(C) {
   const setFormats = fs => { g.formats = S.cleanFormats(fs); delete ui.boardOf[gid]; S.saveLeague(g); redraw(); };
   const name = document.getElementById("lname");
   let typing = null;
-  const commitName = () => { clearTimeout(typing); const v = name.value.trim(); if (v && v !== g.name) { g.name = v; S.saveLeague(g); } };
+  // a society made before crests had none kept; it keeps the one its old name gave it before taking the new name
+  const commitName = () => { clearTimeout(typing); const v = name.value.trim(); if (v && v !== g.name) { if (!g.icon) g.icon = crestKey(crestOf(g)); g.name = v; S.saveLeague(g); } };
   // on input as well as change: a phone's back gesture leaves without a blur
   name.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(commitName, 400); });
   name.addEventListener("change", () => { commitName(); if (!name.value.trim()) name.value = g.name; });
   document.getElementById("liconfile").addEventListener("change", async ev => {
-    const file = ev.target.files && ev.target.files[0];
+    const file = ev.target.files && ev.target.files[0], pick = document.getElementById("liconpick");
     if (!file) return;
-    try { g.icon = await shrinkIcon(file); } catch (e) { return toast(e.message, 4000); }
+    pick.setAttribute("aria-busy", "true");
+    pick.firstChild.textContent = "Shrinking…";
+    try { g.icon = await shrinkIcon(file); }
+    catch (e) { ev.target.value = ""; pick.removeAttribute("aria-busy"); pick.firstChild.textContent = uploaded(g) ? "Change" : "Upload"; return toast(e.message, 4000); }
     S.saveLeague(g); redraw();
   });
   const best = document.getElementById("lbest");
   if (best) best.addEventListener("change", () => { g.bestN = Number(best.value) || 0; S.saveLeague(g); });
+  document.getElementById("lseason").addEventListener("change", ev => { g.seasonStart = Number(ev.target.value) || null; delete ui.season[gid]; S.saveLeague(g); });
   const look = document.getElementById("llook");
   look.addEventListener("toggle", () => { ui.lookOpen = look.open ? gid : null; });
   const relook = () => {
@@ -890,7 +924,7 @@ function wireSettings(C) {
       b.parentElement.querySelectorAll("button").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); });
       return relook();
     }
-    if (act === "icon-clear") { g.icon = null; S.saveLeague(g); return redraw(); }
+    if (act === "icon-clear") { g.icon = crestKey(crestOf({ ...g, icon: null })); S.saveLeague(g); return redraw(); }
     if (act === "vis") {
       if (b.classList.contains("on")) return;
       const grp = b.parentElement;
@@ -954,7 +988,7 @@ async function wireMembers(C) {
     const sub = m => [m.role && !["member", "player"].includes(m.role) ? m.role : "", m.playsAs && m.playsAs !== m.name ? `on the cards as ${m.playsAs}` : ""].filter(Boolean).join(" · ");
     const undo = m => runs && m.id !== me && m.playsAs ? `<button class="btn small" data-act="unclaim" data-id="${esc(m.id)}" data-name="${esc(m.playsAs)}">Undo</button>` : "";
     if (box) box.innerHTML = `
-      <div class="list">${r.members.map(m => `<div><a class="lead" href="${m.id === me ? "#me" : `#person/${esc(m.id)}`}">${avatar(m.name || "?")}<div><div class="name">${esc(m.name || "Somebody")}</div>${sub(m) ? `<div class="muted small">${esc(sub(m))}</div>` : ""}</div></a>${undo(m)}</div>`).join("")}</div>
+      <div class="list">${r.members.map(m => `<div><a class="lead" href="${m.id === me ? "#me" : `#person/${esc(m.id)}`}">${avatar(m.name || "?", "", F.lookOf(m.id))}<div><div class="name">${esc(m.name || "Somebody")}</div>${sub(m) ? `<div class="muted small">${esc(sub(m))}</div>` : ""}</div></a>${undo(m)}</div>`).join("")}</div>
       ${mineM && mineM.claim === "none" && free.length ? `<button class="btn small" data-act="claim-me" style="margin-top:8px">Which player on the cards is me?</button>` : ""}
       ${free.length ? `${sect("Not on Hagolf yet")}<div class="list">${free.map(c => `<div><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${plural(c.rounds, "round")}</div></div></span><button class="btn small" data-act="send-name" data-pid="${esc(c.playerIds[0])}" data-name="${esc(c.name)}">Send link</button></div>`).join("")}</div>` : ""}`;
   } catch (e) { if (box) box.innerHTML = `<p class="muted small">${esc(e.message)}</p>`; }
@@ -981,7 +1015,21 @@ async function common(C, ev) {
   if (act === "share-board") { await boardShare(C.g, C.kind); return true; }
   if (act === "send-table") { await sendTable(C.gid, b.dataset.kind || C.kind); return true; }
   if (act === "board-graph") { await climbSheet(C, b.dataset.kind); return true; }
+  if (act === "season") { await seasonSheet(C.g); return true; }
   return false;
+}
+
+/** Every season this society has played, newest first; picking one turns every part of the society to it. */
+async function seasonSheet(g) {
+  const all = seasonRounds(g, null);
+  const years = [...new Set([currentSeason(g), ...all.filter(r => r.date).map(r => seasonOf(g, r.date))])].sort((a, b) => b - a);
+  const v = await sheet({ title: "Season",
+    body: `<div class="fmtpicks">${years.map(y => `<button class="fmtpick${y === shownSeason(g) ? " on" : ""}" data-sheet="${y}">
+      <span><b>${esc(seasonName(g, y))}</b><small>${plural(all.filter(r => r.date && seasonOf(g, r.date) === y).length, "round")}</small></span></button>`).join("")}</div>`,
+    actions: [{ label: "Cancel", value: "no" }] });
+  if (!v || v === "no") return;
+  ui.season[g.id] = Number(v);
+  league(g.id, ...location.hash.split("/").slice(2).map(decodeURIComponent));
 }
 
 /** One league, one export. `view` is the second part of the hash; the router spreads the rest. */
@@ -998,6 +1046,7 @@ export function league(gid, view, a, b, keep = false) {
   if (view === "admin") return adminView(C, keep);
   if (view === "rounds") return roundsView(C, keep);
   if (view === "members") return membersView(C);
+  if (view === "crest") return crestView(C);
   return boardView(C, keep);
 }
 

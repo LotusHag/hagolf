@@ -381,10 +381,10 @@
 
 /* 2. A score lands: the figure is there at once and its neon ring strikes; under par it buzzes once first */
 [data-theme="arcade"] .mk.run { --ring: transparent; --sh: 0 0 0 0 transparent; --glow: 0 0 0 0 transparent; }
-[data-theme="arcade"] .mk.run.c1 { --ring: var(--under); }
-[data-theme="arcade"] .mk.run.c2 { --ring: var(--under); --sh: 0 0 0 2px var(--card), 0 0 0 3.5px var(--under); }
-[data-theme="arcade"] .mk.run.s1 { --ring: var(--bogey); }
-[data-theme="arcade"] .mk.run.s2 { --ring: var(--double); --sh: 0 0 0 2px var(--card), 0 0 0 3.5px var(--double); }
+[data-theme="arcade"] .mk.run.c1 { --ring: var(--sc-birdie); }
+[data-theme="arcade"] .mk.run.c2 { --ring: var(--sc-birdie); --sh: 0 0 0 2px var(--card), 0 0 0 3.5px var(--sc-birdie); }
+[data-theme="arcade"] .mk.run.s1 { --ring: var(--sc-bogey); }
+[data-theme="arcade"] .mk.run.s2 { --ring: var(--sc-double); --sh: 0 0 0 2px var(--card), 0 0 0 3.5px var(--sc-double); }
 [data-theme="arcade"][data-mode="dark"] .mk.run { --glow: 0 0 10px var(--ring); }
 [data-theme="arcade"] .mk.run:is(.c1, .c2) { animation: arcade-buzz 100ms both; }
 [data-theme="arcade"] .mk.run:is(.s1, .s2) { animation: arcade-strike 50ms both; }
@@ -574,7 +574,7 @@
 @keyframes ps-set { from { clip-path: inset(-16px -16px 100% -16px); transform: translateY(-4px); } to { clip-path: inset(-16px); transform: none; } }
 [data-theme="palmsprings"] .mk.run.c2 { position: relative; }
 [data-theme="palmsprings"] .mk.run.c2::after {
-  content: ""; position: absolute; inset: -12px; background: var(--under); opacity: 0; pointer-events: none;
+  content: ""; position: absolute; inset: -12px; background: var(--sc-birdie); opacity: 0; pointer-events: none;
   -webkit-mask: repeating-conic-gradient(from -3deg, #000 0 6deg, transparent 6deg 45deg),
     radial-gradient(closest-side, transparent 76%, #000 78% 97%, transparent 100%);
   -webkit-mask-composite: source-in;

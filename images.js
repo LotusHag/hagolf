@@ -10,7 +10,7 @@ import { grossLeaderboard, stablefordLeaderboard, netLeaderboard, matchPoster, b
 import { statsFieldPoster, statsPlayerPoster, statsMinePoster } from "./statsposters.js";
 import { renderCards } from "./cards.js";
 import { BRAND_STYLES, dayOutSheet, leagueSheet } from "./brandsheets.js";
-import { leagueResults, standingsFor, FORMAT_NAMES } from "./screens/formats.js";
+import { leagueResults, standingsFor, FORMAT_NAMES, shownSeason } from "./screens/formats.js";
 
 // ---------------------------------------------------------------- a round
 /** Every round image by its key: what a person calls it, and how it is drawn. */
@@ -116,7 +116,7 @@ const styleOf = (b, kind) => { const s = b && b.template && b.template.styles &&
 function society(gid) {
   const g = S.getLeague(gid);
   if (!g) return null;
-  const { Ms, members } = leagueResults(g);
+  const { Ms, members } = leagueResults(g, shownSeason(g));
   return Ms.length ? { g, Ms, members, brand: B.brandOfLeague(g), T: makeTheme(themeFor(g)) } : null;
 }
 

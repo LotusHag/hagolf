@@ -31,19 +31,19 @@ const extras = (putts, fw, bunkers = [], penalties = {}) => putts.map((p, h) => 
 /**
  * The four, and what each of them is there to show. Isabel wins the gross with an ace and keeps every extra;
  * Daan wins the Stableford on a hot day with an eagle and a triple; Marco's steady card wears a penalty
- * badge; Priya's high handicap turns two pars into four-point holes.
+ * badge; Priya's high handicap turns two pars into four-point holes. Each has a golfer, in a different stance.
  */
 export const SHOWCASE_PLAYERS = [
-  { id: "showcase-1", name: "Isabel Moreau", hi: 5.4, gender: "f", tee: "red",
+  { id: "showcase-1", name: "Isabel Moreau", look: "1.f.finish.navy.white.skirt.visor.white.tied.brown.2", hi: 5.4, gender: "f", tee: "red",
     scores: [4, 5, 3, 5, 4, 3, 4, 4, 5, 4, 1, 6, 5, 4, 3, 6, 4, 4],
     stats: extras([2, 2, 1, 2, 1, 2, 1, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 1], "xx.xx.-xxx.xxx.-xx", [4, 8, 12, 16], { 12: 1 }) },
-  { id: "showcase-2", name: "Daan Verhoeven", hi: 18.4, gender: "m", tee: "yellow",
+  { id: "showcase-2", name: "Daan Verhoeven", look: "1.m.address.orange.navy.trousers.cap.navy.short.blonde.1", hi: 18.4, gender: "m", tee: "yellow",
     scores: [5, 6, 2, 7, 6, 4, 6, 5, 6, 6, 4, 6, 6, 3, 3, 3, 4, 5],
     stats: extras([2, 2, 1, 2, 2, 2, 2, 2, 3, 3, 2, 2, 2, 1, 2, 1, 1, 2], ">x.>>.xx<>.x>x.xxx", [4, 9, 13], { 4: 1, 13: 1 }) },
-  { id: "showcase-3", name: "Marco Bianchi", hi: 11.7, gender: "m", tee: "yellow",
+  { id: "showcase-3", name: "Marco Bianchi", look: "1.m.walk.green.sand.trousers.cap.white.short.black.3", hi: 11.7, gender: "m", tee: "yellow",
     scores: [4, 5, 4, 5, 4, 3, 5, 5, 5, 5, 3, 6, 6, 4, 2, 5, 5, 4],
     penalties: [{ hole: 7, strokes: 2, reason: "wrong ball" }] },
-  { id: "showcase-4", name: "Priya Nair", hi: 26.8, gender: "f", tee: "red",
+  { id: "showcase-4", name: "Priya Nair", look: "1.f.flag.pink.black.trousers.none.white.long.black.4", hi: 26.8, gender: "f", tee: "red",
     scores: [6, 7, 4, 8, 6, 5, 6, 5, 7, 6, 3, 8, 6, 6, 6, 7, 6, 4] },
 ];
 export const SHOWCASE_NAME = "Midsummer Cup";
@@ -92,7 +92,7 @@ export function showcaseLeague() {
     return Object.assign(compute(SHOWCASE_COURSE, { name: `Sunday ${i + 1}`, date, defaultTee: "yellow", allowance: 100, final: true, entries }), { id: `showcase-round-${i + 1}` });
   });
   Ms.push(showcaseRound());
-  const g = { id: "showcase-league", name: "Heron's Reach Sunday Society", formats: ["stableford"], bestN: 0, theme: null };
+  const g = { id: "showcase-league", name: "Heron's Reach Sunday Society", formats: ["stableford"], bestN: 0, theme: null, icon: "crest:heron.green.r" };
   return { g, Ms, members: SHOWCASE_PLAYERS.map(p => p.id), rounds: [] };
 }
 

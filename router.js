@@ -4,6 +4,7 @@ import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
 import { ui, paint, themeHere, hideToast, rememberIntent } from "./ui.js";
+import { keepAwake } from "./native.js";
 import { welcome, signin, join, add, you, getApp } from "./screens/gate.js";
 import { home } from "./screens/home.js";
 import { play, newRound, loops } from "./screens/play.js";
@@ -37,6 +38,7 @@ export const gated = () => Y.enabled() && !A.signedIn();
 export function route() {
   hideToast();
   const [name, ...args] = location.hash.replace(/^#/, "").split("/");
+  keepAwake(name === "score" || (name === "live" && args[1] === "tv"));
   // In any browser there is one screen: how to get Hagolf onto this device. The link screens stay open, since
   // a shared board, a card or an invite is meant to be opened by somebody who has no app yet, and the door
   // keeps its own way through for anyone it cannot actually help. The hash is left alone, so whoever walks

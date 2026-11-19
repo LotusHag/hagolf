@@ -111,7 +111,7 @@ async function friendsSheet(r) {
   const others = friends.filter(f => !has.has(f.id));
   if (!others.length && !holders.length) return toast("No friends yet: add some under Me → Friends");
   const v = await sheet({ title: "Send to friends",
-    body: `<div class="list">${holders.map(h => `<div><span class="lead">${avatar(h.name)}<div><div class="name">${esc(h.name)}</div><div class="muted small">has it</div></div></span><button class="btn small" data-sheet="unshare:${esc(h.id)}">Take back</button></div>`).join("")}${others.map(f => `<label style="margin:0;font:inherit"><span class="lead">${avatar(f.name)}<div><div class="name">${esc(f.name)}</div></div></span><input type="checkbox" name="fr" value="${esc(f.id)}"></label>`).join("")}</div>`,
+    body: `<div class="list">${holders.map(h => `<div><span class="lead">${avatar(h.name, "", F.lookOf(h.id))}<div><div class="name">${esc(h.name)}</div><div class="muted small">has it</div></div></span><button class="btn small" data-sheet="unshare:${esc(h.id)}">Take back</button></div>`).join("")}${others.map(f => `<label style="margin:0;font:inherit"><span class="lead">${avatar(f.name, "", f.look)}<div><div class="name">${esc(f.name)}</div></div></span><input type="checkbox" name="fr" value="${esc(f.id)}"></label>`).join("")}</div>`,
     actions: others.length ? [{ label: "Send", value: "ok", kind: "primary" }, { label: "Cancel", value: "no" }] : [{ label: "Done", value: "no" }],
     onOpen: el => { el.addEventListener("change", () => { window.__fr = [...el.querySelectorAll("input[name=fr]:checked")].map(i => i.value); }); window.__fr = []; } });
   const ids = window.__fr || [];

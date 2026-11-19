@@ -158,9 +158,9 @@ const TABLES = {
   leagues: {
     // visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
     // them only through /league/<id>/visibility, so a phone editing the name offline cannot undo them.
-    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, created_by: g.createdBy || null,
+    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, season_start: g.seasonStart || null, created_by: g.createdBy || null,
       created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, brand: g.brand || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
-    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null, brand: r.brand || null,
+    apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, seasonStart: r.season_start || null, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null, brand: r.brand || null,
       visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0,
       deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
@@ -312,6 +312,8 @@ async function headers(extra = {}) {
 
 async function rest(path, init = {}, retried = false) {
   const res = await fetch(`${sync.config.url}/rest/v1/${path}`, { ...init, headers: await headers(init.headers) });
+  const served = Date.parse(res.headers.get("date"));
+  if (served) S.setServerTime(served);
   if (res.status === 401 && A.signedIn() && !retried) {
     // The access token ran out, which on a phone that lives offline is routine. One refresh, one retry; if the
     // refresh itself is refused the session is over and A.refresh has already forgotten it.

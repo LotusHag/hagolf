@@ -8,6 +8,7 @@ import * as A from "./auth.js";
 import * as N from "./notify.js";
 import { loadFonts, makeTheme, pickTheme, phone } from "./draw.js";
 import { isNative } from "./native.js";
+import { golferSvg, crestSvg, parseLook } from "./avatar.js";
 import { charts, fitDonuts } from "./charts.js";
 
 export const app = document.getElementById("app");
@@ -258,7 +259,7 @@ export function parseHI(s) {
 export const hiOk = hi => hi >= -10 && hi <= 54;
 
 /** Screen state that survives a redraw but not a reload. Keyed per screen where a screen has several instances. */
-export const ui = { expanded: null, selHole: null, blobs: [], groupFilter: {}, roundsFilter: "all", nineTab: {}, boardOf: {}, basis: {}, statsWho: {},
+export const ui = { season: {}, expanded: null, selHole: null, blobs: [], groupFilter: {}, roundsFilter: "all", nineTab: {}, boardOf: {}, basis: {}, statsWho: {},
   numWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseQ: "", unlisted: null, found: null };
 
 // ---------------------------------------------------------------- icons
@@ -372,7 +373,7 @@ export const iconBtn = (act, icon, label, extra = "") => `<button class="iconbtn
 
 export function toast(msg, ms = 2600, action = null) {
   let t = document.getElementById("toast");
-  if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
   t.textContent = msg.charAt(0).toUpperCase() + msg.slice(1);
   t.classList.toggle("action", !!action);
   if (action) {
@@ -573,7 +574,7 @@ document.addEventListener("click", ev => {
   const html = t.innerHTML.trim();
   sheet({ title: b.dataset.tip, body: `<div class="tipbody">${/^<p[\s>]/.test(html) ? html : `<p>${html}</p>`}</div>` });
 });
-export const subtabs = (buttons, small = false) => `<div class="tabrow"><div class="subtabs${small ? " small" : ""}">${buttons}</div><span class="cue l">&#8249;</span><span class="cue r">&#8250;</span></div>`;
+export const subtabs = (buttons, small = false) => `<div class="tabrow"><div class="subtabs${small ? " small" : ""}">${buttons}</div></div>`;
 export function cueTabs() {
   document.querySelectorAll(".tabrow").forEach(w => {
     const s = w.querySelector(".subtabs");
@@ -583,12 +584,20 @@ export function cueTabs() {
   });
 }
 window.addEventListener("resize", cueTabs);
-export const avatar = (name, cls = "") => `<span class="avatar ${cls}" aria-hidden="true">${esc(inits(name) || "?")}</span>`;
+// the golfer or crest is drawn in the colours of the screen it is on, which the router paints before any screen draws
+let shown = null;
+const onScreen = () => shown || appTheme();
+/** A person's face: their golfer when they have made one, else their initials. */
+export const avatar = (name, cls = "", look = null) => {
+  const sp = parseLook(look);
+  return sp ? `<span class="avatar fig ${cls}" aria-hidden="true">${golferSvg(sp, onScreen(), cls.includes("big") ? 64 : 40)}</span>`
+    : `<span class="avatar ${cls}" aria-hidden="true">${esc(inits(name) || "?")}</span>`;
+};
 // only an image the phone itself shrank is drawn, so a league row can never carry a script into a src
 const ICON_URL = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
-/** A league's face: its uploaded icon, or its initials on the accent. */
-export const leagueBadge = (g, cls = "") => g && g.icon && ICON_URL.test(g.icon)
-  ? `<img class="lbadge ${cls}" src="${g.icon}" alt="">`
+/** A society's face: its uploaded icon, else its crest, else (with nothing to go on) its initials. */
+export const leagueBadge = (g, cls = "") => g && g.icon && ICON_URL.test(g.icon) ? `<img class="lbadge ${cls}" src="${g.icon}" alt="">`
+  : g && g.id ? `<span class="lbadge crest ${cls}" aria-hidden="true">${crestSvg(g, onScreen(), cls.includes("big") ? 60 : 38)}</span>`
   : `<span class="lbadge mono ${cls}" aria-hidden="true">${esc(inits(g && g.name) || "?")}</span>`;
 export const emptyState = (icon, title, text = "", action = "") => `<div class="empty">${ICONS[icon] || ""}<b>${esc(title)}</b>${text ? `<div>${esc(text)}</div>` : ""}${action}</div>`;
 
@@ -628,12 +637,15 @@ export function themeHere() {
 }
 let painted = null;
 /** The screen in a theme: its colours, its two faces, its corners and its icon stroke, and its own touches in app.css. */
+export const TEXT_SIZES = [[1, "Standard"], [1.15, "Larger"], [1.3, "Largest"]];
 export function paint(t) {
+  document.documentElement.style.fontSize = `${(S.state.settings.textSize || 1) * 100}%`;
   const key = t && `${t.name}:${t.mode || "light"}`;
   if (!t || !t.ui || key === painted) return;
   painted = key;
+  shown = t;
   const root = document.documentElement, h = t.HOUSE || {}, r = Math.min(16, Math.max(2, Math.round(6 * (h.radius ?? 1))));
-  const vars = { ...t.ui, fd: `"${t.DISPLAY}", sans-serif`, ft: `"${t.TEXT}", sans-serif`, dw: t.DISPLAY_WEIGHT || 600, UNDER: t.UNDER, r: `${r}px`, "r-s": `${Math.max(2, Math.round(r * 0.66))}px`,
+  const vars = { ...t.ui, fd: `"${t.DISPLAY}", sans-serif`, ft: `"${t.TEXT}", sans-serif`, dw: t.DISPLAY_WEIGHT || 600, r: `${r}px`, "r-s": `${Math.max(2, Math.round(r * 0.66))}px`,
     "r-xs": `${Math.max(2, Math.round(r / 2))}px`, isw: (h.icons || 1.9) / 1.9, icap: (h.radius ?? 1) > 0.3 ? "round" : "square", ijoin: (h.radius ?? 1) > 0.3 ? "round" : "miter" };
   for (const [k, v] of Object.entries(vars)) if (k !== "scheme") root.style.setProperty(`--${k}`, v);
   root.style.colorScheme = t.ui.scheme;
