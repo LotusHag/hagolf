@@ -72,7 +72,7 @@ function style(T) {
   if (STYLES.has(key)) return STYLES.get(key);
   const h = house(T), own = T.AVATAR || {}, mode = dark ? "dark" : "light";
   const sat = ["ACCENT", "ACCENT_2", "UNDER"].map(k => lch(T[k] || T.ACCENT)[1]).reduce((a, b) => a + b) / 3;
-  const S = { T, dark, hand: HANDS[h.glyph] || "fill", frame: FRAMES[h.chip] || "circle", stroke: h.icons || 1.9, radius: h.radius ?? 1,
+  const S = { T, dark, hand: HANDS[h.glyph] || "fill", frame: own.frame || FRAMES[h.chip] || "circle", stroke: h.icons || 1.9, radius: h.radius ?? 1,
     round: !(h.radius === 0 && ["bar", "tile", "board"].includes(h.glyph)),
     ground: own.ground ? own.ground[mode] : blend(T.PANEL, T.ACCENT, dark ? 0.16 : 0.12),
     lean: h.chip === "slant" ? -9 : 0, bulk: 1 + Math.max(0, (h.radius ?? 1) - 1) * 0.08, palette: own.palette && own.palette[mode],
@@ -103,8 +103,8 @@ const POSES = {
     club: [[27.6, 31.2], [36.6, 42.4]], driver: [38.6, 42.9], ball: [43.8, 41.3], tee: [[43.8, 42.4], [43.8, 44.6]] },
   finish: { face: -1, tilt: -6, hip: [24.4, 27], neck: [24, 17.2], head: [23.6, 7.8], behind: true, raised: true,
     legs: [[[22.8, 27.4], [21.8, 36], [21.4, 44.4]], [[26, 27.4], [29.2, 35.4], [31.2, 43.8]]],
-    arms: [[[26.4, 18.4], [32.2, 13.4], [29.8, 4.6]]],
-    club: [[29.8, 4.6], [37.4, 19.6]], driver: [38.2, 21.8] },
+    arms: [[[25, 18.8], [17.2, 14.4], [28.4, 3.8]]],
+    club: [[28.4, 3.8], [37.4, 19.6]], driver: [38.2, 21.8] },
   putt: { face: 1, tilt: 28, hip: [17.6, 27.6], neck: [23.6, 19], head: [29, 11.4],
     legs: [[[18, 27.6], [20, 36], [19.8, 44.4]], [[17.2, 27.8], [18.4, 36], [17.2, 44.4]]],
     arms: [[[23.8, 20.4], [25, 26.4], [25.6, 31.6]]],
