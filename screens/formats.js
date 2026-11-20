@@ -11,6 +11,9 @@ export const GP_BASIS = { gp: "points", gpstroke: "net" };
 // every match table not on Stableford goes hole by hole on strokes taken, never on handicap
 export const MATCH_BASIS = { match: "gross", matchpts: "points", soccer: "gross", soccerpts: "points" };
 export const ELO_BASIS = { elo: "all", elopts: "points", elostroke: "net", elomatch: "match" };
+/** The game a head to head is compared in, named after what was picked: points are Stableford, not stroke play. */
+export const basisGame = b => b === "points" ? "Stableford" : b === "gross" ? "Stroke play" : "Net stroke play";
+export const basisTaker = b => b === "points" ? "the most points" : b === "gross" ? "the fewest strokes" : "the lowest net score";
 export const basisWord = b => b === "points" ? "Stableford points" : b === "gross" ? "gross score" : "net strokes";
 export const H2H_BASES = [["points", "Stableford", "the most Stableford points", "the higher Stableford points"],
   ["net", "Net score", "the lowest net score", "the lower net score"],

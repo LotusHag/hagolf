@@ -7,10 +7,10 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import { brandField } from "./partner.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, courseTitle, ordinal, fmtDate, shortDate, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
 import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
 import { ANIMALS, FIELDS, choices, crestOf, crestKey, swatchOf, isCrest } from "../avatar.js";
-import { seasonOf, seasonName, currentSeason, shownSeason, seasonRounds, FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
+import { seasonOf, seasonName, currentSeason, shownSeason, seasonRounds, FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, basisGame, basisTaker, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
 import { claimSheet } from "./gate.js";
 import { sendTable, sendSeason, sendDay } from "../images.js";
@@ -80,7 +80,8 @@ function ctx(g) {
 const cardKey = c => encodeURIComponent(c.key ?? c.id);
 /** Where a league member's own page lives: a contact has one, an account that claimed them has another. */
 const personHash = id => (S.state.players.find(x => x.id === id && !x.deleted) ? `#player/${id}` : `#person/${id}`);
-const dayWhere = c => (c.course && (c.course.loop || c.course.name)) || c.name || "";
+// club first, loop second: "18 holes" alone does not say where the day was
+const dayWhere = c => (c.course && (c.course.unlisted ? c.course.loop || c.course.name : courseTitle(c.course))) || c.name || "";
 
 /** Invite, share and (for whoever runs it) the settings, as icons in the header. */
 const headActions = runs => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share and images") + (runs ? iconBtn("lgsettings", "settings", "Settings") : "");
@@ -117,7 +118,7 @@ function boardRow(C, r, move, Sx) {
   const mine = isMyRow(r, C.me);
   const d = move && move.was ? (move.was.has(r.id) ? move.was.get(r.id) - r.place : null) : undefined;
   const arrow = d === undefined ? "" : d === null ? `<i class="mv new">new</i>`
-    : d > 0 ? `<i class="mv up">▲${d}</i>` : d < 0 ? `<i class="mv dn">▼${-d}</i>` : `<i class="mv">·</i>`;
+    : d > 0 ? `<i class="mv up">▲${d}</i>` : d < 0 ? `<i class="mv dn">▼${-d}</i>` : `<i class="mv"></i>`;   // held its place: nothing shown, the width kept so the points line up
   return `<a class="hrow lrow${mine ? " me" : ""}${r.place <= 3 ? " pod" : ""}" href="#league/${C.gid}/p/${esc(r.id)}" data-flip="${esc(r.id)}">
     <span class="lp num">${r.place}</span>${C.g.showGolfers ? avatar(r.name, "", F.lookOf(r.id)) : ""}
     <span class="t"><b>${esc(r.name)}</b><span>${esc(L.sub)}</span></span>
@@ -625,8 +626,16 @@ function playerView(C, pid, keep = false) {
 
 // ---------------------------------------------------------------- two players
 // the two golfers face each other across the score
-const vsFace = (C, id, name, side, facing) => C.g.showGolfers && F.lookOf(id) ? avatar(name, "big", F.lookOf(id), facing)
-  : `<span class="vsdisc ${side}">${esc(inits(name))}</span>`;
+const vsFace = (C, id, name, mark, side, facing) => C.g.showGolfers && F.lookOf(id) ? avatar(name, "big", F.lookOf(id), facing)
+  : `<span class="vsdisc ${side}${mark.length > 2 ? " long" : ""}">${esc(mark)}</span>`;
+// Maurits van 't Hag and Maxim van Wijk are both MV: then each wears as much of the first name as tells them apart
+function twoMarks(x, y) {
+  const a = inits(x), b = inits(y);
+  if (a !== b) return [a, b];
+  const fx = firstName(x), fy = firstName(y);
+  for (let n = 2; n <= 4; n++) if (fx.slice(0, n).toLowerCase() !== fy.slice(0, n).toLowerCase()) return [fx.slice(0, n), fy.slice(0, n)];
+  return [`${a}1`, `${b}2`];
+}
 
 function vsView(C, a, b) {
   const nameOf = id => { for (const M of C.Ms) { const p = M.players.find(x => x.id === id); if (p) return p.name; } return id; };
@@ -638,7 +647,7 @@ function vsView(C, a, b) {
   const h2hKind = C.formats.find(f => f in MATCH_BASIS);
   const basis = H2H_BASES.some(([k]) => k === ui.basis[C.gid]) ? ui.basis[C.gid] : (h2hKind ? MATCH_BASIS[h2hKind] : "points");
   const H = headToHead(C.Ms, a, b, basis);
-  const A_ = nameOf(a), B_ = nameOf(b), fA = firstName(A_), fB = firstName(B_);
+  const A_ = nameOf(a), B_ = nameOf(b), fA = firstName(A_), fB = firstName(B_), [mA, mB] = twoMarks(A_, B_);
   const [, basisName, roundWord, holeWord] = basisRow(basis);
   const head = `${sectRaw(`<button class="caps lfmt" data-act="vsbasis">${esc(basisName)} <i aria-hidden="true">⌄</i></button>`,
     infoBtn("Match play or stroke play?", `<p>This page keeps two scores, and they are two different games. Both are settled on ${esc(basisName.toLowerCase())}.</p>
@@ -658,15 +667,15 @@ function vsView(C, a, b) {
     const holes = H.holesA + H.holesB + H.holesHalved;
     const widest = H.winsA >= H.winsB ? H.widestA : H.widestB;
     const num = v => v === null ? "NR" : v;
-    const hero = `<div class="card vscard"><div class="modeline mid"><span class="modetag">Stroke play</span><span>rounds won on ${esc(basisWord(basis))}</span></div><div class="vsverdict">${verdict}</div>
-      <div class="vs${C.g.showGolfers ? " figs" : ""}"><div class="vsside">${vsFace(C, a, A_, "a", 1)}</div>
+    const hero = `<div class="card vscard"><div class="modeline mid"><span class="modetag">${esc(basisGame(basis))}</span><span>a round goes to ${esc(basisTaker(basis))}</span></div><div class="vsverdict">${verdict}</div>
+      <div class="vs${C.g.showGolfers ? " figs" : ""}"><div class="vsside">${vsFace(C, a, A_, mA, "a", 1)}</div>
         <div class="vsnum"><b class="num">${H.winsA}</b><s>&#8211;</s><b class="num">${H.winsB}</b><small>rounds won · ${H.ties ? plural(H.ties, "halved") : "none halved"}</small></div>
-        <div class="vsside">${vsFace(C, b, B_, "b", -1)}</div></div>
+        <div class="vsside">${vsFace(C, b, B_, mB, "b", -1)}</div></div>
       <div class="tug"><i class="a" style="width:${pc(H.winsA)}"></i><i class="t" style="width:${pc(H.ties)}"></i><i class="b" style="width:${pc(H.winsB)}"></i></div>
       <div class="vsline">${plural(H.rounds.length, "round")} together &middot; ${streak}</div></div>`;
-    const formStrip = `${h2tip("Round by round", `Every round they played together, oldest first. Each square carries the initials of whoever took it on ${esc(basisWord(basis))}; = means they tied. Tap one to see that card.`)}<div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${num(r.scoreA)}&#8211;${num(r.scoreB)}">${r.winner === "tie" ? "=" : esc(inits(r.winner === "a" ? A_ : B_))}</a>`).join("")}</div>`;
+    const formStrip = `${h2tip("Round by round", `Every round they played together, oldest first. Each square carries the initials of whoever took it on ${esc(basisWord(basis))}; = means they tied. Tap one to see that card.`)}<div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}${r.winner !== "tie" && (r.winner === "a" ? mA : mB).length > 2 ? " long" : ""}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${num(r.scoreA)}&#8211;${num(r.scoreB)}">${r.winner === "tie" ? "=" : esc(r.winner === "a" ? mA : mB)}</a>`).join("")}</div>`;
     const holesBlock = `${h2tip("Match play, hole by hole", `Every hole the two of them have played together, each one won by ${esc(holeWord)}. Added up as one long match: ${esc(fA)}'s holes on the left, halved holes in the middle, ${esc(fB)}'s on the right.`)}<div class="card">
-      <div class="modeline"><span class="modetag">Match play</span><span>holes won on ${esc(basisWord(basis))}</span></div>
+      <div class="modeline"><span class="modetag">Match play</span><span>a hole goes to ${esc(basisTaker(basis))}</span></div>
       <div class="tug big"><i class="a" style="width:${(H.holesA / holes) * 100}%"></i><i class="t" style="width:${(H.holesHalved / holes) * 100}%"></i><i class="b" style="width:${(H.holesB / holes) * 100}%"></i></div>
       <div class="holeskey"><span><b>${H.holesA}</b> ${esc(fA)}</span><span class="muted">${H.holesHalved} halved</span><span><b>${H.holesB}</b> ${esc(fB)}</span></div>
       <p class="muted small" style="margin:10px 0 0">All ${holes} holes together as one long match: ${H.up === 0 ? "dead level" : `${esc(H.up > 0 ? fA : fB)} would be ${Math.abs(H.up)} up`}.</p></div>`;

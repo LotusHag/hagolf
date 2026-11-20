@@ -3,8 +3,8 @@
 // screen is who is playing.
 import { brandForCourse } from "../brand.js";
 import * as S from "../store.js";
-import { page, bind, esc, go, ui, plural, courseTitle, courseBy, sheet, ICONS, tip } from "../ui.js";
-import { formatLabel, home, formatSheet, offeredFormat } from "./home.js";
+import { page, bind, esc, go, ui, plural, courseTitle, courseBy, sheet, ICONS, tip, shortDate as uiShortDate } from "../ui.js";
+import { formatLabel, formatSheet, offeredFormat } from "./home.js";
 import { dayCardId, joinDay } from "./together.js";
 import { createEvent } from "./event.js";
 
@@ -99,7 +99,7 @@ function playedBefore(limit = 4) {
   return [...when].map(([slug, date]) => ({ c: all.find(x => x.slug === slug), date })).filter(x => x.c).slice(0, limit);
 }
 
-const shortDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""; };
+const shortDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? uiShortDate(d) : ""; };
 
 // ---------------------------------------------------------------- Where?
 export function newRound(slug = null) {
@@ -109,8 +109,10 @@ export function newRound(slug = null) {
   const clubs = clubList();
   const near = here.lat !== null;
   const rec = playedBefore();
+  const nines = new Map();
+  for (const c of S.courses()) if ((c.nines || []).length === 1) nines.set(c.name, (nines.get(c.name) || 0) + 1);
   const clubRow = club => {
-    const k = ninesOf(club.name).length;
+    const k = nines.get(club.name) || 0;
     const what = k >= 2 ? `${plural(k, "nine")} · 9 or 18 holes`
       : club.courses.length === 1 ? `${club.courses[0].n} holes · par ${club.courses[0].course_par}` : plural(club.courses.length, "course");
     const w = club.where;
@@ -186,7 +188,7 @@ export function startRound(slug, { leagueId = ui.dayLeague || null, id = null } 
   const tees = Object.keys(c.tees);
   const last = S.state.settings.lastFormat || "stableford";
   const fmt = leagueId ? last : offeredFormat(last);
-  const r = S.createRound({ course: slug, name: `${c.name} ${S.today()}`, date: S.today(), defaultTee: tees.includes("yellow") ? "yellow" : tees[0],
+  const r = S.createRound({ course: slug, name: c.name, date: S.today(), defaultTee: tees.includes("yellow") ? "yellow" : tees[0],
     allowance: 100, brand: (brandForCourse(slug) || {}).id || null, format: fmt, leagueId, id });
   if (leagueId) S.setLeagueRound(leagueId, r.id, true);
   addMe(r, c, tees);
@@ -219,6 +221,6 @@ function unlistedForm() {
   });
 }
 
-/** #play opens the format sheet over the Play tab; #loops and the old list fall back to where they belong now. */
-export function play() { home(); formatSheet(); }
+/** #play is the Play tab with the format sheet open over it; #loops and the old list fall back to where they belong now. */
+export function play() { ui.playSheet = true; go("#home"); }
 export function loops() { go("#new"); }

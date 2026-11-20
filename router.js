@@ -3,7 +3,7 @@
 import * as S from "./store.js";
 import * as Y from "./sync.js";
 import * as A from "./auth.js";
-import { ui, paint, themeHere, hideToast, rememberIntent } from "./ui.js";
+import { ui, paint, themeHere, hideToast, rememberIntent, arriving, setRouter } from "./ui.js";
 import { keepAwake } from "./native.js";
 import { welcome, signin, join, add, you, getApp } from "./screens/gate.js";
 import { home } from "./screens/home.js";
@@ -37,6 +37,7 @@ export const gated = () => Y.enabled() && !A.signedIn();
 
 export function route() {
   hideToast();
+  arriving();
   const [name, ...args] = location.hash.replace(/^#/, "").split("/");
   keepAwake(name === "score" || (name === "live" && args[1] === "tv"));
   // In any browser there is one screen: how to get Hagolf onto this device. The link screens stay open, since
@@ -62,3 +63,4 @@ export function route() {
   if (name !== "new") ui.courseQ = "";   // the country chip is a preference and stays; the search box is not
   (screens[name] || home)(...args.map(decodeURIComponent));
 }
+setRouter(route);

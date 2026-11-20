@@ -373,19 +373,26 @@ export function deletePlayer(id) {
 }
 
 // ---------------------------------------------------------------- courses: the kit's files plus courses added on phones
-function allCourses() {
+// Built again only when a phone's own courses change: every screen looks a course up once per round it shows.
+let courseCache = null, courseSig = null;
+function courseMap() {
+  const sig = state.courses.map(c => `${c.slug}|${c.updated_at || ""}|${c.deleted ? 1 : 0}`).join(",");
+  if (courseCache && sig === courseSig) return courseCache;
   const out = new Map(DATA.courses.map(c => [c.slug, { ...c, source: c.source || "kit" }]));
   for (const c of state.courses) {
     if (c.deleted) out.delete(c.slug);
     else out.set(c.slug, { ...c.data, slug: c.slug, source: c.source || "phone" });
   }
-  return [...out.values()];
+  courseCache = out;
+  courseSig = sig;
+  return out;
 }
+const allCourses = () => [...courseMap().values()];
 
 /** The courses anyone can pick: an unlisted one belongs to its one round and is never offered again. */
 export function courses() { return allCourses().filter(c => !c.unlisted); }
 
-export function courseBy(slug) { return allCourses().find(c => c.slug === slug) || null; }
+export function courseBy(slug) { return courseMap().get(slug) || null; }
 
 /** A course typed on a phone: validated by model.prepareCourse before it gets here. */
 export function addCourse(slug, data) {
@@ -764,6 +771,10 @@ export function identityName(key, fallback) {
  * A round's own screens never collapse -- they address entries by contact id, and the card belongs to whoever
  * was written on it that day.
  */
+// A round is called after its club. Older ones carry the day in their name too ("Akkermans Golf 2026-11-19"); the
+// date is said where the card is opened, so a name is shown without it.
+export const roundName = r => String((r && r.name) || "").replace(/\s+\d{4}-\d{2}-\d{2}$/, "") || (r && r.name) || "";
+
 export function toModelRound(round, collapse = false) {
   const seen = new Set();
   const entries = [];
@@ -782,7 +793,7 @@ export function toModelRound(round, collapse = false) {
   }
   return {
     format: round.format || "stableford",
-    name: round.name, date: round.date, defaultTee: round.defaultTee, allowance: round.allowance,
+    name: roundName(round), date: round.date, defaultTee: round.defaultTee, allowance: round.allowance,
     final: round.status === "done",
     entries,
   };

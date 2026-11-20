@@ -39,7 +39,7 @@ export function me(section) {
       ${row("#bag", "bag", "My bag", clubs ? `${plural(clubs, "club")} with distances` : "Your club distances, on every hole")}
       ${acct ? row("#people", "people", "Friends", held.incoming.length ? `${plural(held.incoming.length, "request")} waiting` : `${plural(held.friends.length, "friend")}`) : ""}
       ${row("#me/keep", "chart", "Stats I keep", esc(keepWord))}
-      ${acct ? row("#partners", "users", "Courses and companies", (acct.clubs || []).length ? esc(acct.clubs.map(c => c.name).join(", ")) : "Have a code? Use it here") : ""}
+      ${acct ? row("#partners", "club", "Courses and companies", (acct.clubs || []).length ? esc(acct.clubs.map(c => c.name).join(", ")) : "Have a code? Use it here") : ""}
       ${acct && acct.admin ? row("#admin", "settings", "Operator desk", "Partners and enquiries") : ""}
     </div>
     <h2>Settings</h2>

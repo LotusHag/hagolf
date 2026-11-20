@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, appBase, qrHtml, atDoor, installRoute, isAndroid } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, redraw, appBase, qrHtml, atDoor, installRoute, isAndroid } from "../ui.js";
 import { fmtIndex } from "../model.js";
 import { buildRound, courseOf } from "./public.js";
 import { isNative, plugin } from "../native.js";
@@ -13,7 +13,9 @@ import { isNative, plugin } from "../native.js";
 /** Where to go once signed in and named: whatever a link asked for, otherwise home. */
 export function landed() {
   const intent = takeIntent();
-  go(intent && /^#(join|add|you|card|board|league|review)\//.test(intent) ? intent : "#home");
+  const to = intent && /^#(join|add|you|card|board|league|review)\//.test(intent) ? intent : "#home";
+  // the gate was drawn under the link's own hash, and going to the hash already there fires nothing
+  if (location.hash === to) redraw(); else go(to);
 }
 
 /** A signed-in account with a name becomes a contact in its own book, and what this phone means by "me". */

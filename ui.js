@@ -23,23 +23,24 @@ export const scrollAt = y => { app.scrollTop = y; };
  * A screen's declared back is only the fallback for a link opened cold, with nothing behind it.
  */
 const norm = h => (h && h !== "#" ? h : "#home");
-const TRAIL = "hagolf-trail";
+// Each entry carries the path down to itself in its own state, so the path can never drift from the real history:
+// not across a reload, nor when a link opens a fresh page in the same tab on top of an older one.
 let trail = [], at = 0, replacing = false, then = null;
 const stamp = () => {
-  try { history.replaceState({ ...(history.state || {}), at }, ""); } catch (e) {}
   trail[at] = norm(location.hash);
-  try { sessionStorage.setItem(TRAIL, JSON.stringify(trail)); } catch (e) {}
+  trail.length = at + 1;
+  try { history.replaceState({ ...(history.state || {}), at, path: trail.slice() }, ""); } catch (e) {}
 };
 if (history.state && typeof history.state.at === "number") {
   at = history.state.at;
-  try { trail = JSON.parse(sessionStorage.getItem(TRAIL)) || []; } catch (e) {}
+  trail = Array.isArray(history.state.path) ? history.state.path.slice() : [];
 }
 stamp();
 window.addEventListener("hashchange", ev => {
   const s = history.state, prevAt = at, wasReplacing = replacing, from = navFrom;
   navFrom = location.hash;
-  if (s && typeof s.at === "number") at = s.at;   // back or forward
-  else if (!replacing) { at++; trail.length = at; }
+  if (s && typeof s.at === "number") { at = s.at; if (Array.isArray(s.path)) trail = s.path.slice(); }   // back or forward
+  else if (!replacing) at++;
   replacing = false;
   stamp();
   // a rebase lands in two steps; the way it went is decided on the first
@@ -151,15 +152,25 @@ export function land(el) { if (el && !stillPlease()) el.classList.add("run"); }
 
 const SETUP = /^#(new|scan|j)(\/|$)/;
 // a link that acts once: left on the path, back would land on it and it would send you on again, for ever
-const ONCE = /^#(add|join|you)\//;
-/** Screens that are one place seen different ways: the holes and check of a card, the stats tabs, a society's boards. */
+const ONCE = /^#(add|join|you|j|signin|redeem)\//;
+const SEGS = ["days", "stats", "vs", "members"];
+/** Screens that are one place seen different ways: the holes and check of a card, the stats tabs, a society's parts. */
 function placeOf(h) {
   const [n, a, b] = h.slice(1).split("/");
   if (n === "score" || n === "review") return `card/${a}`;
   if (n === "stats") return "stats";
-  if (n === "league" && (b === "table" || b === "vs")) return `league/${a}/${b}`;
+  if (n === "league" && b === "table") return `league/${a}/table`;
+  if (n === "league" && a && (!b || SEGS.includes(b))) return `league/${a}`;
   return null;
 }
+// A screen that sends you on before it has drawn anything is not a place: it gives its entry to where it sends you,
+// or back would land on it and it would send you on again.
+let drawn = true;
+export function arriving() { drawn = false; }
+// the router, handed in by router.js (which imports this file): draws the screen of the hash already there
+let router = null;
+export const setRouter = fn => { router = fn; };
+export const redraw = () => router && router();
 const samePlace = (x, y) => x === y || (!!placeOf(x) && placeOf(x) === placeOf(y));
 /** To the k-th screen of the path, then that screen swapped for `to`. */
 function rebase(k, to) {
@@ -172,10 +183,12 @@ function rebase(k, to) {
 export function go(hash) {
   const to = norm(hash), from = norm(location.hash);
   if (to === location.hash) return;
+  // a sheet still open holds an entry of its own: shut it first, or every count below is one off
+  if (overlays.length) { afterShut = hash; history.go(-overlays.length); return; }
   if (TABS.some(t => t[1] === to)) { tabJump = true; return rebase(to === "#home" || norm(trail[0]) !== "#home" ? 0 : 1, to); }
   for (let k = at - 1; k >= 0; k--) if (trail[k] && samePlace(to, norm(trail[k]))) return rebase(k, to);
   const players = from.match(/^#players\/([^/]+)/);
-  if (samePlace(to, from) || ONCE.test(from) || (SETUP.test(from) && /^#(players|score|review)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
+  if (!drawn || samePlace(to, from) || ONCE.test(from) || (SETUP.test(from) && /^#(players|score|review|event)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
   location.hash = to;
 }
 document.addEventListener("click", ev => {
@@ -202,9 +215,13 @@ export const teeColor = t => TEE_INK[String(t || "").toLowerCase()] || "var(--ca
 export const inits = n => String(n || "").trim().split(/\s+/).slice(0, 2).map(w => [...w][0].toUpperCase()).join("");
 export const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
 export const sum = xs => xs.reduce((a, b) => a + b, 0);
+// one formatter per style: toLocaleDateString builds a new one on every call, and a list of rounds makes hundreds
+const dateIn = o => { const f = new Intl.DateTimeFormat("en-GB", o); return t => f.format(t); };
+const longDay = dateIn({ weekday: "short", day: "numeric", month: "short", year: "numeric" }), dayMon = dateIn({ day: "numeric", month: "short" }), wkday = dateIn({ weekday: "short" });
+export const monthShort = dateIn({ month: "short" });
 /** "Sat 5 Sep 2026" from an ISO date; the raw text if it is not a date. */
-export const fmtDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : (d || ""); };
-export const shortDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? t.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : (d || "–"); };
+export const fmtDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? longDay(t) : (d || ""); };
+export const shortDate = d => { const t = d ? new Date(d + "T12:00:00") : null; return t && !isNaN(t) ? dayMon(t) : (d || "–"); };
 /** "just now", "3 h ago", "Tue", "5 Sep": how long ago something was, briefly. */
 export function ago(iso) {
   const t = iso ? new Date(iso).getTime() : 0;
@@ -213,8 +230,8 @@ export function ago(iso) {
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.floor(s / 60)} min ago`;
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  if (s < 7 * 86400) return new Date(t).toLocaleDateString("en-GB", { weekday: "short" });
-  return new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  if (s < 7 * 86400) return wkday(new Date(t));
+  return dayMon(new Date(t));
 }
 export const courseTitle = c => c.loop ? `${c.name} · ${c.loop}` : c.name;
 export const courseBy = slug => S.courseBy(slug);
@@ -283,6 +300,8 @@ export const ICONS = {
   up: I(`<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>`),
   camera: I(`<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>`),
   flag: I(`<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>`),
+  // a clubhouse, its flag on the roof: courses and companies, where Friends already has the two people
+  club: I(`<path d="M3 21h18"/><path d="M5 21v-9l7-5 7 5v9"/><path d="M10 21v-5h4v5"/><path d="M12 7V2.5l3.5 1.4L12 5.3"/>`),
   card: I(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>`),
   friend: I(`<circle cx="10" cy="8" r="4"/><path d="M3 21a7 7 0 0 1 14 0"/><path d="M19 8v6"/><path d="M16 11h6"/>`),
   trophy: I(`<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4"/><path d="M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4"/><path d="M8 21h8"/>`),
@@ -335,6 +354,7 @@ let toastTimer = null;
  * gate (no chrome at all). A screen with no `back` and a `tabs` key is top level and gets the centred masthead.
  */
 export function page(title, body, { back = "#home", bar = "", sub = "", tabs = null, brand = false, keepScroll = false, bare = false, actions = "", bell = true, wide = false } = {}) {
+  drawn = true;
   const y = keepScroll ? scrollPos() : 0;
   const badge = N.actionable();
   const nav = tabs ? `<nav class="tabs">${TABS.map(([k, h, l, ic]) => `<a href="${h}" class="${k === tabs ? "on" : ""}">${ICONS[ic]}${l}${k === "me" && pendingPeople() ? `<span class="n">${pendingPeople()}</span>` : ""}</a>`).join("")}</nav>` : "";
@@ -390,13 +410,37 @@ export function toast(msg, ms = 2600, action = null) {
 }
 export const hideToast = () => { const t = document.getElementById("toast"); if (t && !t.classList.contains("action")) t.classList.remove("show"); };
 
+// ---------------------------------------------------------------- the keyboard
+// Android's and iOS's keyboards cover the page rather than shrink it, and a sheet sits at the very bottom: what
+// is being typed would be under the keys. The part of the screen the keyboard takes is kept in --kb, and an
+// open sheet stands on it.
+const vv = window.visualViewport;
+function keyboardRoom() {
+  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  const root = document.documentElement.style;
+  root.setProperty("--kb", `${kb}px`);
+  root.setProperty("--vvh", `${Math.round(vv.height)}px`);
+  const f = document.activeElement;
+  if (kb && f && f.closest && f.closest(".sheet")) f.scrollIntoView({ block: "nearest" });
+}
+if (vv) { vv.addEventListener("resize", keyboardRoom); vv.addEventListener("scroll", keyboardRoom); }
+
 // ---------------------------------------------------------------- back shuts what is on top
 // A sheet or the image viewer is a place of its own, so each takes a history entry while it is open: Android's
 // back gesture and the browser's back button shut it instead of leaving the screen.
 const overlays = [];
+let afterShut = null;
 window.addEventListener("popstate", () => {
   const depth = (history.state && history.state.overlay) || 0;
   while (overlays.length > depth) overlays.pop()();
+  // a rebase that landed on an entry with the same hash gets no hashchange to finish it on
+  if (then !== null && location.hash === navFrom) {
+    const t = then;
+    then = null;
+    if (history.state && typeof history.state.at === "number") { at = history.state.at; if (Array.isArray(history.state.path)) trail = history.state.path.slice(); }
+    if (t !== location.hash) { replacing = true; keepNav = true; location.replace(t); }
+  }
+  if (!overlays.length && afterShut !== null) { const h = afterShut; afterShut = null; go(h); }
 });
 /**
  * Opens an overlay's own history entry and returns the way out of it. Every way of leaving -- back, the cross,
@@ -439,12 +483,15 @@ export function sheet({ title = "", lead = "", body = "", actions = [], onOpen =
       <div class="sheethead"><span class="grip"></span><button class="sheetx" data-sheet-x aria-label="Close">&times;</button></div>
       ${title ? `<h3>${esc(title)}</h3>` : ""}${lead ? `<p class="lead">${esc(lead)}</p>` : ""}${body}
       ${actions.length ? `<div class="acts">${actions.map(a => `<button class="btn ${a.kind || ""}" data-sheet="${esc(a.value)}">${esc(a.label)}</button>`).join("")}</div>` : ""}</div>`;
-    let gone = false, picked = null;
-    const shut = () => { if (gone) return; gone = true; leaveSoftly(wrap); document.removeEventListener("keydown", onKey); resolve(picked); };
+    let gone = false, picked = null, follow = null;
+    const shut = () => { if (gone) return; gone = true; leaveSoftly(wrap); document.removeEventListener("keydown", onKey); resolve(picked); if (follow) go(follow); };
     const leave = backShuts(shut);
     const close = v => { if (gone) return; picked = v; leave(); };
     const onKey = e => { if (e.key === "Escape") close(null); };
     wrap.addEventListener("click", ev => {
+      // a link in a sheet is followed once the sheet's own entry is gone, never underneath it
+      const link = ev.target.closest("a[href^='#']");
+      if (link) { ev.preventDefault(); if (!link.hasAttribute("data-sheet")) { follow = link.getAttribute("href"); return close(null); } }
       if (ev.target === wrap) return close(null);
       if (ev.target.closest("[data-sheet-x]")) return close(null);
       const b = ev.target.closest("[data-sheet]");
@@ -463,17 +510,18 @@ export async function confirmSheet(title, lead, { label = "Confirm", danger = fa
   return v === "ok";
 }
 /** One line of text. Resolves with the text, or null. */
-export function promptSheet(title, lead, { placeholder = "", value = "", label = "Save", inputmode = "text" } = {}) {
-  return new Promise(resolve => {
-    sheet({ title, lead, body: `<form id="sheetf"><input name="v" value="${esc(value)}" placeholder="${esc(placeholder)}" inputmode="${inputmode}" autocomplete="off"></form>`,
-      actions: [{ label, value: "ok", kind: "primary" }, { label: "Cancel", value: "no" }],
-      onOpen: (el, close) => {
-        const f = el.querySelector("#sheetf");
-        f.querySelector("input").focus();
-        f.addEventListener("submit", ev => { ev.preventDefault(); close("ok"); });
-        el.querySelector("[data-sheet=ok]").addEventListener("click", () => { resolve(f.querySelector("input").value.trim()); }, { once: true });
-      } }).then(v => resolve(v === "ok" ? undefined : null));
-  }).then(v => v === undefined ? null : v);
+export async function promptSheet(title, lead, { placeholder = "", value = "", label = "Save", inputmode = "text" } = {}) {
+  let text = String(value).trim();
+  // answered once the sheet has shut, so whatever the answer opens next is not stacked on the sheet's entry
+  const v = await sheet({ title, lead, body: `<form id="sheetf"><input name="v" value="${esc(value)}" placeholder="${esc(placeholder)}" inputmode="${inputmode}" autocomplete="off"></form>`,
+    actions: [{ label, value: "ok", kind: "primary" }, { label: "Cancel", value: "no" }],
+    onOpen: (el, close) => {
+      const f = el.querySelector("#sheetf"), input = f.querySelector("input");
+      input.focus();
+      input.addEventListener("input", () => { text = input.value.trim(); });
+      f.addEventListener("submit", ev => { ev.preventDefault(); text = input.value.trim(); close("ok"); });
+    } });
+  return v === "ok" ? text : null;
 }
 /** A sheet holding a form: resolves with the button picked and the form as it was then. */
 export async function formSheet({ title = "", lead = "", body = "", actions = [] }) {
@@ -909,11 +957,14 @@ export function resumeHash(r) {
 }
 // A round is read as club first, loop second: "18 holes" or "Oost" alone says nothing about where you were.
 // An unlisted course has no name of its own: the round's name is where it was.
+export const roundName = r => S.roundName(r);
+/** The course, without the club again when the round is already called after it. */
+export const roundPlace = (r, c) => !c || c.unlisted ? "" : roundName(r) === c.name ? (c.loop || "") : courseTitle(c);
 export const roundClub = r => { const c = courseBy(r.course); return c && !c.unlisted ? c.name : r.name; };
 export const roundLoop = r => { const c = courseBy(r.course); return c && c.loop ? c.loop : ""; };
 export const roundWhere = r => { const c = courseBy(r.course); return c && !c.unlisted ? courseTitle(c) : r.name; };
 export function noCourse(r, back = "#play") {
-  page(r.name || "Round", `<div class="banner warn">This round's course (${esc(r.course)}) is not on this phone yet. It arrives with the next sync.</div>`, { back });
+  page(roundName(r) || "Round", `<div class="banner warn">This round's course (${esc(r.course)}) is not on this phone yet. It arrives with the next sync.</div>`, { back });
 }
 
 // ---------------------------------------------------------------- the intent a link carried through the gate

@@ -4,7 +4,7 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, fmtDate, scrollPos, scrollAt, roundWhere, roundClub, roundLoop, resumeHash, safeCompute, ICONS, emptyState, ordinal, sheet, subtabs } from "../ui.js";
 import { compute, fix, STAT_SWITCHES, matchWith } from "../model.js";
-import { myGame, myGameBody } from "./stats.js";
+import { myGame, gameBody } from "./stats.js";
 import { dayBlock, nowCard, formatLabel } from "./home.js";
 import { sendMine } from "../images.js";
 
@@ -43,11 +43,11 @@ export function stats(view, topic) {
   const t = FORMER[topic] || topic;
   const on = view === "rounds" ? "rounds" : view === "t" && TOPICS.some(([k]) => k === t) ? t : "scoring";
   if (on === "rounds") return roundsList();
-  const { p } = myGame();
+  const game = myGame(), { p } = game;
   const anyExtras = p && p.statline.any;
   page("Stats", `
     ${tabRow(on)}
-    ${p ? `${on === "scoring" ? tiles(p) : ""}${myGameBody(on)}
+    ${p ? `${on === "scoring" ? tiles(p) : ""}${gameBody(game, on)}
         ${on === "scoring" ? `<div class="sendrow"><button class="sendlink" data-act="send-mine">Send your season</button></div>` : ""}
         ${on === "shots" && !anyExtras ? `<p class="muted small center">Keep putts and fairways on your card and greens, the spread off the tee and your putting appear here. <a href="#me/keep">Choose what you keep ›</a></p>` : ""}`
       : emptyState("chart", "No numbers yet", "Play a round, or scan an old card, and they start here.")}`,

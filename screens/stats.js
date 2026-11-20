@@ -272,7 +272,6 @@ export function gameBody({ rounds, Ms, St, p }, topic, them = null) {
   const body = playerStats(St, p, nines, "", leagueCards(Ms), parts, !!them);
   return `<div class="statsbody">${body.trim() || `<p class="muted center" style="margin:30px 0">Nothing here yet.</p>`}</div>`;
 }
-export const myGameBody = topic => gameBody(myGame(), topic);
 
 function rivalVerdict(r, me, them) {
   const bits = [];

@@ -5,7 +5,7 @@
 import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
-import { page, bind, esc, go, plural, courseTitle, courseBy, noCourse, ui, sheet, ICONS, firstName, toast, land } from "../ui.js";
+import { page, bind, esc, go, plural, courseBy, noCourse, ui, sheet, ICONS, firstName, toast, land , roundName, roundPlace} from "../ui.js";
 import { handicapFor, scratchFor, stableford, NO_SCORE } from "../model.js";
 import { scoreStepper, extrasRows, ptsSoFar, mark } from "../pad.js";
 import { statTap, statStep, seedStats } from "./extras.js";
@@ -47,7 +47,7 @@ function block(r, c, e, i, h, kinds) {
   const who = e.role === "team" ? `<small class="members">${esc(r.entries.filter(m => e.members.includes(m.playerId)).map(m => firstName(m.name)).join(" · "))}</small>` : "";
   return `<div class="prow" data-i="${i}">
     <div class="phead">
-      <span class="pname">${Mo.isMatchFormat(r.format) && (e.side === "A" || e.side === "B") ? `<i class="side">${e.side}</i>` : ""}${esc(e.name)}${st ? `<i class="dots"><span>${"•".repeat(Math.min(st, 4))}</span><span class="sr">${plural(st, "stroke")}</span></i>` : ""}${who}</span>
+      <span class="pname">${Mo.isMatchFormat(r.format) && (e.side === "A" || e.side === "B") ? `<i class="side">${e.side}</i>` : ""}${esc(e.name)}${st > 0 ? `<i class="dots"><span>${"•".repeat(Math.min(st, 4))}</span><span class="sr">${plural(st, "stroke")}</span></i>` : st < 0 ? `<i class="dots"><span>${"−".repeat(Math.min(-st, 4))}</span><span class="sr">gives ${plural(-st, "stroke")} back</span></i>` : ""}${who}</span>
       ${tally}
     </div>
     ${scoreStepper(e, i, h, par)}
@@ -151,7 +151,7 @@ function holeGrid(r, c, list, byNet, hidePts = false) {
 
 async function menuSheet(r) {
   const mine = S.mySeat(r);
-  const v = await sheet({ title: r.name, body: `<div class="list">
+  const v = await sheet({ title: roundName(r), body: `<div class="list">
       <button data-sheet="players"><span class="lead">${ICONS.people}<div><div class="name">Players, sides and handicaps</div></div></span><span class="chev">›</span></button>
       <button data-sheet="invite"><span class="lead">${ICONS.link}<div><div class="name">Invite to this card</div><div class="muted small">They score with you, live</div></div></span><span class="chev">›</span></button>
       ${mine ? `<button data-sheet="track"><span class="lead">${ICONS.chart}<div><div class="name">${mine.trackStats ? "Stop keeping my putts and the rest" : "Keep my putts and the rest"}</div></div></span></button>` : ""}
@@ -224,7 +224,7 @@ export function score(rid, hArg) {
   ui.lastScore = here;
   const before = again ? SEEN.get(here) : null, now = r.entries.map(e => e.scores[h]);
   SEEN.set(here, now);
-  page(r.name, body, { back: "#home", bar, sub: `${formatLabel(r.format)} · ${courseTitle(c)}`, bell: false, keepScroll: again,
+  page(roundName(r), body, { back: "#home", bar, sub: [formatLabel(r.format), roundPlace(r, c)].filter(Boolean).join(" · "), bell: false, keepScroll: again,
     actions: `<button class="iconbtn" data-act="bag" aria-label="My bag">${ICONS.bag}</button><button class="iconbtn" data-act="board" aria-label="The board">${ICONS.table}</button><button class="iconbtn" data-act="menu" aria-label="More">${ICONS.more}</button>` });
 
   const remark = () => {

@@ -115,7 +115,7 @@ const looksOf = (chosen, brand) => chosen.flatMap(tn => (brand ? [[makeTheme(the
 
 export function graphics(rid, want = "") {
   const r = S.getRound(rid);
-  if (!r) return go("#play");
+  if (!r) return go("#home");
   const c = courseBy(r.course);
   if (!c) return noCourse(r);
   let M;

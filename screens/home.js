@@ -4,7 +4,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, go, ui, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS } from "../ui.js";
+import { page, bind, esc, go, ui, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS, monthShort , roundName, roundPlace} from "../ui.js";
 import { handicapFor, stableford, fmtIndex, FORMATS_ROUND, PLAY_GROUPS, PLAY_KINDS, kindOf, isMatchFormat, matchesOf } from "../model.js";
 import { leagueResults, standingsFor } from "./formats.js";
 import { noteLine } from "./updates.js";
@@ -55,13 +55,13 @@ export function liveLine(r) {
 }
 
 /** A round in progress as a card. */
-export const nowCard = r => `<a class="now" href="${resumeHash(r)}"><div class="k">${r.status === "scoring" ? "Playing now" : "Being set up"} · ${esc(formatLabel(r.format))}</div><div class="name">${esc(r.name)}</div>
-    <div class="small" style="opacity:.85">${esc(courseTitle(courseBy(r.course) || { name: r.course }))} · ${roundStatus(r)}</div>${liveLine(r)}<span class="cta">${r.status === "scoring" ? "Continue scoring ›" : "Add players ›"}</span></a>`;
+export const nowCard = r => `<a class="now" href="${resumeHash(r)}"><div class="k">${r.status === "scoring" ? "Playing now" : "Being set up"} · ${esc(formatLabel(r.format))}</div><div class="name">${esc(roundName(r))}</div>
+    <div class="small" style="opacity:.85">${esc([roundPlace(r, courseBy(r.course)), roundStatus(r)].filter(Boolean).join(" · "))}</div>${liveLine(r)}<span class="cta">${r.status === "scoring" ? "Continue scoring ›" : "Add players ›"}</span></a>`;
 
 /** A date as the day over the month, the way a diary prints it. */
 export const dayBlock = d => {
   const t = d ? new Date(`${d}T12:00:00`) : null;
-  return t && !isNaN(t) ? `<span class="dblock"><b>${t.getDate()}</b><small>${t.toLocaleDateString("en-GB", { month: "short" })}</small></span>` : `<span class="dblock"><b>–</b></span>`;
+  return t && !isNaN(t) ? `<span class="dblock"><b>${t.getDate()}</b><small>${monthShort(t)}</small></span>` : `<span class="dblock"><b>–</b></span>`;
 };
 
 /** The one quiet line under the button: what you play off, and where you stand in your first society. */
@@ -106,7 +106,7 @@ export function home() {
   if (S.state.settings.movedSeen !== 1 && rounds.length) banners.push(`<div class="banner accent moved"><b>Things moved.</b> Play starts here. Your rounds and numbers are under Stats, friends and settings under Me. <button class="btn small" data-act="moved-ok">Got it</button></div>`);
   const cur = open[0];
   const hero = cur
-    ? `<a class="playbtn cont" href="${resumeHash(cur)}"><span class="pk">${esc(formatLabel(cur.format))} · ${esc(cur.name)}</span><b>${cur.status === "scoring" ? `Continue · hole ${Math.min(S.holeOf(cur) + 1, (courseBy(cur.course) || {}).n || 18)}` : "Continue"}</b>${liveLine(cur)}</a>
+    ? `<a class="playbtn cont" href="${resumeHash(cur)}"><span class="pk">${esc(formatLabel(cur.format))} · ${esc(roundName(cur))}</span><b>${cur.status === "scoring" ? `Continue · hole ${Math.min(S.holeOf(cur) + 1, (courseBy(cur.course) || {}).n || 18)}` : "Continue"}</b>${liveLine(cur)}</a>
        <button class="btn wide" data-act="play">${ICONS.plus} Start another round</button>`
     : `<button class="playbtn" data-act="play"><b>Play</b><span class="pk">Stroke play, Stableford, match play or scramble</span></button>`;
   const others = open.slice(1);
@@ -115,7 +115,7 @@ export function home() {
     ${banners.join("")}
     <section class="playhero">${hero}${glance()}</section>
     ${panel("flag", "Coming up", `<div class="rows">${events.map(eventRow).join("")}<button class="hrow more" data-act="new-event"><span class="t"><b>New event</b><span>A day for a group: the field, tee times, the draw and a live board</span></span></button></div>`)}
-    ${others.length ? panel("play", "Also on the go", `<div class="rows">${others.map(r => `<a class="hrow" href="${resumeHash(r)}"><span class="t"><b>${esc(r.name)}</b><span>${esc(formatLabel(r.format))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>`) : ""}
+    ${others.length ? panel("play", "Also on the go", `<div class="rows">${others.map(r => `<a class="hrow" href="${resumeHash(r)}"><span class="t"><b>${esc(roundName(r))}</b><span>${esc(formatLabel(r.format))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>`) : ""}
     ${ask.length ? panel("friend", "Asked to join", `<div class="rows">${ask.map(n => noteLine(n)).join("")}</div>`) : ""}
     ${days.length ? panel("leagues", "Today in your society", `<div class="rows">${days.map(r => {
       const g = S.getLeague(r.leagueId), seated = !!S.mySeat(r);
@@ -124,6 +124,7 @@ export function home() {
     }).join("")}</div>`) : ""}
     <p class="center quietlinks"><button class="linkish" data-act="have-link">Have a link or a code?</button>${atDoor() ? ` · <a href="#get">Put Hagolf on this phone</a>` : ""}</p>`,
     { back: "", tabs: "home", brand: "center" });
+  if (ui.playSheet) { ui.playSheet = false; formatSheet(); }
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;

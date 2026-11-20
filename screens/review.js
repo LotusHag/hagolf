@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, esc, go, toast, plural, courseTitle, courseBy, noCourse, ui, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, ICONS } from "../ui.js";
+import { page, bind, esc, go, toast, plural, courseBy, noCourse, ui, sheet, confirmSheet, shareLink, avatar, firstName, fmtDate, iconBtn, ICONS , roundName, roundPlace} from "../ui.js";
 import { compute, halves, fmtToPar, fmtHcp, NO_SCORE, holesWithoutPar, roundRanking, isMatchFormat, onPoints, matchWith } from "../model.js";
 import { runsCard } from "./event.js";
 import { formatLabel } from "./home.js";
@@ -78,7 +78,7 @@ export async function shareSheet(r) {
   // the names on this card who are not on Hagolf yet, and are mine to send a link to
   const names = done && A.signedIn() ? r.entries.filter(e => !e.accountId && e.role !== "team")
     .map(e => S.players().find(p => p.id === (e.contactId || e.playerId) && p.owner === S.myAccount() && !p.linkedAccount)).filter(Boolean) : [];
-  const v = await sheet({ title: "Share", lead: `${r.name}`,
+  const v = await sheet({ title: "Share", lead: roundName(r),
     body: `<div class="list">
       ${door ? `<button data-sheet="image"><span class="lead">${ICONS.image}<div><div class="name">${esc(door)}</div><div class="muted small">An image for the group chat, seen before it goes</div></div></span><span class="chev">›</span></button>` : ""}
       ${names.map(p => `<button data-sheet="send:${esc(p.id)}"><span class="lead">${ICONS.share}<div><div class="name">Send ${esc(firstName(p.name))} their rounds</div><div class="muted small">This card and every other you kept for them</div></div></span><span class="chev">›</span></button>`).join("")}
@@ -96,7 +96,7 @@ export async function shareSheet(r) {
     if (!done) return toast("Save the round first");
     const ok = r.token || await confirmSheet("Make a link?", "Everyone with the link can see every player's scores on this card, without signing in. The players on it are told.", { label: "Make the link" });
     if (!ok) return;
-    try { const res = await F.cardLink(r.id); r.token = res.token; S.afterPull(); await shareLink(res.url, `${r.name} on Hagolf`, `${r.name}, ${fmtDate(r.date)}`); } catch (e) { toast(e.message, 5000); }
+    try { const res = await F.cardLink(r.id); r.token = res.token; S.afterPull(); await shareLink(res.url, `${roundName(r)} on Hagolf`, `${roundName(r)}, ${fmtDate(r.date)}`); } catch (e) { toast(e.message, 5000); }
   }
   if (v === "unlink") { try { await F.cardUnlink(r.id); r.token = null; S.afterPull(); toast("The link is off"); } catch (e) { toast(e.message, 5000); } }
 }
@@ -133,7 +133,7 @@ async function roundMenu(r, c) {
   // a seat I took on somebody else's card, which I can always hand back
   const me = S.myAccount(), seat = S.mySeat(r);
   const handBack = me && seat && seat.accountId === me && r.owner && r.owner !== me;
-  const v = await sheet({ title: r.name, body: `<div class="list">
+  const v = await sheet({ title: roundName(r), body: `<div class="list">
       ${scorer ? `<button data-sheet="details"><span class="lead">${ICONS.edit}<div><div class="name">Name and date</div><div class="muted small">${esc(r.name)} · ${esc(fmtDate(r.date) || "no date")}</div></div></span><span class="chev">›</span></button>` : ""}
       ${scorer ? `<button data-sheet="players"><span class="lead">${ICONS.people}<div><div class="name">Players, sides and handicaps</div></div></span><span class="chev">›</span></button>` : ""}
       ${c.unlisted || !scorer ? "" : `<button data-sheet="attach"><span class="lead">${ICONS.trophy}<div><div class="name">Counts for</div><div class="muted small">${lg.length ? esc(lg.map(g => g.name).join(", ")) : "no society"}</div></div></span><span class="chev">›</span></button>`}
@@ -244,7 +244,7 @@ export function review(rid, keep = false) {
     : runsCard(r) ? `<button class="btn primary" data-act="close-day">Close the day</button>`
     : `<button class="btn" disabled>Waiting for ${plural(new Set(r.entries.filter(x => !x.signed).map(S.groupOf)).size, "group")}</button>`;
   const bar = done ? (fresh ? `<button class="btn primary" data-act="send-img">${esc(door)}</button>` : "") : scorer ? `<a class="btn" href="#score/${rid}/${c.n - 1}">‹ Scoring</a>${handIn}` : "";
-  page(done ? "Card" : "Check the card", body, { back: done ? "#stats/rounds" : `#score/${rid}/${S.holeOf(r)}`, bar, sub: `${r.name} · ${courseTitle(c)}`, keepScroll: keep, bell: false,
+  page(done ? "Card" : "Check the card", body, { back: done ? "#stats/rounds" : `#score/${rid}/${S.holeOf(r)}`, bar, sub: [fmtDate(r.date), roundName(r), roundPlace(r, c)].filter(Boolean).join(" · "), keepScroll: keep, bell: false,
     actions: `${iconBtn("share", "share", "Share")}${iconBtn("menu", "more", "More")}` });
   if (scorer && !done && Y.enabled() && !(ui.conflictsChecked || {})[rid]) checkConflicts(r).then(n => { if (n && location.hash.startsWith(`#review/${rid}`)) review(rid, true); });
   bind(async ev => {
@@ -316,12 +316,12 @@ async function checkConflicts(r) {
 // ---------------------------------------------------------------- the leagues a round counts for
 export function attach(rid) {
   const r = S.getRound(rid);
-  if (!r) return go("#play");
+  if (!r) return go("#home");
   const mine = new Set(S.leaguesOfRound(rid).map(g => g.id));
   const list = S.leagues().map(g => `<label><input type="checkbox" data-act="toggle-league" data-gid="${g.id}" ${mine.has(g.id) ? "checked" : ""}> ${esc(g.name)}<span class="muted"> · ${plural(S.leagueRoundIds(g.id).length, "round")}</span></label>`).join("");
   const backTo = `#review/${rid}`;
   page("Counts for", `
-    <p class="muted small">${esc(r.name)}: tick the societies this round counts for. Every member sees the table update.</p>
+    <p class="muted small">${esc(roundName(r))}: tick the societies this round counts for. Every member sees the table update.</p>
     <div class="card checks">${list || `<p class="muted">No societies yet. Make one below.</p>`}</div>
     <form id="newg" class="card form open"><h2>New society</h2><label>Name<input name="name" placeholder="e.g. Thursday society" required></label>
       <button class="btn" type="submit">Create and add this round</button></form>`,

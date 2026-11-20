@@ -329,10 +329,10 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .onb .skip { display: block; margin-top: 14px; color: var(--ink3); font-size: 0.875rem; }
 
 /* ---- bottom sheet, replacing every native dialog */
-:is(.sheet-wrap, .sheet-gone) { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s var(--ease-out); }
+:is(.sheet-wrap, .sheet-gone) { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--kb, 0px); animation: fade .15s var(--ease-out); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { transform: translateY(24px); } to { transform: none; } }
-:is(.sheet, .sheet-out) { position: relative; width: 100%; max-width: 640px; max-height: 88dvh; overflow-y: auto; background: var(--bg); border-radius: var(--r) 8px 0 0; padding: 0 16px calc(16px + var(--sab)); animation: rise .18s var(--ease-out); }
+:is(.sheet, .sheet-out) { position: relative; width: 100%; max-width: 640px; max-height: min(88dvh, calc(var(--vvh, 100dvh) - 24px)); overflow-y: auto; background: var(--bg); border-radius: var(--r) 8px 0 0; padding: 0 16px calc(16px + var(--sab)); animation: rise .18s var(--ease-out); }
 /* a sheet leaves the way it came: renamed the moment it starts to, so nothing looking for the open sheet finds it */
 .sheet-gone { animation: fade-out .14s var(--ease-in) forwards; pointer-events: none; }
 .sheet-gone .sheet-out { animation: sink .14s var(--ease-in) forwards; }
@@ -374,6 +374,8 @@ main.bare { min-height: 100%; display: grid; place-items: center; padding: 24px 
 .viewer .vnav:active { background: rgba(255,255,255,.24); }
 
 /* ---- course picker, players in a round */
+/* six hundred clubs: the ones below the fold are laid out when scrolled to, not when the screen opens */
+#courses > .course { content-visibility: auto; contain-intrinsic-size: auto 72px; }
 .course .name { font-size: 1rem; }
 .course .away { flex: none; font-size: 0.8125rem; font-weight: 600; color: var(--ink3); }
 .rec { flex: 0 0 min(66vw, 230px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 1px; min-height: 94px; padding: 12px 14px; text-align: left; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card); color: var(--ink); }
@@ -689,11 +691,13 @@ b.sgdown { color: var(--sc-bogey-ink); }
 
 .vscard { padding: 16px; }
 .vsverdict { text-align: center; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .9px; color: var(--ink3); }
-.vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; margin-top: 12px; }
+.vs { display: grid; grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr); gap: 8px; align-items: center; margin-top: 12px; }
 .vsside { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
-.vsdisc { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-family: var(--fd); font-size: 1.1875rem; font-weight: 600; letter-spacing: .5px; }
+/* sized with the text, so a three-letter mark (Mau, Max) still fits at the largest text size */
+.vsdisc { width: 3.125rem; height: 3.125rem; border-radius: 50%; display: grid; place-items: center; font-family: var(--fd); font-size: 1.1875rem; font-weight: 600; letter-spacing: .5px; }
 .vsdisc.a { background: var(--green); color: var(--green-ink); } .vsdisc.b { background: var(--ink); color: var(--on-ink); }
-.vs.figs .vsdisc { width: 64px; height: 64px; font-size: 1.5rem; }
+.vsdisc.long { font-size: 1rem; letter-spacing: 0; }
+.vs.figs .vsdisc { width: 4rem; height: 4rem; font-size: 1.5rem; }
 .vsnum { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 6px; padding: 0 4px; }
 .vsnum b { font-family: var(--fd); font-variant-numeric: tabular-nums; font-size: 2.875rem; line-height: .95; font-weight: 600; }
 .vsnum b:first-child { color: var(--green); } .vsnum b:nth-child(3) { color: var(--ink); }
@@ -705,7 +709,8 @@ b.sgdown { color: var(--sc-bogey-ink); }
 .tug .a { background: var(--green); } .tug .t { background: var(--line2); } .tug .b { background: var(--ink); }
 .vsline { text-align: center; color: var(--ink3); font-size: 0.8125rem; margin-top: 8px; }
 .vsform { display: flex; flex-wrap: wrap; gap: 5px; }
-.fdot { width: 34px; height: 34px; flex: none; border-radius: var(--r-xs); display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; letter-spacing: .3px; }
+.fdot { width: 2.125rem; height: 2.125rem; flex: none; border-radius: var(--r-xs); display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; letter-spacing: .3px; }
+.fdot.long { font-size: 0.6875rem; letter-spacing: 0; }
 .fdot.a { background: var(--green); color: var(--green-ink); } .fdot.b { background: var(--ink); color: var(--on-ink); }
 .fdot.tie { background: var(--card2); color: var(--ink3); border: 1px solid var(--line); }
 .tapes { padding: 6px 16px 14px; }

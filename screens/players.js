@@ -7,7 +7,7 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
-import { page, bind, esc, go, ui, toast, plural, firstName, courseTitle, courseBy, noCourse, parseHI, hiOk, confirmSheet, promptSheet, sheet, teeColor, shareLink, qrHtml, fmtDate, avatar } from "../ui.js";
+import { page, bind, esc, go, ui, toast, plural, firstName, courseTitle, courseBy, noCourse, parseHI, hiOk, confirmSheet, promptSheet, sheet, teeColor, shareLink, qrHtml, fmtDate, avatar , roundName} from "../ui.js";
 import { handicapFor, scratchFor, fmtHcp, fmtIndex } from "../model.js";
 import { brandField } from "./partner.js";
 import { formatLabel } from "./home.js";
@@ -25,7 +25,7 @@ export function dropRound(rid) {
   if (!r) return go("#home");
   const back = r.status === "done" ? `#review/${rid}` : r.status === "setup" ? `#players/${rid}` : `#score/${rid}/${S.holeOf(r)}`;
   S.deleteRound(r.id);
-  toast(`${r.name} ${r.status === "done" ? "deleted" : "discarded"}`, 8000, { label: "Undo", fn: () => { S.restoreRound(rid); go(back); } });
+  toast(`${roundName(r)} ${r.status === "done" ? "deleted" : "discarded"}`, 8000, { label: "Undo", fn: () => { S.restoreRound(rid); go(back); } });
   go("#home");
 }
 

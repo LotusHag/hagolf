@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
-import { page, bind, esc, go, toast, plural, firstName, ordinal, fmtDate, courseTitle, courseBy, noCourse, sheet, confirmSheet, formSheet, ui, onDesk } from "../ui.js";
+import { page, bind, esc, go, toast, plural, firstName, ordinal, fmtDate, courseTitle, courseBy, noCourse, sheet, confirmSheet, formSheet, ui, onDesk, monthShort , roundName} from "../ui.js";
 import { runsIt } from "./league.js";
 import { formatLabel } from "./home.js";
 import { seatMe, liveSheet } from "./together.js";
@@ -342,7 +342,7 @@ export function event(rid) {
     </div>${r.status === "setup" ? `<p class="center" style="margin-top:18px"><button class="btn small danger" data-act="drop">Cancel the event</button></p>` : ""}` : "";
   const sub = [fmtDate(r.date), courseTitle(c), eventLabel(r.format), lg ? lg.name : ""].filter(Boolean).join(" · ");
   const desk = onDesk() && run;
-  page(r.name, desk ? `<div class="evgrid"><div>${me}${teams}${sheetHead}${field}</div><div>${run}</div></div>` : `${me}${teams}${sheetHead}${field}${run}`,
+  page(roundName(r), desk ? `<div class="evgrid"><div>${me}${teams}${sheetHead}${field}</div><div>${run}</div></div>` : `${me}${teams}${sheetHead}${field}${run}`,
     { back: lg ? `#league/${lg.id}/days` : "#home", sub, bell: false, wide: !!desk });
   if (ui.eventNew === rid) { ui.eventNew = null; detailsSheet(r).then(() => event(rid)); }
   bind(async ev => {
@@ -390,6 +390,6 @@ export function eventRow(r) {
   const sl = mine && c ? slots(r, c, S.groupOf(mine))[S.groupOf(mine) - 1] : null;
   const t = new Date(`${r.date}T12:00:00`);
   const when = sl && sl.t ? `you're off ${sl.t}` : mine ? "you're in" : plural(people(r).length, "player");
-  return `<a class="hrow lead" href="#event/${esc(r.id)}"><span class="dblock"><b>${isNaN(t) ? "–" : t.getDate()}</b><small>${isNaN(t) ? "" : t.toLocaleDateString("en-GB", { month: "short" })}</small></span>
+  return `<a class="hrow lead" href="#event/${esc(r.id)}"><span class="dblock"><b>${isNaN(t) ? "–" : t.getDate()}</b><small>${isNaN(t) ? "" : monthShort(t)}</small></span>
     <span class="t"><b>${esc(r.name)}</b><span>${esc([c ? courseTitle(c) : r.course, eventLabel(r.format), P.teams.length ? P.teams.join(" v ") : "", when].filter(Boolean).join(" · "))}</span></span><span class="chev">›</span></a>`;
 }
