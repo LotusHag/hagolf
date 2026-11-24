@@ -101,8 +101,10 @@ function extrasTable(St) {
     // One tbody a player: the name on a line of its own, the figures under it, so the seven columns get the
     // whole width instead of what a long name leaves them, and the table fits a phone without scrolling.
     html: `<table class="stand xtab"><thead><tr>${cols.map(head).join("")}</tr></thead>
-      ${rows.map(r => `<tbody><tr class="xname"><th class="l" colspan="${cols.length}" scope="rowgroup">${esc(r.name)}</th></tr><tr>${cols.map(c => `<td>${cell(r.by[c.key])}</td>`).join("")}</tr></tbody>`).join("")}</table>` };
+      ${rows.map(r => xbody(r.name, cols.length, cols.map(c => `<td>${cell(r.by[c.key])}</td>`).join(""))).join("")}</table>` };
 }
+/** One player in an `xtab`: a tbody with the name across the top and `cells` (already <td>s) in the columns under it. */
+const xbody = (name, span, cells, cls = "") => `<tbody${cls ? ` class="${cls}"` : ""}><tr class="xname"><th class="l" colspan="${span}" scope="rowgroup">${esc(name)}</th></tr><tr>${cells}</tr></tbody>`;
 // column heads for a phone, where seven full words do not fit across; the full one stays in the head's title
 const XTAB_SHORT = { fairway: "Fwy", upDown: "U&amp;D", penalty: "Pen", bunkers: "Bunk", sandOut: "Out" };
 
@@ -149,7 +151,7 @@ function formTable(St) {
   // fewest strokes first, and a player with no round holed out at the foot
   const rows = !strokes ? players : [...players].sort((a, b) => (v(a).avg ?? Infinity) - (v(b).avg ?? Infinity) || a.name.localeCompare(b.name));
   const need = FORM_MIN - 1;
-  const waitRow = p => `<tr class="muted"><td class="l">${esc(p.name)}</td><td>${p.played}</td><td colspan="4">${plural(need, "more round")} to go</td></tr>`;
+  const waitRow = p => xbody(p.name, 5, `<td>${p.played}</td><td colspan="4">${plural(need, "more round")} to go</td>`, "muted");
   const played = p => {
     if (strokes) return p.strokes.rounds === p.played ? p.played : `${p.strokes.rounds}<small class="tsub">of ${p.played}</small>`;
     return !mixed || !p.nines ? p.played : `${p.played}<small class="tsub">${p.nines === p.played ? "all nines" : plural(p.nines, "nine")}</small>`;
@@ -162,9 +164,9 @@ function formTable(St) {
       <p>Switch between points, strokes, gains${St.field.statline.any ? " and shots" : ""} above the table. <b>Gains</b> names, for each player, the part of their game where they lose the most to the rest of the field: a skill where the cards keep putts, greens and the like, otherwise a kind of hole. Strokes count only rounds with every hole holed out, so the number of rounds can be smaller, and they are not evened out for the course: a par 70 and a par 72 count as they were played.</p>
       ${mixed ? `<p>This society plays both nines and eighteens, so every round is put on an eighteen-hole footing first: a nine counts double.${strokes ? "" : " 36 is an eighteen played to the handicap."}</p>` : ""}`)}
     ${picks}
-    <div class="tscroll"><table class="stand nowrap"><thead><tr><th class="l">Player</th><th>Rounds</th><th>${mixed ? "Avg /18" : "Avg"}</th><th>Spread</th><th>Last 3</th><th>Trend</th></tr></thead>
-      <tbody>${rows.map(p => { const x = v(p); return `<tr><td class="l">${esc(p.name)}</td><td>${played(p)}</td><td class="acc">${dash(x.avg, fix)}</td>
-        <td>${dash(x.spread, fix)}</td><td>${dash(x.form, fix)}</td><td>${dash(x.trend, fmtSigned)}</td></tr>`; }).join("")}${waiting.map(waitRow).join("")}</tbody></table></div>
+    <table class="stand xtab"><thead><tr><th>Rounds</th><th>${mixed ? "Avg /18" : "Avg"}</th><th>Spread</th><th>Last 3</th><th>Trend</th></tr></thead>
+      ${rows.map(p => { const x = v(p); return xbody(p.name, 5, `<td>${played(p)}</td><td class="acc">${dash(x.avg, fix)}</td>
+        <td>${dash(x.spread, fix)}</td><td>${dash(x.form, fix)}</td><td>${dash(x.trend, fmtSigned)}</td>`); }).join("")}${waiting.map(waitRow).join("")}</table>
     <p class="muted small" style="margin:6px 4px 0">${mixed ? `${strokes ? "Strokes" : "Points"} per 18 holes. A nine counts double. ` : ""}A player joins from round ${FORM_MIN}; last 3 shows from round ${LAST3_MIN}, trend from round ${TREND_MIN}.</p>`;
 }
 
@@ -241,17 +243,17 @@ const gainsKindTip = `Every hole is sorted two ways: by par, and by stroke index
 /** Society: each player against the rest of the field, on the same days only (`p.rest`). */
 function gainsTable(players, mixed, picks) {
   const rows = players.map(p => ({ p, g: gainsFor(p, mixed, { kind: of => of(p.rest), skill: k => p.rest.statline ? k.of(p.rest.statline) : null }) }));
-  const dash = `<td class="muted">&ndash;</td>`;
   return `${h2tip("Form and consistency", `<p><b>Gains</b> is where each player loses the most to the field: everyone else in the society, on the days they played together.</p>
       <p>Where the cards keep putts, greens, fairways, up and downs or penalties, the gain is read from those: the gap to the field, times how often it comes up in a round, times what it costs. ${gainsSkillTip}</p>
       <p>Where they do not, it is read from the kinds of hole, as Stableford points a hole against the field's. ${gainsKindTip}</p>
       <p><b>Work on</b> is where the gap is worth the most, with the next one under it. <b>Now</b> is the player's own figure, <b>Field</b> the rest of the field's, and <b>Worth</b> what closing the gap would gain ${mixed ? "per 18 holes" : "a round"}. A reading needs ${RATE_MIN} attempts on both sides, a kind of hole ${GAIN_MIN} holes.</p>`)}
     ${picks}
-    <div class="tscroll"><table class="stand nowrap"><thead><tr><th class="l">Player</th><th class="l">Work on</th><th>Now</th><th>Field</th><th>${mixed ? "Worth /18" : "Worth"}</th></tr></thead>
-      <tbody>${rows.map(({ p, g }) => { const [a, b] = g;
-        return `<tr><td class="l">${esc(p.name)}</td>${!a ? `<td class="l muted">${p.rest && p.rest.holes ? "Level with the field or better" : "No round shared with the field yet"}</td>${dash}${dash}${dash}` : `
+    <table class="stand xtab"><colgroup><col class="xwork"><col><col><col></colgroup>
+      <thead><tr><th class="l">Work on</th><th>Now</th><th>Field</th><th>${mixed ? "Worth /18" : "Worth"}</th></tr></thead>
+      ${rows.map(({ p, g }) => { const [a, b] = g;
+        return xbody(p.name, 4, !a ? `<td class="l muted" colspan="4">${p.rest && p.rest.holes ? "Level with the field or better" : "No round shared with the field yet"}</td>` : `
           <td class="l">${esc(a.label)}${b ? `<small class="tsub">then ${esc(b.label.toLowerCase())}, ${fmtSigned(b.worth)}</small>` : ""}</td>
-          <td>${a.fmt(a.now)}</td><td>${a.fmt(a.base)}</td><td class="acc">${fmtSigned(a.worth)}</td>`}</tr>`; }).join("")}</tbody></table></div>
+          <td>${a.fmt(a.now)}</td><td>${a.fmt(a.base)}</td><td class="acc">${fmtSigned(a.worth)}</td>`); }).join("")}</table>
     <p class="muted small" style="margin:6px 4px 0">Points ${mixed ? "per 18 holes" : "a round"}, closing the gap to the rest of the field.</p>`;
 }
 
@@ -281,7 +283,7 @@ function matchTable(St) {
   const rows = [...St.matches].sort((a, b) => (b.won - b.lost) - (a.won - a.lost) || (b.holesWon - b.holesLost) - (a.holesWon - a.holesLost) || a.name.localeCompare(b.name));
   return `${h2tip("Match play", MATCH_TIP)}
     <table class="stand"><thead><tr><th class="l">Player</th><th>Pl</th><th>W</th><th>H</th><th>L</th><th>Holes</th></tr></thead>
-      <tbody>${rows.map(m => `<tr><td class="l">${esc(m.name)}</td><td>${m.played}</td><td>${m.won}</td><td>${m.halved}</td><td>${m.lost}</td><td class="acc">${m.holesWon}–${m.holesHalved}–${m.holesLost}</td></tr>`).join("")}</tbody></table>`;
+      <tbody>${rows.map(m => `<tr><td class="l">${esc(m.name)}</td><td>${m.played}</td><td>${m.won}</td><td>${m.halved}</td><td>${m.lost}</td><td class="acc nw">${m.holesWon}–${m.holesHalved}–${m.holesLost}</td></tr>`).join("")}</tbody></table>`;
 }
 
 /** `who` is null for the whole society, or the chosen players' names, already escaped. */

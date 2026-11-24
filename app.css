@@ -994,6 +994,10 @@ a.kv:active { background: var(--card2); }
 .xtab th, .xtab td { text-align: center; padding-inline: 3px; }
 .xtab tr.xname th { text-align: left; text-transform: none; letter-spacing: 0; font-size: 0.9375rem; font-weight: 600; color: var(--ink); padding: 10px 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .xtab tr.xname + tr td { border-top: 0; padding-top: 4px; }
+.xtab tbody.muted tr.xname th { color: var(--ink3); }
+.xtab td.acc { padding-inline: 3px; }
+.xtab td.l { padding-left: 12px; }
+.xtab col.xwork { width: 40%; }
 .xtab td b { display: block; font-size: 1rem; line-height: 1.15; }
 .xtab td small { display: block; font-size: 0.625rem; line-height: 1.2; color: var(--ink3); }
 .xtab .xnarrow { display: none; }
