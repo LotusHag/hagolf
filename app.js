@@ -40,6 +40,15 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     });
     watch(reg.installing);
     reg.addEventListener("updatefound", () => watch(reg.installing));
+    // The browser only looks for a new sw.js on a navigation, and an installed app on a phone almost never
+    // navigates: it is resumed from the background and moves between screens by hash. So it asks each time the
+    // app comes back to the front, at most once a minute; an unchanged sw.js costs one 304.
+    let lastCheck = Date.now();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastCheck < 60_000) return;
+      lastCheck = Date.now();
+      reg.update().catch(() => {});  // offline or a flaky network: the next resume tries again
+    });
   }).catch(e => console.warn("sw", e));
   navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());
 }

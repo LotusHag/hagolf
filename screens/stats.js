@@ -93,12 +93,18 @@ function extrasTable(St) {
     if (!x || !y) return (x ? 0 : 1) - (y ? 0 : 1) || a.name.localeCompare(b.name);
     return (lead.lower ? x.value - y.value : y.value - x.value) || a.name.localeCompare(b.name);
   });
-  const cell = r => r ? `<b class="num">${esc(r.big)}</b><small>${esc(r.sub)}</small>` : `<span class="muted">&ndash;</span>`;
+  // the column head says what the figure is, so "over 18 holes" under it only needs to say "18 holes"
+  const cell = r => r ? `<b class="num">${esc(r.big)}</b><small>${esc(r.sub.replace(/^over /, ""))}</small>` : `<span class="muted">&ndash;</span>`;
+  const head = c => XTAB_SHORT[c.key] ? `<th title="${esc(c.title)}"><span class="xwide">${esc(c.short)}</span><span class="xnarrow">${XTAB_SHORT[c.key]}</span></th>` : `<th>${esc(c.short)}</th>`;
   return { tip: `<p>The putts, fairways and greens each player keeps, and only what was written down. Every figure counts the holes that answered it and no others, so a player who started keeping putts halfway through a season is measured over the holes they kept them for, and the small number under each reading says which holes those were.</p>
       <p>A percentage waits until there are eight attempts behind it; under that it stays the fraction it is.</p>`,
-    html: `<div class="tscroll"><table class="stand xtab nowrap"><thead><tr><th class="l">Player</th>${cols.map(c => `<th>${esc(c.short)}</th>`).join("")}</tr></thead>
-      <tbody>${rows.map(r => `<tr><td class="l">${esc(r.name)}</td>${cols.map(c => `<td>${cell(r.by[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` };
+    // One tbody a player: the name on a line of its own, the figures under it, so the seven columns get the
+    // whole width instead of what a long name leaves them, and the table fits a phone without scrolling.
+    html: `<table class="stand xtab"><thead><tr>${cols.map(head).join("")}</tr></thead>
+      ${rows.map(r => `<tbody><tr class="xname"><th class="l" colspan="${cols.length}" scope="rowgroup">${esc(r.name)}</th></tr><tr>${cols.map(c => `<td>${cell(r.by[c.key])}</td>`).join("")}</tr></tbody>`).join("")}</table>` };
 }
+// column heads for a phone, where seven full words do not fit across; the full one stays in the head's title
+const XTAB_SHORT = { fairway: "Fwy", upDown: "U&amp;D", penalty: "Pen", bunkers: "Bunk", sandOut: "Out" };
 
 const holeRow = (label, x) => x && x.holes ? { label, v: x.pts, big: fix(x.pts, 2),
   sub: `${fmtSigned(x.vspar, 2)} a hole · ${plural(x.holes, "hole")}` } : null;

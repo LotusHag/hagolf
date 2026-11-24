@@ -659,6 +659,8 @@ b.sgdown { color: var(--sc-bogey-ink); }
 .sandpit .pcup { fill: var(--ink); }
 .sandpit .ppin { stroke: var(--ink2); stroke-width: 1.5; fill: none; }
 .sandpit .pflag { fill: var(--green); }
+.sandpit .plie { fill: var(--line2); opacity: .55; }
+.sandpit .pball { stroke: var(--card); stroke-width: 1; }
 .sandpit .pball.one, .pitkey i.one { fill: var(--sc-par); background: var(--sc-par); }
 .sandpit .pball.two, .pitkey i.two { fill: var(--sc-bogey); background: var(--sc-bogey); }
 .sandpit .pball.three, .pitkey i.three { fill: var(--sc-double); background: var(--sc-double); }
@@ -987,8 +989,15 @@ a.kv:active { background: var(--card2); }
 .fcol small { font-size: 0.625rem; white-space: nowrap; }
 /* The extras table carries what each figure is out of under it, because a rate over four holes and one over
    four hundred are not the same claim and a column head cannot footnote a cell. */
+/* Each player is a tbody of two rows, the name across the top and the figures in equal columns under it. */
+.xtab { table-layout: fixed; }
+.xtab th, .xtab td { text-align: center; padding-inline: 3px; }
+.xtab tr.xname th { text-align: left; text-transform: none; letter-spacing: 0; font-size: 0.9375rem; font-weight: 600; color: var(--ink); padding: 10px 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.xtab tr.xname + tr td { border-top: 0; padding-top: 4px; }
 .xtab td b { display: block; font-size: 1rem; line-height: 1.15; }
-.xtab td small { display: block; font-size: 0.625rem; color: var(--ink3); }
+.xtab td small { display: block; font-size: 0.625rem; line-height: 1.2; color: var(--ink3); }
+.xtab .xnarrow { display: none; }
+@media (max-width: 560px) { .xtab .xwide { display: none; } .xtab .xnarrow { display: inline; } }
 .stand.nowrap th, .stand.nowrap td { white-space: nowrap; }
 /* A table with more columns than a phone is wide scrolls sideways rather than breaking every name over
    three lines; it bleeds into the page gutter so the edge of it is visibly there to be pushed. */

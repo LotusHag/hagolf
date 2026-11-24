@@ -161,34 +161,59 @@ const pitOutline = () => Array.from({ length: 96 }, (_, i) => {
   return `${i ? "L" : "M"}${(PIT.cx + PIT.a * k * Math.cos(t)).toFixed(1)},${(PIT.cy + PIT.b * k * Math.sin(t)).toFixed(1)}`;
 }).join("") + "Z";
 
-/** The largest even spacing of balls that still puts `m` of them inside the bunker, left to right, centred in it. */
-function packPit(m) {
-  for (let s = 26; s >= 4; s -= 0.25) {
-    const rad = s * 0.38, pts = [];
-    for (let j = 0, y = PIT.cy - PIT.b; y <= PIT.cy + PIT.b; j++, y = PIT.cy - PIT.b + j * s * 0.866)
-      for (let x = PIT.cx - PIT.a + (j % 2) * s / 2; x <= PIT.cx + PIT.a; x += s) {
-        const u = (x - PIT.cx) / PIT.a, v = (y - PIT.cy) / PIT.b;
-        if (Math.hypot(u, v) < pitEdge(Math.atan2(v, u)) - (rad + 3) / PIT.b) pts.push([x, y]);
-      }
-    if (pts.length < m) continue;
-    const skip = Math.floor((pts.length - m) / 2);
-    return { rad, pts: pts.sort((p, q) => Math.round(p[0] / (s / 2)) - Math.round(q[0] / (s / 2)) || p[1] - q[1]).slice(skip, skip + m) };
+// where the flag stands: balls are handed out nearest it first
+const PIN = [250, 44];
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+
+/**
+ * `m` balls spread evenly over the whole bunker, sized to the room each one has: seeded on a sunflower (Vogel)
+ * spiral, then pushed apart from each other inside the edge until the spacing is even, so they lie scattered
+ * rather than in rows. Deterministic, O(m² · rounds) with m ≤ 120. Returned nearest the flag first.
+ */
+function scatterPit(m) {
+  const room = Math.sqrt((Math.PI * PIT.a * PIT.b * 0.8) / m);
+  const rad = Math.min(7.5, Math.max(2.5, room * 0.3)), pad = rad + 5;
+  // pull a point back inside the edge, less the pad, along the ray from the middle
+  const keep = p => {
+    const u = (p[0] - PIT.cx) / PIT.a, v = (p[1] - PIT.cy) / PIT.b, t = Math.atan2(v, u), k = pitEdge(t);
+    const ex = PIT.a * k - pad, ey = PIT.b * k - pad, dx = p[0] - PIT.cx, dy = p[1] - PIT.cy;
+    const s = Math.hypot(dx / ex, dy / ey);
+    if (s > 1) { p[0] = PIT.cx + dx / s; p[1] = PIT.cy + dy / s; }
+  };
+  const pts = Array.from({ length: m }, (_, i) => {
+    const r = Math.sqrt((i + 0.5) / m), t = i * GOLDEN, k = pitEdge(t);
+    return [PIT.cx + (PIT.a * k - pad) * r * Math.cos(t), PIT.cy + (PIT.b * k - pad) * r * Math.sin(t)];
+  });
+  for (let round = 0; round < 60; round++) {
+    for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) {
+      const dx = pts[j][0] - pts[i][0], dy = pts[j][1] - pts[i][1], d = Math.hypot(dx, dy) || 0.01;
+      if (d >= room) continue;
+      const push = ((room - d) / d) * 0.25;
+      pts[i][0] -= dx * push; pts[i][1] -= dy * push; pts[j][0] += dx * push; pts[j][1] += dy * push;
+    }
+    pts.forEach(keep);
   }
-  return null;
+  const far = ([x, y]) => Math.hypot(x - PIN[0], y - PIN[1]);
+  return { rad, pts: pts.sort((p, q) => far(p) - far(q)) };
 }
 
-/** One ball for every bunker visited, coloured by how many shots it took to get out, in a bunker beside the green. */
+/**
+ * One ball for every bunker visited, coloured by how many shots it took to get out, lying in a bunker beside the
+ * green: the ones out first time nearest the flag, the ones that took three or more dug in at the back.
+ */
 function sandPit(takes) {
   const n = takes.reduce((a, v) => a + v, 0);
   if (!n) return "";
   // past this a ball stands for several bunkers, or the balls shrink to specks
   const per = Math.ceil(n / 120);
   const counts = takes.map(v => v ? Math.max(1, Math.round(v / per)) : 0);
-  const pack = packPit(counts.reduce((a, v) => a + v, 0));
-  if (!pack) return "";
+  const pit = scatterPit(counts.reduce((a, v) => a + v, 0));
+  const rad = pit.rad.toFixed(1);
   let at = 0;
-  const balls = counts.map((c, i) => pack.pts.slice(at, at += c)
-    .map(([x, y]) => `<circle class="pball ${TAKES[i][0]}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${pack.rad.toFixed(1)}"></circle>`).join("")).join("");
+  // each ball sits in the little hollow it made, drawn as a flat dent of darker sand under it
+  const balls = counts.map((c, i) => pit.pts.slice(at, at += c).map(([x, y]) =>
+    `<ellipse class="plie" cx="${x.toFixed(1)}" cy="${(y + pit.rad * 0.55).toFixed(1)}" rx="${(pit.rad * 1.15).toFixed(1)}" ry="${(pit.rad * 0.45).toFixed(1)}"></ellipse>`
+    + `<circle class="pball ${TAKES[i][0]}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rad}"></circle>`).join("")).join("");
   const said = TAKES.map(([, w], i) => `${w.toLowerCase()}: ${takes[i]}`).join(", ");
   return `<svg class="sandpit" viewBox="0 0 300 150" role="img" aria-label="${esc(`Bunkers by shots to get out. ${said}`)}">
       <ellipse class="pgreen" cx="236" cy="46" rx="54" ry="30"></ellipse><ellipse class="pcup" cx="250" cy="44" rx="3" ry="1.6"></ellipse>
@@ -208,7 +233,7 @@ function sandSection(x) {
   return `${h2tip("Bunkers", `<p>Every greenside bunker, on the holes where bunker shots were kept.</p>
       <p><b>Shots to get out</b> is how many shots a bunker took on average: 1.0 is every one out first time.</p>
       <p><b>Bunkers per 18 holes</b> is how often a hole put you in one, scaled to 18. A hole kept with no bunker counts too.</p>
-      <p>Each ball is one bunker, coloured by how many shots it took to get out.</p>
+      <p>Each ball is one bunker, coloured by how many shots it took to get out. The ones out first time lie nearest the flag.</p>
       <p><b>Sand saves</b>: par or better from a greenside bunker. Never asked for; it comes from your score.</p>`, "bunker")}
     <div class="card">${leads(heads)}${sandPit(b.takes)}${saves ? `<div class="sgap"></div>${saves}` : ""}</div>`;
 }
