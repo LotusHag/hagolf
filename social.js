@@ -73,8 +73,8 @@ export const unblock = id => act("unblock", id);
 // ---------------------------------------------------------------- a name on my cards, and its golfer
 export const contactLink = contactId => A.api(`/contact/${encodeURIComponent(contactId)}/link`, {});
 export const contactUnlink = contactId => A.api(`/contact/${encodeURIComponent(contactId)}/unlink`, {});
-export async function openGolfer(token) {
-  const r = await A.api("/golfer/open", { token });
+export async function openGolfer(token, except = []) {
+  const r = await A.api("/golfer/open", { token, except });
   await refresh();
   return r;
 }
@@ -101,8 +101,23 @@ export async function membersOf(leagueId) {
   return r;
 }
 export const candidatesOf = leagueId => A.api(`/league/${encodeURIComponent(leagueId)}/candidates`);
-export const claim = (leagueId, name) => A.api(`/league/${encodeURIComponent(leagueId)}/claim`, { name });
+export const claim = (leagueId, golfer, except = []) => A.api(`/league/${encodeURIComponent(leagueId)}/claim`, { golfer, except });
+export const suggestions = () => A.api("/claims/suggest");
+export const claimSuggestion = (golfer, rounds) => A.api(`/golfer/${encodeURIComponent(golfer)}/claim`, { rounds });
 export const unclaim = (leagueId, accountId = null) => A.api(`/league/${encodeURIComponent(leagueId)}/unclaim`, accountId ? { accountId } : {});
+// ---------------------------------------------------------------- events: who is in the field, and how a place is taken
+const ev = id => `/event/${encodeURIComponent(id)}`;
+export const eventField = (id, add) => A.api(`${ev(id)}/field`, { add });
+export const eventOut = (id, spot) => A.api(`${ev(id)}/field/remove`, { spot });
+export const eventLink = id => A.api(`${ev(id)}/link`, {});
+export const joinEvent = id => A.api(`${ev(id)}/join`, {});
+export const acceptPlace = (id, spot) => A.api(`${ev(id)}/accept`, { spot });
+export const declinePlace = (id, spot) => A.api(`${ev(id)}/decline`, { spot });
+export const takeEventPlace = token => A.api("/event/take", { token });
+// ---------------------------------------------------------------- the addresses an invite can find me at
+export const myEmails = () => A.api("/auth/emails");
+export const addEmail = email => A.api("/auth/email/add", { email });
+export const confirmEmail = token => A.api("/auth/email/confirm", { token });
 export const setVisibility = (leagueId, body) => A.api(`/league/${encodeURIComponent(leagueId)}/visibility`, body);
 
 // ---------------------------------------------------------------- what a link says before anybody signs in
@@ -117,5 +132,7 @@ async function open(path) {
 export const previewInvite = token => open(`/public/invite/${encodeURIComponent(token)}`);
 export const previewHandle = handle => open(`/public/handle/${encodeURIComponent(handle)}`);
 export const previewGolfer = token => open(`/public/golfer/${encodeURIComponent(token)}`);
+export const previewEvent = token => open(`/public/event/${encodeURIComponent(token)}`);
+export const previewCard = code => open(`/public/card-invite/${encodeURIComponent(String(code).toLowerCase())}`);
 export const publicCard = token => open(`/public/card/${encodeURIComponent(token)}`);
 export const publicBoard = token => open(`/public/league/${encodeURIComponent(token)}`);

@@ -5,10 +5,10 @@
 // what each kind of mark is, and the way it grows: from its left edge, its right edge, the bottom, swept on, or
 // out from the tee; a donut's segments are drawn round in order
 const PARTS = [
-  [".dbar, .tug, svg.tchart, svg.spark", "wipe"],
+  [".dbar, .tug, svg.tchart, svg.tspark, svg.sandpit .pballs", "wipe"],
   [".tbar > i, .btrack > i, .mtrack > i, .dvtrack > i:not(.down)", "x"],
   [".dvtrack > i.down", "xr"],
-  [".fchart .fbar, .fchart .fghost, .pplot > i", "y"],
+  [".fchart .fbar, .fchart .fghost, .pplot > i, .mchart .mbar", "y"],
   ["svg.teefan path.fan", "fan"],
   ["svg.donut .dseg", "ring"],
 ];

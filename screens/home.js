@@ -4,7 +4,8 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
-import { page, bind, esc, go, ui, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS, monthShort , roundName, roundPlace} from "../ui.js";
+import * as F from "../social.js";
+import { page, bind, esc, go, ui, plural, firstName, ordinal, courseTitle, courseBy, roundStatus, resumeHash, panel, leagueBadge, sheet, toast, atDoor, ICONS, shortDate, monthShort, roundName, roundPlace } from "../ui.js";
 import { handicapFor, stableford, fmtIndex, FORMATS_ROUND, PLAY_GROUPS, PLAY_KINDS, kindOf, isMatchFormat, matchesOf } from "../model.js";
 import { leagueResults, standingsFor } from "./formats.js";
 import { noteLine } from "./updates.js";
@@ -92,6 +93,58 @@ function societyDays() {
 /** Someone wants me on a card, or a seat on one may be mine. */
 const asks = () => N.held().filter(n => !n.seen && ["round_seated", "league_invite"].includes(n.kind));
 
+const onHome = () => ["", "#", "#home"].includes(location.hash);
+const BECAUSE = { friend: "a friend kept it", society: "you share a society", card: "you have played together", index: "a handicap like yours" };
+
+/**
+ * Golfers on cards I can see who may be me: asked once a session, and a golfer turned down on this phone is not
+ * asked about again. Nothing is claimed until I tick the cards.
+ */
+function maybeMe() {
+  if (!A.signedIn()) return [];
+  if (ui.maybeMe === undefined) {
+    ui.maybeMe = [];
+    F.suggestions().then(r => { ui.maybeMe = r.suggestions || []; if (ui.maybeMe.length && onHome()) home(); }).catch(() => {});
+  }
+  const no = new Set(S.state.settings.notMe || []);
+  return ui.maybeMe.filter(x => !no.has(x.golfer) && x.cards.some(c => !c.taken));
+}
+
+/**
+ * The people I played with lately who have an account and are not my friends yet, nor asked either way: offered as
+ * friends once, here, after the round, rather than made friends by playing. "No" is remembered on this phone.
+ */
+function friendOffers() {
+  const me = S.myAccount();
+  if (!me) return [];
+  const H = F.held();
+  const known = new Set([...H.friends, ...H.incoming, ...H.outgoing, ...H.blocked].map(x => x.id));
+  const no = new Set(S.state.settings.friendNo || []);
+  const since = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+  const out = new Map();
+  for (const r of S.rounds()) {
+    if (r.status !== "done" || (r.date || "") < since || !S.mySeat(r)) continue;
+    for (const e of r.entries) if (e.accountId && e.accountId !== me && !known.has(e.accountId) && !no.has(e.accountId) && !out.has(e.accountId)) out.set(e.accountId, { id: e.accountId, name: e.name, date: r.date });
+  }
+  return [...out.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+}
+
+const twoButtons = (yes, no, id, labels = ["Add", "No"]) => `<span class="btnrow" style="margin:0;flex:none"><button class="btn small primary" data-act="${yes}" data-g="${esc(id)}">${labels[0]}</button><button class="btn small" data-act="${no}" data-g="${esc(id)}">${labels[1]}</button></span>`;
+
+async function takeMaybe(x) {
+  const { cardsSheet, claimCard } = await import("./gate.js");
+  const ticks = await cardsSheet({ title: "Were these you?", lead: `${x.name}${x.by ? ` on ${x.by}'s cards` : ""}. Tick the ones that were you.`,
+    cards: x.cards.map(claimCard), ticked: false });
+  if (!ticks) return;
+  try {
+    const r = await F.claimSuggestion(x.golfer, ticks.mine);
+    toast(`${plural(r.rounds, "round")} added to yours`);
+    ui.maybeMe = undefined;
+    await Y.pull();
+  } catch (e) { toast(e.message, 5000); }
+  home();
+}
+
 export function home() {
   const rounds = S.rounds();
   // an event is on the go for me once my group has a score; until then it waits under Coming up
@@ -110,13 +163,24 @@ export function home() {
        <button class="btn wide" data-act="play">${ICONS.plus} Start another round</button>`
     : `<button class="playbtn" data-act="play"><b>Play</b><span class="pk">Stroke play, Stableford, match play or scramble</span></button>`;
   const others = open.slice(1);
-  const ask = asks();
+  const ask = asks(), maybe = maybeMe(), wants = A.signedIn() ? F.held().incoming : [], offers = friendOffers();
+  const places = N.held().filter(n => !n.seen && ["event_spot", "event_spot_given"].includes(n.kind));
+  const waiting = [
+    ...places.map(n => { const p = n.payload || {}, [eid, spot] = String(n.ref).split("|");
+      return n.kind === "event_spot"
+        ? `<div class="hrow"><span class="t"><b>${esc(p.event || "An event")}</b><span>${esc(["a place for you", p.by ? `from ${p.by}` : ""].filter(Boolean).join(" · "))}</span></span>${twoButtons("place", "noplace", `${eid}|${spot}`, ["Accept", "No"])}</div>`
+        : `<a class="hrow" href="#series/${esc(eid)}" data-act="seen" data-key="${esc(N.keyOf(n))}"><span class="t"><b>You're in ${esc(p.event || "an event")}</b><span>see the rounds and the field</span></span><span class="chev">›</span></a>`; }),
+    ...ask.map(n => noteLine(n)),
+    ...wants.map(p => `<div class="hrow"><span class="t"><b>${esc(p.name)}</b><span>wants to be your friend</span></span>${twoButtons("accept", "decline", p.id, ["Accept", "No"])}</div>`),
+    ...maybe.map(x => `<div class="hrow"><span class="t"><b>Is this you? ${esc(x.name)}</b><span>${esc([`${plural(x.cards.filter(c => !c.taken).length, "card")}${x.by ? ` kept by ${x.by}` : ""}`, BECAUSE[x.why[0]]].filter(Boolean).join(" · "))}</span></span>${twoButtons("maybe", "notme", x.golfer, ["Look", "Not me"])}</div>`),
+    ...offers.map(o => `<div class="hrow"><span class="t"><b>Add ${esc(firstName(o.name))} as a friend?</b><span>you played together ${esc(shortDate(o.date))}</span></span>${twoButtons("befriend", "nofriend", o.id)}</div>`),
+  ];
   page("Hagolf", `
     ${banners.join("")}
     <section class="playhero">${hero}${glance()}</section>
     ${panel("flag", "Coming up", `<div class="rows">${events.map(eventRow).join("")}<button class="hrow more" data-act="new-event"><span class="t"><b>New event</b><span>A day for a group: the field, tee times, the draw and a live board</span></span></button></div>`)}
     ${others.length ? panel("play", "Also on the go", `<div class="rows">${others.map(r => `<a class="hrow" href="${resumeHash(r)}"><span class="t"><b>${esc(roundName(r))}</b><span>${esc(formatLabel(r.format))} · ${esc(roundStatus(r))}</span></span><span class="chev">›</span></a>`).join("")}</div>`) : ""}
-    ${ask.length ? panel("friend", "Asked to join", `<div class="rows">${ask.map(n => noteLine(n)).join("")}</div>`) : ""}
+    ${waiting.length ? panel("friend", "Waiting on you", `<div class="rows">${waiting.join("")}</div>`) : ""}
     ${days.length ? panel("leagues", "Today in your society", `<div class="rows">${days.map(r => {
       const g = S.getLeague(r.leagueId), seated = !!S.mySeat(r);
       return `<div class="hrow lead">${leagueBadge(g)}<span class="t"><b>${esc(g ? g.name : r.name)}</b><span>${esc(courseTitle(courseBy(r.course) || { name: r.course }))} · ${plural(r.entries.filter(e => e.role !== "team").length, "player")}</span></span>
@@ -136,6 +200,26 @@ export function home() {
     if (act === "have-link") return haveLink();
     if (act === "new-event") return newEvent();
     if (act === "dayjoin") { const { joinDay } = await import("./together.js"); return joinDay(b.dataset.rid); }
+    if (act === "maybe") return takeMaybe(ui.maybeMe.find(x => x.golfer === b.dataset.g));
+    if (["accept", "decline", "befriend"].includes(act)) {
+      b.disabled = true;
+      try { await (act === "accept" ? F.accept : act === "decline" ? F.decline : F.request)(b.dataset.g); } catch (e) { toast(e.message, 5000); }
+      if (act === "befriend") toast("Asked");
+      return home();
+    }
+    if (act === "place" || act === "noplace") {
+      const [eid, spot] = b.dataset.g.split("|"), key = `event_spot|${eid}|${spot}`;
+      b.disabled = true;
+      try {
+        if (act === "place") { await F.acceptPlace(eid, spot); await Y.resync(); toast("You're in"); }
+        else await F.declinePlace(eid, spot);
+        N.drop(key);
+      } catch (e) { toast(e.message, 5000); }
+      return act === "place" ? go(`#series/${eid}`) : home();
+    }
+    if (act === "seen") { N.markSeen([b.dataset.key]); return; }
+    if (act === "nofriend") { S.setSetting("friendNo", [...new Set([...(S.state.settings.friendNo || []), b.dataset.g])].slice(-200)); return home(); }
+    if (act === "notme") { S.setSetting("notMe", [...new Set([...(S.state.settings.notMe || []), b.dataset.g])].slice(-200)); return home(); }
   });
 }
 

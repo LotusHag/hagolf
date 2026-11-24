@@ -6,7 +6,7 @@ import * as S from "../store.js";
 import { page, bind, esc, go, ui, plural, courseTitle, courseBy, sheet, ICONS, tip, shortDate as uiShortDate } from "../ui.js";
 import { formatLabel, formatSheet, offeredFormat } from "./home.js";
 import { dayCardId, joinDay } from "./together.js";
-import { createEvent } from "./event.js";
+import { seriesCourse } from "./series.js";
 
 // ---------------------------------------------------------------- where the clubs are
 const REGION = (() => { try { return new Intl.DisplayNames(["en"], { type: "region" }); } catch { return null; } })();
@@ -133,7 +133,7 @@ export function newRound(slug = null) {
     <div class="list" id="courses">${rows.map(x => x.html).join("")}</div>
     <p id="cnone" class="muted center" hidden>Nothing matches.</p>
     ${ui.eventFor ? "" : `<div class="list" style="margin-top:16px"><a href="#new/unlisted"><span class="lead">${ICONS.plus}<div><div class="name">Course not listed? Play it anyway</div><div class="muted small">Fill in each hole's par as you play it</div></div></span><span class="chev">›</span></a></div>`}`,
-    { back: "#home", sub: ui.eventFor ? `New event${ui.eventFor.leagueId && S.getLeague(ui.eventFor.leagueId) ? ` · ${S.getLeague(ui.eventFor.leagueId).name}` : ""}`
+    { back: "#home", sub: ui.eventFor ? ui.eventFor.label || "New event"
         : ui.dayLeague && S.getLeague(ui.dayLeague) ? `${S.getLeague(ui.dayLeague).name} · today` : formatLabel(fmt),
       actions: ui.dayLeague || ui.eventFor ? "" : `<button class="btn small ghost" data-act="fmt">Change</button>` });
 
@@ -176,7 +176,7 @@ export function startRound(slug, { leagueId = ui.dayLeague || null, id = null } 
   const c = courseBy(slug);
   if (!c) return go("#new");
   ui.dayLeague = null;
-  if (ui.eventFor) { const ef = ui.eventFor; ui.eventFor = null; return createEvent(slug, ef.leagueId); }
+  if (ui.eventFor) return seriesCourse(slug);
   // a society's day is one card: every phone that starts it for this loop today lands on the same id, and an
   // event planned for it is that card
   if (leagueId) {

@@ -350,7 +350,8 @@ export function compute(courseIn, round) {
     let scores = p.scores;
     const fromHole = Number(p.fromHole || 1) || 1;
     if (!(fromHole >= 1 && fromHole <= n)) throw new Error(`${name}: from hole must be between 1 and ${n}`);
-    const skipped = [...Array(n).keys()].map(h => h < fromHole - 1);  // joined late: these holes were not played at all
+    const start = Number.isInteger(p.startHole) && p.startHole >= 0 && p.startHole < n ? p.startHole : 0;
+    const skipped = [...Array(n).keys()].map(h => missedHole(h, n, fromHole, start));  // joined late: these holes were not played at all
     const empty = s => s === null || s === undefined || s === "";
     scores = !scores || scores.length !== n ? null : scores.map((s, h) => skipped[h] || empty(s) ? null : Number(s));
     const missing = scores ? scores.some((s, h) => !skipped[h] && s === null) : true;
@@ -405,6 +406,7 @@ export function compute(courseIn, round) {
     const holeStats = sc.map((_, h) => holeStat(rawStats[h], { strokes: skipped[h] || filled[h] ? null : scores[h], par: par[h] }));
     players.push({
       name, hi, ch, ph, ch_override: override, tee, par, gender, id: p.id ?? null, from_hole: fromHole, skipped, group: p.group || 1,
+      start_hole: start,  // the hole they teed off on, 0-based in card order
       raw_scores: scores, penalty: pen, penalties: pens, penalty_total: sum(pen), picked, filled, nr,
       holes_played: played, scores: sc, deltas,
       gross: nr ? null : sum(sc), topar: nr ? null : sum(sc) - sum(par),
@@ -522,7 +524,8 @@ export function matchPlay(courseIn, round) {
     const pen = new Array(n).fill(0);
     for (const x of e.penalties || []) { const h = Number(x.hole); if (h >= 1 && h <= n) pen[h - 1] += Number(x.strokes) || 0; }
     const raw = Array.isArray(e.scores) ? e.scores : [];
-    const late = h => h < from - 1, picked = h => !blank(raw[h]) && Number(raw[h]) === 0;
+    const start = Number.isInteger(e.startHole) && e.startHole >= 0 && e.startHole < n ? e.startHole : 0;
+    const late = h => missedHole(h, n, from, start), picked = h => !blank(raw[h]) && Number(raw[h]) === 0;
     // out: no ball on the hole. A pick-up on strokes gives the hole away; on points it is a zero, which can still halve
     const out = [...Array(n).keys()].map(h => late(h) || (!points && picked(h)));
     const value = [...Array(n).keys()].map(h => out[h] || blank(raw[h]) ? null
@@ -809,7 +812,9 @@ export function statSummary(holes) {
   const greens = girHoles.filter(h => h.gir);
   const missed = girHoles.filter(h => !h.gir && h.topar !== null);
   const fw = hs.filter(h => hasFairway(h.par) && h.fairway !== null);
-  const sand = hs.filter(h => h.bunker !== null && h.bunker > 0);
+  const sandAsked = hs.filter(h => h.bunker !== null);
+  const sand = sandAsked.filter(h => h.bunker > 0);
+  const sandShots = sand.reduce((a, h) => a + h.bunker, 0);
   const pen = hs.filter(h => h.penaltyShots !== null);
   const total = xs => xs.reduce((a, h) => a + h.putts, 0);
   const fwGir = fw.filter(h => h.gir !== null);
@@ -864,6 +869,13 @@ export function statSummary(holes) {
       holes: sand.length, saved: sand.filter(h => h.topar !== null && h.topar <= 0).length,
       pct: ratio(sand.filter(h => h.topar !== null && h.topar <= 0).length, sand.length),
     },
+    // A hole that kept bunkers and found none still counts towards how often you find one.
+    bunkers: !sandAsked.length ? null : {
+      holes: sandAsked.length, visits: sand.length, shots: sandShots,
+      per18: (sand.length / sandAsked.length) * 18,
+      out: sand.length ? sandShots / sand.length : null,
+      takes: [1, 2, 3].map(k => sand.filter(h => k < 3 ? h.bunker === k : h.bunker >= 3).length),
+    },
     // What a green is worth, in strokes: the same question `fromFairway` asks of the tee shot, one club
     // further on. Both sides need enough holes behind them or the gap is one bad hole rather than a habit.
     fromGir: greensScored.length < 4 || missed.length < 4 ? null : {
@@ -894,6 +906,8 @@ const SHOW_MIN = 5;
 
 /** The readings the personal card's strip and a poster's columns take, headline only, in the order drawn. */
 export const STRIP_KEYS = ["putts", "gir", "fairway", "upDown", "penalty"];
+/** The Stats screen's player-by-player table has room for the bunker columns a card strip does not. */
+export const TABLE_KEYS = [...STRIP_KEYS, "bunkers", "sandOut"];
 
 /**
  * One summary read out as a list of readings, so the tiles on screen, the strip on a card and the rows on a
@@ -977,6 +991,14 @@ export function statReadings(x, { per18 = false } = {}) {
   // Sand saves ask the same question of a handful of holes, so they do not belong beside the readings every
   // card can answer. Worth keeping, worth folding away.
   if (x.sand) rate("sand", x.sand.saved, x.sand.holes, { title: "Sand saves", label: "sand saves", short: "Sand", group: "saves", deep: true, min: 6 });
+  const b = x.bunkers;
+  if (b && b.holes >= 9) num("bunkers", per18 ? b.per18 : b.visits, {
+    title: per18 ? "Bunkers per 18" : "Bunkers", short: "Bunkers", group: "trouble", deep: true, lower: true, pair: per18, n: b.holes,
+    big: per18 ? fix(b.per18, 1) : String(b.visits), label: per18 ? "bunkers per 18" : `bunker${s(b.visits)}`,
+    sub: `over ${b.holes} holes`, fmt: v => per18 ? fix(v, 1) : String(Math.round(v)) });
+  if (b && b.visits >= 3) num("sandOut", b.out, {
+    title: "Shots to get out of a bunker", short: "Getting out", group: "trouble", deep: true, lower: true, pair: true, n: b.visits,
+    big: fix(b.out, 1), label: "shots to get out", sub: `each, ${b.visits} bunkers`, fmt: v => fix(v, 1) });
   if (x.penalty) num("penalty", x.penalty.total, {
     title: "Penalty shots", label: `penalty shot${s(x.penalty.total)}`, short: "Penalties", group: "trouble",
     lower: true, n: x.penalty.holes, sub: `over ${x.penalty.holes} hole${s(x.penalty.holes)}` });
@@ -1107,6 +1129,8 @@ export function computeNine(nineCourse, round, from) {
     courseHandicap: null,  // an 18-hole course handicap means nothing here; the nine has its own rating
     scores: (e.scores || []).slice(from, from + 9),
     fromHole: Math.max(1, Math.min(9, (Number(e.fromHole || 1) || 1) - from)),
+    // a start inside this nine stays where it is on the nine; one outside it starts the nine at its first hole
+    startHole: Number.isInteger(e.startHole) && e.startHole >= from && e.startHole < from + 9 ? e.startHole - from : undefined,
     penalties: (e.penalties || []).filter(p => Number(p.hole) > from && Number(p.hole) <= from + 9).map(shift),
   }));
   const M = compute(nineCourse, { ...round, final: true, entries });
@@ -1382,23 +1406,26 @@ export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS, ba
   return { rows: out, rounds: cards, bestN, table, basis };
 }
 
-// The rating starts at 1500 and is never shown; a day is worth K, doubled for a player's first few days so a newcomer finds their level.
-export const ELO = { start: 1500, k: 32, provisionalDays: 5, provisionalK: 2, scale: 400 };
-export const ELO_BASES = ["points", "net", "match"];
+// The rating is the number shown: it starts at 0 and never goes below it. A day is worth K, doubled for a player's first few days.
+export const ELO = { start: 0, k: 40, provisionalDays: 5, provisionalK: 2, scale: 400 };
+// The combined table: half off handicap, half off scratch, so the handicap is not counted twice.
+export const ELO_WEIGHTS = { points: 0.25, netmatch: 0.25, match: 0.5 };
 
 /**
  * One pair's verdict in one currency: `s` is 1, ½ or 0 for `pa`, `d` the margin in strokes, points or holes
  * (null when only one of them returned a card, so there is no margin to read). Null when there is no game.
  */
 function eloGame(pa, pb, basis) {
-  if (basis === "match") {
-    // strokes taken on each hole, no handicap, as a real match is played
-    const { up, holes } = matchResult(pa, pb, "gross");
+  if (basis === "match" || basis === "netmatch") {
+    // "match" is strokes taken on each hole, no handicap, as a real match is played; "netmatch" each hole on net
+    const { up, holes } = matchResult(pa, pb, basis === "match" ? "gross" : "net");
     return holes ? { s: up > 0 ? 1 : up < 0 ? 0 : 0.5, d: up } : null;
   }
   if (basis === "points") return { s: pa.pts > pb.pts ? 1 : pa.pts < pb.pts ? 0 : 0.5, d: pa.pts - pb.pts };
-  // one card is one loop, so net strokes compare directly without taking par off either
-  const na = pa.net ?? null, nb = pb.net ?? null;
+  // "gross" is strokes taken, handicaps ignored, so it does not repeat the Stableford table's handicap;
+  // "net" stays for anything older that asks for it. One card is one loop, so neither needs par taken off.
+  const field = basis === "gross" ? "gross" : "net";
+  const na = pa[field] ?? null, nb = pb[field] ?? null;
   if (na === null && nb === null) return null;
   if (na === null || nb === null) return { s: na === null ? 0 : 1, d: null };
   return { s: na < nb ? 1 : na > nb ? 0 : 0.5, d: nb - na };
@@ -1410,18 +1437,17 @@ export const eloExpected = (ra, rb) => 1 / (1 + 10 ** ((rb - ra) / ELO.scale));
 
 /**
  * Elo over a league's days. Every pair of the league's players on a card played a game in each currency of
- * `basis` ("points", "net", "match", or "all" for the three averaged); winning is what decides the sign and
- * the margin decides the size, so a winner always gains on the player they beat. A player's day is
- * K / (opponents) times the sum over opponents, so a field of twenty moves nobody further than a two-ball.
- * Days run in date order, every card of a day off the ratings from before it; nothing is stored.
+ * `basis` ("points", "gross", "net", "match", or "all" for ELO_WEIGHTS); winning is what decides the sign and the
+ * margin decides the size. A player's day is K / (opponents) times the sum over opponents, so a field of
+ * twenty moves nobody further than a two-ball. Days run in date order, every card of a day off the ratings
+ * from before it; nothing is stored, so a change here recalculates every society.
  *
- * What a player sees is `score`: it starts at 0, takes the same change as the rating in whole points (at least
- * one for any day that gained), and never goes below 0, so at 0 a loss costs nothing and a win counts at once,
- * however low the rating underneath is. The rating only sets what each pair was expected to do.
+ * The rating is what a player sees, as `score` in whole points: it starts at 0 and never goes below 0, so at 0
+ * a loss costs nothing.
  */
 export function eloStandings(results, memberIds, basis = "all") {
   const members = new Set(memberIds);
-  const bases = basis === "all" ? ELO_BASES : [basis];
+  const weights = basis === "all" ? ELO_WEIGHTS : { [basis]: 1 };
   const rows = new Map();
   const row = p => {
     if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, rating: ELO.start, score: 0, played: 0, won: 0, drawn: 0, lost: 0,
@@ -1438,7 +1464,7 @@ export function eloStandings(results, memberIds, basis = "all") {
     days.get(k).push(M);
   }
   for (const date of [...days.keys()].sort()) {
-    const delta = new Map();
+    const delta = new Map(), parts = new Map();
     for (const M of days.get(date)) {
       const mine = M.players.filter(p => p.id !== null && members.has(p.id));
       const duels = new Map();
@@ -1449,21 +1475,31 @@ export function eloStandings(results, memberIds, basis = "all") {
         duels.get(me.id).push({ them: them.id, games });
       };
       for (const pa of mine) for (const pb of mine) {
-        if (pa !== pb && pa.id !== pb.id) duel(pa, pb, bases.map(b => eloGame(pa, pb, b)).filter(Boolean));
+        if (pa !== pb && pa.id !== pb.id) {
+          duel(pa, pb, Object.entries(weights).map(([b, w]) => ({ ...eloGame(pa, pb, b), w, b })).filter(x => x.s !== undefined));
+        }
       }
       // a match is the one game it was, on the holes it was won by; only the tables built for match play read it
       for (const g of basis === "all" || basis === "match" ? matchGames(M, members) : []) {
-        duel(g.a, g.b, [{ s: g.s, d: g.up }]);
-        duel(g.b, g.a, [{ s: 1 - g.s, d: -g.up }]);
+        duel(g.a, g.b, [{ s: g.s, d: g.up, w: 1, b: "played" }]);
+        duel(g.b, g.a, [{ s: 1 - g.s, d: -g.up, w: 1, b: "played" }]);
       }
       for (const [id, list] of duels) {
         const ra = rows.get(id);
         const k = ELO.k * (ra.played < ELO.provisionalDays ? ELO.provisionalK : 1);
+        // the same sum as one number, kept apart by the currency each game was settled in, so a day can say where it was won
+        if (!parts.has(id)) parts.set(id, {});
+        const split = parts.get(id);
         let sum = 0;
         for (const { them, games } of list) {
           const E = eloExpected(ra.rating, rows.get(them).rating);
-          sum += games.reduce((t, x) => t + eloMargin(x.d) * (x.s - E), 0) / games.length;
-          const s = games.reduce((t, x) => t + x.s, 0) / games.length;
+          const w = games.reduce((t, x) => t + x.w, 0);
+          for (const x of games) {
+            const v = x.w * eloMargin(x.d) * (x.s - E) / w;
+            sum += v;
+            split[x.b] = (split[x.b] || 0) + k * v / list.length;
+          }
+          const s = games.reduce((t, x) => t + x.w * x.s, 0) / w;
           if (s > 0.5) ra.won++; else if (s < 0.5) ra.lost++; else ra.drawn++;
         }
         delta.set(id, (delta.get(id) || 0) + k * sum / list.length);
@@ -1473,16 +1509,15 @@ export function eloStandings(results, memberIds, basis = "all") {
     for (const [id, d] of delta) {
       const r = rows.get(id);
       const was = r.score;
-      // whole points, and a day that gained anything shows at least one, so a win is never rounded away to nothing
-      const step = d > 0 ? Math.max(1, Math.round(d)) : -Math.round(-d);
-      r.rating += d; r.score = Math.max(0, r.score + step); r.played++; r.last = r.score - was; r.lastDate = date || null;
+      r.rating = Math.max(0, r.rating + d); r.score = Math.round(r.rating); r.played++; r.last = r.score - was; r.lastDate = date || null;
       r.peak = Math.max(r.peak, r.score);
-      r.history.push({ date: date || null, rating: r.rating, score: r.score, delta: d });
+      // `parts` add up to `delta`; `change` is what the shown score did, which the floor at 0 can make smaller
+      r.history.push({ date: date || null, rating: r.rating, score: r.score, delta: d, change: r.last, parts: parts.get(id) || {} });
     }
   }
   // alone on every card is nobody played, as in the match tables
   const out = [...rows.values()].filter(r => r.played).map(r => ({ ...r, provisional: r.played < ELO.provisionalDays }));
-  // equal scores, which at 0 is common, go to the higher rating underneath
+  // equal whole points go to the unrounded rating, then to whoever has played more
   out.sort((a, b) => b.score - a.score || b.rating - a.rating || b.played - a.played || a.name.localeCompare(b.name));
   out.forEach((r, i) => { r.place = i + 1; });
   return { rows: out, rounds: cards, basis };
@@ -1601,6 +1636,7 @@ export function statHoles(results, memberIds) {
           band: rank[h] <= M.n / 3 ? 0 : rank[h] > (2 * M.n) / 3 ? 2 : 1,  // hardest third, middle, easiest third
           par: p.par[h], score: p.scores[h], delta: p.deltas[h], pts: p.hpts[h], bucket: scoreBucket(p.deltas[h]),
           stat: p.stats ? p.stats[h] : null,   // so any split of these holes can be summarised the same way
+          start: p.start_hole ?? 0,            // where they teed off, so the holes can be read in the order walked
         });
       }
     }
@@ -1699,6 +1735,13 @@ export function leagueStats(results, memberIds) {
     const half = Math.floor(rs.length / 2);
     // a nine counted as half an eighteen, so a society that mixes the two can still average its rounds
     const p18 = rs.map(r => r.pts * 18 / r.n);
+    // strokes only from rounds with every hole holed out, the same four readings as the points
+    const holed = rs.filter(r => r.gross !== null);
+    const strokeLine = f => {
+      const v = holed.map(f), h = Math.floor(v.length / 2);
+      return { avg: mean(v), spread: stdev(v), form: v.length >= 3 ? mean(v.slice(-3)) : null,
+        trend: v.length >= 4 ? mean(v.slice(h)) - mean(v.slice(0, h)) : null, rounds: v.length };
+    };
     return {
       id, name: names.get(id), played: rs.length, rounds: rs, ...mine, rest, match: matches.get(id) || null,
       totalPts: sum(pts), avgPts: mean(pts), bestPts: pts.length ? Math.max(...pts) : null,
@@ -1713,6 +1756,7 @@ export function leagueStats(results, memberIds) {
       trend: rs.length >= 4 ? mean(rs.slice(half).map(r => r.pts)) - mean(rs.slice(0, half).map(r => r.pts)) : null,
       per18: { avg: mean(p18), spread: stdev(p18), form: rs.length >= 3 ? mean(p18.slice(-3)) : null,
         trend: rs.length >= 4 ? mean(p18.slice(half)) - mean(p18.slice(0, half)) : null },
+      strokes: strokeLine(r => r.gross), strokes18: strokeLine(r => r.gross * 18 / r.n),
       nines: rs.filter(r => r.n === 9).length,
       bounce: chances ? backs / chances : null, bounceOf: chances,
       blowups: rs.length ? sum(rs.map(r => r.blowups)) / rs.length : null,
@@ -1733,6 +1777,208 @@ export function leagueStats(results, memberIds) {
     bounce: sum(rounds.map(r => r.chances)) ? sum(rounds.map(r => r.backs)) / sum(rounds.map(r => r.chances)) : null,
   };
   return { rounds, holes, field, players, matches: [...matches.values()] };
+}
+
+/**
+ * Whether a player who joined at `fromHole` (1-based) missed hole `h` (0-based), counting in the order the group walked
+ * from `start`: off the tenth, joining at the twelfth misses the tenth and eleventh, never the first nine. Joining at
+ * the group's own start, or at 1, misses nothing.
+ */
+export const missedHole = (h, n, fromHole, start = 0) => fromHole > 1 && (h - start + n) % n < (fromHole - 1 - start + n) % n;
+
+/**
+ * Which hole a card was started on, read off when each score was entered (`stamps`, one ISO time or null a
+ * hole, in card order): a group that went off the tenth enters 10 to 18 and then 1 to 9. Every hole is tried
+ * as the start, and the one that puts the most neighbouring holes in time order wins, reading round the card.
+ * A score corrected later can tie two starts; then the hole whose score went in earliest wins, and after that
+ * the card's own order. A card with fewer than two stamps says nothing and starts at `fallback`.
+ * Returns a 0-based hole index. O(n^2) for n holes, so at most 324 comparisons.
+ */
+export function playStart(stamps, fallback = 0) {
+  const n = (stamps || []).length;
+  const at = (stamps || []).map(t => t ? String(t) : null);
+  if (at.filter(Boolean).length < 2) return fallback;
+  let best = fallback, bestScore = -1, bestFirst = null;
+  for (const s of [fallback, ...Array(n).keys()]) {
+    if (!at[s]) continue;
+    let ok = 0, prev = null;
+    for (let k = 0; k < n; k++) {
+      const t = at[(s + k) % n];
+      if (!t) continue;
+      if (prev !== null && prev <= t) ok++;
+      prev = t;
+    }
+    if (ok > bestScore || (ok === bestScore && at[s] < bestFirst)) { best = s; bestScore = ok; bestFirst = at[s]; }
+  }
+  return best;
+}
+
+/**
+ * Every run of three holes or more at par or better, read in the order each player walked them: from the hole
+ * they teed off on round to the one before it (10 to 18, then 1 to 9, for a group off the tenth), and from the
+ * last hole of one card into the first of their next. A hole left blank breaks a run, inside a round or at the
+ * seam (a card that stops short of its last hole), and so does any bogey.
+ *
+ * One line a run, in the shape every honours list takes: `at` is when it reached its full length, `from` the
+ * round it began in, `round` the one it ended in, and `ongoing` that it is the player's last run and nothing
+ * has broken it yet. O(holes).
+ */
+function streaks(St, ex, idx, keeps = h => h.delta !== null && h.delta <= 0) {
+  const out = [];
+  for (const p of St.players) {
+    let run = null, prev = null;  // prev: the last hole walked, as { r, pos }, null after a break
+    const close = () => { if (run && run.value >= 3) out.push(run); run = null; };
+    for (const r of p.rounds) {
+      const e = ex(r);
+      const n = r.n, start = e && e.hs.length ? e.hs[0].start : 0;
+      // in the order walked: where they teed off is position 0, the hole before it the last
+      const hs = e ? e.hs.map(h => ({ h, pos: (h.hole - start + n) % n })).sort((a, b) => a.pos - b.pos) : [];
+      // a card that stops short, or one that does not begin at its start, does not join on to the next
+      if (!hs.length || hs[0].pos !== 0 || !prev || prev.pos !== prev.n - 1) prev = null;
+      for (const { h, pos } of hs) {
+        const joins = prev && (prev.r === r ? pos === prev.pos + 1 : true);
+        if (!joins) close();
+        if (!keeps(h)) close();
+        else {
+          if (!run) run = { pid: p.id, name: p.name, value: 0, from: r, ongoing: false };
+          run.value++;
+          run.round = r;
+          run.at = idx.get(r) * 100 + pos;
+        }
+        prev = { r, pos, n };
+      }
+    }
+    // still going only if nothing came after it, not even a blank last hole that the next card would break on
+    if (run && prev && prev.pos === prev.n - 1) run.ongoing = true;
+    close();
+  }
+  return out;
+}
+
+/**
+ * The records on a society's honours board, in the order it shows them, in two halves: the honours everyone
+ * is after, and the booby prizes nobody wants. Which half a record is in is said here and nowhere else.
+ */
+export const HONOURS_GOOD = ["low18", "low9", "stb18", "stb9", "birdies", "eagles", "run", "margin", "bounce",
+  "fairways", "gir", "oneputts", "putts18", "elo", "aces", "played"];
+export const HONOURS_BAD = ["lastplaces", "lowstb18", "blobs", "blobrun", "worsthole", "blowups", "threeputts", "penalties", "bunker"];
+export const HONOUR_KEYS = [...HONOURS_GOOD, ...HONOURS_BAD];
+const BOOBY = new Set(HONOURS_BAD);
+
+/**
+ * The society's honours board, read off what leagueStats returns: every record in HONOUR_KEYS, each with its
+ * `top` best lines: a round's record lists the best rounds and a run's the longest runs, so one player can
+ * hold several places; a count (aces, rounds) has one line a player, and so does the highest Elo rating, each
+ * player's peak, dated by the day they first reached it. `elo` is the rows of the society's Elo table, or null
+ * when it keeps none, and then that record is left off the board altogether. The best number holds the record,
+ * and anyone who beats it takes it over; level on it, whoever got there first keeps it (a round's record by
+ * the day it was set, a count by the round it reached that number). The other players level with the holder
+ * are named in `also`.
+ *
+ * Every record comes back, held or not: one nobody has a number for yet has `value` null and an empty
+ * `board`, so the screen can show it as there for the taking. Each entry is
+ * { key, booby, lower, value, pid, name, round, from, ongoing, also, board }, the holder's fields copied
+ * from board[0]; `round` is the line from St.rounds the record was set in, null for a count. `booby` says
+ * which half of the board it is in (HONOURS_BAD); a booby prize is held by the worst number the same way.
+ * The worst hole is one line a hole, with `hole` the row from St.holes beside its round.
+ * One pass over the holes and one over the rounds, then a sort a record: O(holes log holes + rounds log rounds).
+ */
+export function achievements(St, top = 10, elo = null) {
+  // what a round's holes say beyond its line: putts, greens, fairways, sand, penalties, aces and blobs, and the
+  // holes themselves for the runs. Each extra keeps a count of the holes that answered it (`*Kept`), so a card
+  // that never asked has no number rather than a zero.
+  const extra = new Map();
+  const has = v => v !== null && v !== undefined;
+  for (const h of St.holes) {
+    const k = `${h.pid}|${h.round}`;
+    let e = extra.get(k);
+    if (!e) extra.set(k, e = { one: 0, three: 0, putts: 0, putted: 0, aces: 0, blobs: 0, greens: 0, girKept: 0,
+      fairways: 0, fwKept: 0, pens: 0, penKept: 0, sand: 0, sandKept: 0, hs: [] });
+    const s = h.stat || {};
+    if (has(s.putts)) { e.putted++; e.putts += s.putts; if (s.putts === 1) e.one++; if (s.putts >= 3) e.three++; }
+    if (has(s.gir)) { e.girKept++; if (s.gir) e.greens++; }
+    if (has(s.fairway)) { e.fwKept++; if (s.fairway === "hit") e.fairways++; }
+    if (has(s.penaltyShots)) { e.penKept++; e.pens += s.penaltyShots; }
+    if (has(s.bunker)) { e.sandKept++; e.sand += s.bunker; }
+    if (h.score === 1) e.aces++;
+    if (h.pts === 0) e.blobs++;
+    e.hs.push(h);
+  }
+  const ex = r => extra.get(`${r.pid}|${r.id}`) || null;
+  const rs = St.rounds;  // oldest first
+  const idx = new Map(rs.map((r, i) => [r, i]));
+  // a count off the extras, only on a card that kept that extra at all
+  const xtra = (kept, val) => r => { const e = ex(r); return e && e[kept] ? e[val] : null; };
+  // every round that has a number, each its own line: one player can hold several places on the list
+  const perRound = (xs, val, lower = false) => xs.map(r => ({ r, v: val(r) }))
+    .filter(({ v }) => v !== null && v !== undefined && (lower || v >= 1))
+    .map(({ r, v }) => ({ pid: r.pid, name: r.player, value: v, at: idx.get(r) * 100, round: r }));
+  // a running count, dated by the round that brought it to where it stands
+  const perCount = val => St.players.map(p => {
+    let n = 0, at = 0;
+    for (const r of p.rounds) { const d = val(r); if (d > 0) { n += d; at = idx.get(r) * 100; } }
+    return n ? { pid: p.id, name: p.name, value: n, at, round: null } : null;
+  }).filter(Boolean);
+  const holed = n => rs.filter(r => r.n === n && r.gross !== null);
+  const kept = r => ex(r) && ex(r).putted ? ex(r) : null;
+  // the winner's lead on the day over the next member on the same card; level at the top is no margin at all
+  const onCard = new Map();
+  for (const r of rs) { if (!onCard.has(r.card)) onCard.set(r.card, []); onCard.get(r.card).push(r); }
+  const margin = r => {
+    if (r.place !== 1) return null;
+    const rest = onCard.get(r.card).filter(q => q !== r).map(q => q.pts);
+    return rest.length ? r.pts - Math.max(...rest) : null;
+  };
+  // the worst hole: strokes over par on a hole actually holed out, so a pick-up (counted NO_SCORE) never wins it
+  const byLine = new Map(rs.map(r => [`${r.pid}|${r.id}`, r]));
+  const worstHoles = St.holes.filter(h => h.stat && has(h.stat.strokes) && h.delta >= 1).map(h => {
+    const r = byLine.get(`${h.pid}|${h.round}`);
+    return r && { pid: h.pid, name: r.player, value: h.delta, at: idx.get(r) * 100 + h.hole, round: r, hole: h };
+  }).filter(Boolean);
+  const lists = {
+    low18: [perRound(holed(18), r => r.gross, true), true],
+    low9: [perRound(holed(9), r => r.gross, true), true],
+    stb18: [perRound(rs.filter(r => r.n === 18), r => r.pts)],
+    stb9: [perRound(rs.filter(r => r.n === 9), r => r.pts)],
+    birdies: [perRound(rs, r => r.counts[0] + r.counts[1])],
+    eagles: [perCount(r => r.counts[0])],
+    run: [streaks(St, ex, idx)],
+    margin: [perRound(rs, margin)],
+    bounce: [perRound(rs, r => r.backs)],
+    fairways: [perRound(rs, xtra("fwKept", "fairways"))],
+    gir: [perRound(rs, xtra("girKept", "greens"))],
+    oneputts: [perRound(rs, r => kept(r) && kept(r).one)],
+    // fewest putts only over an eighteen with every hole's putts kept, or a round that skipped some would win it
+    putts18: [perRound(rs.filter(r => r.n === 18 && ex(r) && ex(r).putted === 18), r => ex(r).putts, true), true],
+    // everyone on the table gets a line, even one who never climbed off 0; nobody holds it until someone has
+    elo: elo && [!elo.some(r => r.peak >= 1) ? [] : elo.map(r => {
+      const day = (r.history.find(x => x.score === r.peak) || {}).date || null;
+      return { pid: r.id, name: r.name, value: r.peak, at: day ? Number(day.replace(/-/g, "")) * 100 : 1e12, round: null, date: day };
+    })],
+    aces: [perCount(r => ex(r) ? ex(r).aces : 0)],
+    played: [perCount(() => 1)],
+    // the booby prizes: the worst number "holds" them, by the same rules as the honours
+    lastplaces: [perCount(r => r.of >= 3 && r.place === r.of ? 1 : 0)],
+    // only an eighteen walked from the first hole to the last: a late start's missing holes are not a bad day
+    lowstb18: [perRound(rs.filter(r => r.n === 18 && r.holes === 18), r => r.pts, true), true],
+    blobs: [perRound(rs, r => ex(r) && ex(r).blobs)],
+    blobrun: [streaks(St, ex, idx, h => h.pts === 0)],
+    worsthole: [worstHoles],
+    blowups: [perRound(rs, r => r.blowups)],
+    threeputts: [perRound(rs, r => kept(r) && kept(r).three)],
+    penalties: [perRound(rs, xtra("penKept", "pens"))],
+    bunker: [perRound(rs, xtra("sandKept", "sand"))],
+  };
+  return HONOUR_KEYS.filter(key => lists[key]).map(key => {
+    const [list, lower = false] = lists[key];
+    // level and set on the same card (two counts reaching a number the same day) goes by name, so it never flickers
+    const board = list.sort((a, b) => (lower ? a.value - b.value : b.value - a.value) || a.at - b.at || a.name.localeCompare(b.name)).slice(0, top);
+    const w = board[0] || null;
+    return { key, booby: BOOBY.has(key), lower, board, value: w ? w.value : null, pid: w ? w.pid : null, name: w ? w.name : null,
+      round: w ? w.round : null, from: w ? w.from || null : null, ongoing: !!(w && w.ongoing),
+      // level with the holder: the other players who matched it, each once, never the holder themselves
+      also: w ? [...new Map(list.filter(x => x.value === w.value && x.pid !== w.pid).map(x => [x.pid, x.name])).values()] : [] };
+  });
 }
 
 // ---------------------------------------------------------------- one player against another

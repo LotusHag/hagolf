@@ -1,6 +1,7 @@
 // #live/<token>: a tournament day as everyone sees it, live. No account needed -- it is a link for the people at
 // home and a screen in the clubhouse (#live/<token>/tv). Every group, ranked as it stands, redrawn the moment a
 // score goes in anywhere on the card.
+import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
 import { page, bind, esc, go, ui, plural, fmtDate, courseTitle } from "../ui.js";
@@ -55,7 +56,7 @@ export async function liveScreen(token, mode) {
   const match = Mo.isMatchFormat(r.format);
   let ms = [];
   if (match) try { ms = Mo.matchesOf(course, { format: r.format, name: P.round.name, defaultTee: r.defaultTee, allowance: r.allowance, final: false,
-    entries: r.entries.filter(e => e.role !== "member").map(e => ({ id: e.playerId, role: e.role, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, courseHandicap: e.courseHandicap, scores: e.scores, side: e.side, fromHole: e.fromHole, penalties: e.penalties, group: e.group, squad: e.squad })) }); } catch (e) { ms = []; }
+    entries: r.entries.filter(e => e.role !== "member").map(e => ({ id: e.playerId, role: e.role, name: e.name, hi: e.hi, tee: e.tee, gender: e.gender, courseHandicap: e.courseHandicap, scores: e.scores, side: e.side, fromHole: e.fromHole, startHole: S.startOf(r, e) ?? undefined, penalties: e.penalties, group: e.group, squad: e.squad })) }); } catch (e) { ms = []; }
   const plan = r.event, scored = r.entries.some(e => e.scores.some(v => v !== null));
   const teams = plan && plan.teams && plan.teams.length && match ? teamTable(Mo.teamPoints(ms, plan.teams)) : "";
   const M = ms.length === 1 ? ms[0] : null;

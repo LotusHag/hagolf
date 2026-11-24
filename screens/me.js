@@ -5,7 +5,7 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as N from "../notify.js";
 import * as F from "../social.js";
-import { TEXT_SIZES, page, bind, esc, go, toast, plural, fmtDate, courseTitle, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, lookTitle, arrive, paint, themeHere, lookMode, parseHI, hiOk, app, ICONS, roundWhere } from "../ui.js";
+import { TEXT_SIZES, page, bind, esc, go, toast, plural, fmtDate, avatar, sheet, confirmSheet, promptSheet, shareLink, qrHtml, saveFiles, slugFile, themeRadios, bindChips, appTheme, lookTitle, arrive, paint, themeHere, lookMode, parseHI, hiOk, app, ICONS, roundWhere } from "../ui.js";
 import { fmtIndex, STAT_SWITCHES } from "../model.js";
 import { KINDS_WORDS } from "./kinds.js";
 import { myLink } from "./people.js";
@@ -78,9 +78,16 @@ function account() {
       <button class="btn primary wide" type="submit" style="margin-top:14px">Save</button>
     </form>
     <div class="btnrow"><button class="btn" data-act="mylink">${ICONS.link} Share my link</button><button class="btn" data-act="myqr">${ICONS.qr} My QR code</button></div>
-    <p class="muted small" style="margin:14px 4px">Signed in with Google. Your email address is used to sign you in and is never shown to anyone.</p>
+    <h2>Your addresses</h2><div id="mailslot" class="list"><div><div class="muted small">Loading…</div></div></div>
+    <div class="btnrow"><button class="btn" data-act="addmail">Add another address</button></div>
+    <p class="muted small" style="margin:6px 4px 14px">A place in an event sent to any of these finds you. Nobody else sees them.</p>
     <div id="pkslot"></div>
     <div class="btnrow"><button class="btn small" data-act="signout-all">Sign out on every phone</button></div>`);
+  // the addresses an invite finds me at: one per way I sign in, and any I added (an Apple relay address hides the real one)
+  F.myEmails().then(r => {
+    const slot = document.getElementById("mailslot");
+    if (slot) slot.innerHTML = (r.emails || []).map(x => `<div><div class="name">${esc(x)}</div></div>`).join("");
+  }).catch(() => { const slot = document.getElementById("mailslot"); if (slot) slot.innerHTML = `<div><div class="muted small">Not loaded: you are offline.</div></div>`; });
   // a passkey is offered only where this backend takes them and this phone can make one
   A.config().then(cfg => {
     const slot = document.getElementById("pkslot");
@@ -104,6 +111,12 @@ function account() {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "mylink") return shareLink(myLink(), "Add me on Hagolf", "Add me on Hagolf");
+    if (b.dataset.act === "addmail") {
+      const v = await promptSheet("Add another address", "We send a link to it. Open the link on this phone and it is yours.", { placeholder: "you@example.com", inputmode: "email", label: "Send the link" });
+      if (!v) return;
+      try { await F.addEmail(v.trim()); toast("Sent: open the link in that inbox", 5000); } catch (e) { toast(e.message, 5000); }
+      return;
+    }
     if (b.dataset.act === "passkey") {
       b.disabled = true;
       const label = /iPhone|iPad/.test(navigator.userAgent) ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android phone" : "Browser";
@@ -115,6 +128,14 @@ function account() {
     if (b.dataset.act === "myqr") return sheet({ title: "Your friend link", lead: "Let them scan this with their camera.", body: `${qrHtml(myLink())}<div class="linkbox">${esc(myLink())}</div>`, actions: [{ label: "Done", value: "ok", kind: "primary" }] });
     if (b.dataset.act === "signout-all") { if (await confirmSheet("Sign out everywhere?", "Every phone signed in as you is signed out, and notifications stop.", { label: "Sign out everywhere", danger: true })) { await A.signOut(true); go("#welcome"); } }
   });
+}
+
+/** #addemail/<token>: the link sent to an address being added. Opened here, signed in as whoever asked, it is theirs. */
+export async function addEmailLink(token) {
+  if (!A.signedIn()) { toast("Sign in first, as the account that asked for this"); return go("#welcome"); }
+  try { const r = await F.confirmEmail(token); toast(`${r.email} is yours now`, 5000); await N.refresh(); }
+  catch (e) { toast(e.message, 6000); }
+  go("#me/account");
 }
 
 // ---------------------------------------------------------------- your golfer
@@ -211,19 +232,9 @@ function look() {
 }
 
 // ---------------------------------------------------------------- courses
+// Courses are kept by Hagolf and arrive with the app and its syncs; a club that is missing is asked for, not typed in.
 function courses() {
-  const phoneCourses = S.state.courses.filter(c => !c.deleted && !(c.data && c.data.unlisted) && (c.source || "phone") === "phone");
-  sub("Courses", `<div class="card"><div class="muted small">${S.courses().length} courses on this phone, ${plural(phoneCourses.length, "course")} added on phones.</div>
-      ${phoneCourses.map(c => `<div class="kv"><span>${esc(courseTitle(c.data))}</span><button class="btn small danger" data-act="del-course" data-slug="${esc(c.slug)}">Remove</button></div>`).join("")}
-      <a class="btn small" href="#newcourse" style="margin-top:8px">Add a club</a></div>`);
-  bind(async ev => {
-    const b = ev.target.closest("[data-act=del-course]");
-    if (!b) return;
-    const c = S.state.courses.find(x => x.slug === b.dataset.slug);
-    const used = S.rounds().filter(r => r.course === b.dataset.slug).length;
-    if (used) return toast(`${plural(used, "round")} use this course; delete those first`);
-    if (await confirmSheet("Remove this course?", `${courseTitle(c.data)} goes from every phone.`, { label: "Remove", danger: true })) { S.removeCourse(b.dataset.slug); courses(); }
-  });
+  sub("Courses", `<div class="card"><div class="muted small">${S.courses().length} courses on this phone. A club missing from the list? Play it as a course that is not on the list, and ask us to add it.</div></div>`);
 }
 
 // ---------------------------------------------------------------- data

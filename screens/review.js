@@ -192,7 +192,7 @@ export function review(rid, keep = false) {
   const byId = id => r.entries.find(e => e.playerId === id);
   const chips = e => c.par.map((par, i) => {
     const v = e.scores[i];
-    const skip = (e.fromHole || 1) - 1 > i;
+    const skip = S.joinsLate(r, e, i);
     const sel = ui.expanded === e.playerId && ui.selHole === i ? "sel" : "";
     return `<button class="chip ${sel}" data-act="sel-hole" data-pid="${e.playerId}" data-h="${i}" ${skip || !scorer ? "disabled" : ""}><small>${c.first_hole + i}</small>${skip ? `<span class="mk empty">—</span>` : mark(v, par)}</button>`;
   }).join("");
@@ -221,7 +221,7 @@ export function review(rid, keep = false) {
   const ranking = R.rows.map(x => `<div class="rankrow ${x.place === 1 ? "p1" : ""}" data-flip="${esc(x.id ?? x.name)}"><span class="pos">${x.place ?? "–"}</span><span class="t"><b>${esc(x.name)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span><span class="v">${esc(x.main)}</span></div>`).join("");
   const order = fmt === "stableford" ? M.stbl_board : isMatchFormat(fmt) ? M.players : R.rows.map(x => M.players.find(p => p.id === x.id)).filter(Boolean).concat(M.players.filter(p => !R.rows.some(x => x.id === p.id)));
   const missing = unfinished.map(e => {
-    const holes = e.scores.map((v, i) => v === null && (e.fromHole || 1) - 1 <= i ? c.first_hole + i : null).filter(x => x !== null);
+    const holes = e.scores.map((v, i) => v === null && !S.joinsLate(r, e, i) ? c.first_hole + i : null).filter(x => x !== null);
     return `<div class="card row warnrow"><div><div class="name">${esc(e.name)}</div><div class="muted small">missing hole${holes.length === 1 ? "" : "s"} ${holes.join(", ")}</div></div>
       ${scorer ? `<a class="btn small" href="#score/${rid}/${holes[0] - c.first_hole}">Enter</a>` : ""}</div>`;
   }).join("");

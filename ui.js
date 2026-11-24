@@ -152,7 +152,7 @@ export function land(el) { if (el && !stillPlease()) el.classList.add("run"); }
 
 const SETUP = /^#(new|scan|j)(\/|$)/;
 // a link that acts once: left on the path, back would land on it and it would send you on again, for ever
-const ONCE = /^#(add|join|you|j|signin|redeem)\//;
+const ONCE = /^#(add|join|you|j|signin|redeem|newevent)\//;
 const SEGS = ["days", "stats", "vs", "members"];
 /** Screens that are one place seen different ways: the holes and check of a card, the stats tabs, a society's parts. */
 function placeOf(h) {
@@ -188,7 +188,7 @@ export function go(hash) {
   if (TABS.some(t => t[1] === to)) { tabJump = true; return rebase(to === "#home" || norm(trail[0]) !== "#home" ? 0 : 1, to); }
   for (let k = at - 1; k >= 0; k--) if (trail[k] && samePlace(to, norm(trail[k]))) return rebase(k, to);
   const players = from.match(/^#players\/([^/]+)/);
-  if (!drawn || samePlace(to, from) || ONCE.test(from) || (SETUP.test(from) && /^#(players|score|review|event)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
+  if (!drawn || samePlace(to, from) || ONCE.test(from) || (SETUP.test(from) && /^#(players|score|review|event|series)\//.test(to)) || (players && placeOf(to) === `card/${players[1]}`)) return rebase(at, to);
   location.hash = to;
 }
 document.addEventListener("click", ev => {
@@ -279,7 +279,7 @@ export const hiOk = hi => hi >= -10 && hi <= 54;
 
 /** Screen state that survives a redraw but not a reload. Keyed per screen where a screen has several instances. */
 export const ui = { season: {}, expanded: null, selHole: null, blobs: [], groupFilter: {}, roundsFilter: "all", nineTab: {}, boardOf: {}, basis: {}, statsWho: {},
-  numWho: {}, boardFmt: null, authMethods: ["google"], search: "", courseQ: "", unlisted: null, found: null };
+  numWho: {}, formBy: "pts", pane: {}, boardFmt: null, authMethods: ["google"], search: "", courseQ: "", unlisted: null, found: null };
 
 // ---------------------------------------------------------------- icons
 const I = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}${extra}</svg>`;
@@ -305,6 +305,7 @@ export const ICONS = {
   card: I(`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>`),
   friend: I(`<circle cx="10" cy="8" r="4"/><path d="M3 21a7 7 0 0 1 14 0"/><path d="M19 8v6"/><path d="M16 11h6"/>`),
   trophy: I(`<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4"/><path d="M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4"/><path d="M8 21h8"/>`),
+  spoon: I(`<g transform="rotate(35 12 12)"><ellipse cx="12" cy="6" rx="3.4" ry="4.4"/><path d="M12 10.4V21"/><path d="M10.8 21h2.4"/></g>`),
   settings: I(`<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>`),
   lock: I(`<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>`),
   chart: I(`<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>`),
@@ -330,18 +331,72 @@ export const ICONS = {
   gained: I(`<circle cx="6" cy="17.5" r="2.5"/><path d="M8.5 15.5C11 10 14.5 7 20 5"/><path d="M15.5 4.5 20 5l-1.6 4.3"/>`),
   tee: I(`<circle cx="12" cy="5.5" r="3.5"/><path d="M8 10.5h8l-2.5 2.5v6l-1.5 2.5-1.5-2.5v-6z"/><path d="M3 15.5h4.5"/><path d="M16.5 15.5H21"/>`),
   approach: I(`<path d="M15 18V3l5 2.2L15 7.4"/><ellipse cx="14" cy="18.5" rx="7.5" ry="2.5"/><path d="M2.5 16C4 10 7.5 7.5 11 7.5" stroke-dasharray="0 3.2"/>`),
-  bunker: I(`<path d="M2.5 15h4c1.2 3 3.2 4.5 5.5 4.5s4.3-1.5 5.5-4.5h4"/><path d="M11.5 15.5C12 10 14.5 6.5 18 5.5" stroke-dasharray="0 3.2"/><circle cx="20" cy="5" r="1.8"/>`),
+  // the ball blasted out of the bowl in a burst of sand
+  bunker: I(`<path d="M2 13.5h3.6c1.4 3.6 3.6 5.5 6.4 5.5s5-1.9 6.4-5.5H22"/><path d="M9.4 15.2 8.2 12.4"/><path d="M12 14.6v-3.4"/><path d="M14.6 15.2l1.2-2.8"/><circle cx="19.2" cy="6.8" r="1.8"/>`),
   putt: I(`<path d="M4 3.5 8 15.2"/><path d="M6 15.8l4-1.3"/><circle cx="13" cy="17.6" r="1.9"/><ellipse cx="19.3" cy="19.2" rx="2.4" ry="1"/>`),
   // and the rest of the stats headings: kinds of hole, stroke index, habits, handicap, the card, a ball, a loop, form, a podium
   holes: I(`<path d="M5 20V12l3 1.2-3 1.2"/><path d="M11.5 20V8.5l3 1.2-3 1.2"/><path d="M18 20V5l3 1.2L18 7.4"/><path d="M2.5 20.5h19"/>`),
-  index: I(`<path d="M3 20h4.5v-4.5H12V11h4.5V6.5H21"/><path d="M3 20h18"/>`),
   habits: I(`<path d="M5 5.5h14"/><path d="M5 18.5h14"/><path d="M3 12c1.5-3.5 3-3.5 4.5 0s3 3.5 4.5 0 3-3.5 4.5 0 3 3.5 4.5 0"/>`),
   gauge: I(`<path d="M3.5 17a8.5 8.5 0 1 1 17 0"/><path d="M12 17l4.2-5.6"/><circle cx="12" cy="17" r="1.4"/><path d="M6.2 11.2l1.2 1M12 8.5v1.5M17.8 11.2l-1.2 1"/>`),
   scorecard: I(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 8.5h16"/><path d="M10 8.5V21"/><circle cx="15" cy="14.5" r="2.6"/>`),
   ball: I(`<circle cx="12" cy="12" r="8.5"/><path d="M9 9.5h.01M12.5 8h.01M15 10.5h.01M10.5 13h.01M14 14h.01M8.5 16h.01"/>`),
   loop: I(`<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M17.8 2.8l-.3 4.1-4.1-.3"/><path d="M11 16V8.5l3.5 1.4-3.5 1.4"/>`),
   trend: I(`<path d="M3 17l5.5-5.5 4 4L20 8"/><path d="M15 8h5v5"/>`),
+  // the head to head's records: the gap between two columns, a best day, wins one after another
+  margin: I(`<path d="M2.5 20.5h19"/><path d="M4 20.5v-5h6v5"/><path d="M14 20.5V4h6v16.5"/><path d="M7 12.5V6.5"/><path d="m5 8.5 2-2 2 2"/>`),
+  star: I(`<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>`),
+  streak: I(`<path d="m3.5 7 5 5-5 5"/><path d="m10 7 5 5-5 5"/><path d="m16.5 7 4 5-4 5"/>`),
   rank: I(`<path d="M3 20.5h18"/><path d="M9 20.5V9h6v11.5"/><path d="M3.5 20.5V14H9"/><path d="M15 16h5.5v4.5"/><path d="M11.5 12.5 12.6 12v4"/>`),
+};
+
+/**
+ * One trophy for each record on a society's honours board, drawn in the same strokes as the icons above so
+ * every theme's weight and corners carry over. A numeral on the plinth says nine or eighteen holes. The prizes
+ * nobody wants are the honours turned over: a wooden spoon for last place, a fallen star, a duck's egg for a
+ * hole without a point, a snowflake for a cold run, a snowman for the big number, a cracked cup.
+ */
+const cup = `<path d="M8.5 2h7v4.5a3.5 3.5 0 0 1-7 0z"/><path d="M8.5 3.5H6a2 2 0 0 0 2.7 3.3"/><path d="M15.5 3.5H18a2 2 0 0 1-2.7 3.3"/><path d="M12 10v3"/>`;
+const starPath = `<path d="M12 1.6l1.1 3.1 3.3.1-2.6 2 .9 3.1L12 8.1l-2.7 1.8.9-3.1-2.6-2 3.3-.1z"/>`;
+const star = `${starPath}<path d="M12 8.1V13"/>`;
+const plinth = n => `<path d="M5.5 13h13v9h-13z"/><text x="12" y="20.3" text-anchor="middle">${n}</text>`;
+const base = `<path d="M7 18h10v3.5H7z"/>`;
+export const TROPHIES = {
+  low18: I(cup + plinth(18)),
+  low9: I(cup + plinth(9)),
+  stb18: I(star + plinth(18)),
+  stb9: I(star + plinth(9)),
+  birdies: I(`<path d="M9 3h6v5a3 3 0 0 1-6 0z"/><path d="M9 4.5C6.5 3.5 4.3 4 2.5 2.5c.6 3 2.7 5.4 6.6 5.6"/><path d="M15 4.5c2.5-1 4.7-.5 6.5-2-.6 3-2.7 5.4-6.6 5.6"/><path d="M12 11v3"/><path d="M8.5 14h7v3h-7z"/><path d="M6.5 17h11v4.5h-11z"/>`),
+  // the birdie's winged cup with a second pair of wings: one better
+  eagles: I(`<path d="M9 3h6v5a3 3 0 0 1-6 0z"/><path d="M9 4.5C6.5 3.5 4.3 4 2.5 2.5c.6 3 2.7 5.4 6.6 5.6"/><path d="M15 4.5c2.5-1 4.7-.5 6.5-2-.6 3-2.7 5.4-6.6 5.6"/><path d="M9.6 9.8C7 10.4 4.4 9.8 2.5 7.8"/><path d="M14.4 9.8c2.6.6 5.2 0 7.1-2"/><path d="M12 11v3"/><path d="M8.5 14h7v3h-7z"/><path d="M6.5 17h11v4.5h-11z"/>`),
+  run: I(`<path d="M12 2.5c3.2 3.5 5 6.2 5 9.2a5 5 0 0 1-10 0c0-2 1-3.6 2.5-5 .3 2 1.2 3 2.5 3.5-.6-2.5-.2-5 0-7.7z"/>${base}`),
+  // a small cup on the tall step of a podium, the next step well below it
+  margin: I(`<path d="M2.5 21.5h19"/><path d="M4 21.5V12h8v9.5"/><path d="M12 21.5V17.5h7.5v4"/><path d="M5.5 2h5v3.5a2.5 2.5 0 0 1-5 0z"/><path d="M5.5 3H4a1.5 1.5 0 0 0 1.8 2.3"/><path d="M10.5 3H12a1.5 1.5 0 0 1-1.8 2.3"/><path d="M8 8v4"/>`),
+  // each bounce higher than the last, the ball on its way up
+  bounce: I(`<path d="M2.5 21.5h19"/><path d="M2.5 21.5c.8-5.5 3.2-5.5 4 0"/><path d="M6.5 21.5c1-10 4.5-10 5.5 0"/><path d="M12 21.5c1-6.5 3-11 5.4-13.6"/><circle cx="18.8" cy="6.2" r="2.2"/>`),
+  // the fairway narrowing away from the tee, the ball in the middle of it
+  fairways: I(`<path d="M4 21.5 9.5 2.5"/><path d="M20 21.5 14.5 2.5"/><circle cx="12" cy="13" r="2"/>`),
+  // the flag on the green
+  gir: I(`<ellipse cx="12" cy="18" rx="9" ry="3.5"/><path d="M12 18V2.5"/><path d="M12 3l6 2.6-6 2.6"/>`),
+  oneputts: I(`<circle cx="12" cy="6" r="2.5"/><path d="M12 10v3.5"/><path d="m10.3 12 1.7 1.7 1.7-1.7"/><ellipse cx="12" cy="18" rx="7.5" ry="2.8"/><path d="M8.5 18.4a3.5 1 0 0 0 7 0"/>`),
+  putts18: I(`<path d="M7.5 2l5 11.5"/><path d="M11 13h5.5v2.5H11z"/><circle cx="18.5" cy="14" r="1.6"/><path d="M5 18.5h14v3H5z"/>`),
+  elo: I(`<path d="M2.5 20 9 9.5l3.2 4.6 2.3-3L21.5 20z"/><path d="M9 9.5V3l4.5 1.7L9 6.4"/><path d="M2 21.5h20"/>`),
+  aces: I(`<path d="M15 2.5v13.5"/><path d="M15 3l5.5 2.5L15 8"/><circle cx="8.5" cy="13" r="2.5"/><path d="M4.5 16h15v5.5h-15z"/>`),
+  played: I(`<path d="M8 8h8l-1 13.5H9z"/><path d="M9.5 8 8.5 2.5"/><path d="M12 8V2"/><path d="m14.5 8 1-5.5"/><path d="M16 10c2.2.8 2.2 5.2 0 6"/><path d="M8.5 13h7"/>`),
+  // the booby prizes
+  lastplaces: ICONS.spoon,
+  lowstb18: I(`<g transform="rotate(180 12 5.8)">${starPath}</g><path d="M12 10v3"/>${plinth(18)}`),
+  // a duck's egg: a hole without a point
+  blobs: I(`<path d="M12 2.5c2.9 0 5 4.4 5 7.6a5 5 0 0 1-10 0c0-3.2 2.1-7.6 5-7.6z"/><path d="M12 15.1V18"/>${base}`),
+  // the flame of the good run, gone cold
+  blobrun: I(`<path d="M12 2v13"/><path d="M6.4 5.3l11.2 6.4"/><path d="M17.6 5.3 6.4 11.7"/><path d="m10.3 2.8 1.7 1.7 1.7-1.7"/><path d="m10.3 14.2 1.7-1.7 1.7 1.7"/>${base}`),
+  // a snowman, the eight on one hole
+  worsthole: I(`<circle cx="12" cy="6" r="3.2"/><circle cx="12" cy="14.5" r="5.3"/><path d="M4.5 21.5h15"/>`),
+  threeputts: I(`<circle cx="6.5" cy="8" r="2.2"/><circle cx="12" cy="5" r="2.2"/><circle cx="17.5" cy="8" r="2.2"/><ellipse cx="12" cy="18" rx="7.5" ry="2.8"/><path d="M8.5 18.4a3.5 1 0 0 0 7 0"/>`),
+  // the ball going into the water
+  penalties: I(`<circle cx="12" cy="4.5" r="2.2"/><path d="M12 8.5v3.5"/><path d="M8.5 11.5 7 9.5"/><path d="m15.5 11.5 1.5-2"/><path d="M2.5 15.5c1.6-1.3 3.2-1.3 4.8 0s3.2 1.3 4.7 0 3.2-1.3 4.7 0 3.2 1.3 4.8 0"/><path d="M2.5 20c1.6-1.3 3.2-1.3 4.8 0s3.2 1.3 4.7 0 3.2-1.3 4.7 0 3.2 1.3 4.8 0"/>`),
+  // a bucket and spade: a day at the beach
+  bunker: I(`<path d="M4.5 10h10l-1.5 11.5H6z"/><path d="M6 10a3.5 3.5 0 0 1 7 0"/><path d="M19 2.5v11"/><path d="M17 13.5h4l-.6 4.5a1.4 1.4 0 0 1-2.8 0z"/>`),
+  blowups:I(`<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="m12.6 4-1.4 2.4 1.8 1.4-1.3 2.4"/><path d="M8 6H5a3 3 0 0 0 3 4"/><path d="M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4"/><path d="M8 21h8"/><path d="M9 17h6v4"/>`),
 };
 export const TABS = [["home", "#home", "Play", "golf"], ["stats", "#stats", "Stats", "chart"], ["leagues", "#leagues", "Societies", "leagues"], ["me", "#me", "Me", "me"]];
 
@@ -389,6 +444,31 @@ function pendingPeople() { try { return (JSON.parse(localStorage.getItem("hagolf
 export function bind(fn) {
   app.querySelectorAll("main, footer.bar, header.top").forEach(el => el.addEventListener("click", fn));
 }
+
+/**
+ * Two or more readings of the same numbers behind one switch. Every pane is drawn; the switch only shows one and
+ * hides the rest (the listener under this), so no screen needs a handler of its own, nothing redraws and the page
+ * does not jump. The pick holds in `ui.pane[key]` across redraws and screens. `list` is [{ k, label, html }]; an
+ * empty pane is dropped, and a single one is drawn without a switch. `wrap` places the panes, such as inside a card
+ * under a figure they share.
+ */
+export function switched(key, list, wrap = body => body) {
+  const ps = list.filter(p => p && p.html);
+  if (!ps.length) return "";
+  const on = ps.some(p => p.k === ui.pane[key]) ? ui.pane[key] : ps[0].k;
+  const picks = ps.length < 2 ? "" : `<div class="filter mini">${ps.map(p => `<button data-act="pane" data-v="${esc(p.k)}" class="${p.k === on ? "on" : ""}" aria-pressed="${p.k === on}">${esc(p.label)}</button>`).join("")}</div>`;
+  return `<div data-panes="${esc(key)}">${picks}${wrap(ps.map(p => `<div data-pane="${esc(p.k)}"${p.k === on ? "" : " hidden"}>${p.html}</div>`).join(""))}</div>`;
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-act=pane]");
+  const box = b && b.closest("[data-panes]");
+  if (!box) return;
+  ui.pane[box.dataset.panes] = b.dataset.v;
+  // only this switch's own buttons and panes, never those of a switch drawn inside one of its panes
+  const mine = el => el.closest("[data-panes]") === box;
+  box.querySelectorAll("[data-act=pane]").forEach(x => { if (mine(x)) { const on = x === b; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on); } });
+  box.querySelectorAll("[data-pane]").forEach(p => { if (mine(p)) p.hidden = p.dataset.pane !== b.dataset.v; });
+});
 
 /** An icon button for the header. */
 export const iconBtn = (act, icon, label, extra = "") => `<button class="iconbtn" data-act="${act}" aria-label="${esc(label)}" title="${esc(label)}" ${extra}>${ICONS[icon]}</button>`;

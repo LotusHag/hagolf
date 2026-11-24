@@ -26,7 +26,7 @@ const infoFor = (r, c, e) => {
 function block(r, c, e, i, h, kinds) {
   const info = infoFor(r, c, e);
   const par = info ? info.par[h] : c.par[h];
-  if ((e.fromHole || 1) - 1 > h)
+  if (S.joinsLate(r, e, h))
     return `<div class="prow skip" data-i="${i}"><div class="phead"><span class="pname">${esc(e.name)}</span>
       <span class="muted small">joins at hole ${c.first_hole + e.fromHole - 1}</span></div></div>`;
   const v = e.scores[h], st = info && !c.unlisted ? info.strokes[h] : 0;
@@ -141,7 +141,7 @@ function holeGrid(r, c, list, byNet, hidePts = false) {
     if (!e) return "";
     const info = infoFor(r, c, e);
     const pts = h => { const v = e.scores[h]; return hidePts || !info || c.unlisted || v === null ? "" : v === 0 ? 0 : stableford(v, info.par[h], info.strokes[h]); };
-    const cells = holes.map(h => (e.fromHole || 1) - 1 > h ? `<td data-h="${h}"></td>`
+    const cells = holes.map(h => S.joinsLate(r, e, h) ? `<td data-h="${h}"></td>`
       : `<td data-h="${h}">${mark(e.scores[h], info ? info.par[h] : c.par[h])}<small class="hgpts num">${pts(h)}</small></td>`).join("");
     const tot = !x.holes ? "" : `${hidePts ? "" : `<small>${x.pts} pts</small>`}${byNet ? `<small>${esc(x.main)}</small>` : ""}`;
     return `<tr><th class="hgname"><b>${x.place ?? "–"}</b> ${esc(x.name)}</th>${cells}<td class="hgtot"><b class="num">${x.holes ? x.gross : "–"}</b>${tot}</td></tr>`;
@@ -197,7 +197,7 @@ export function score(rid, hArg) {
 
   const rows = Math.ceil(n / 9);
   const strip = c.par.map((_, k) => {
-    const playing = seats.filter(e => (e.fromHole || 1) - 1 <= k);
+    const playing = seats.filter(e => !S.joinsLate(r, e, k));
     const done = playing.length && playing.every(e => e.scores[k] !== null);
     const some = seats.some(e => e.scores[k] !== null);
     return `<a class="hstep num ${k === h ? "cur" : ""} ${done ? "done" : some ? "some" : ""}" href="#score/${rid}/${k}" data-h="${k}" ${k === h ? 'aria-current="true"' : ""}>${c.first_hole + k}</a>`;
@@ -216,10 +216,13 @@ export function score(rid, hArg) {
       : `<div class="prows" id="rows">${shown.map(([e, i]) => block(r, c, e, i, h, kinds)).join("")}</div>`}
     ${seats.length ? "" : `<p class="muted center">No players. <a href="#players/${rid}">Add some</a>.</p>`}
     <p class="sr" id="said" aria-live="polite"></p>`;
-  const onward = h < n - 1 ? `Hole ${c.first_hole + h + 1}` : "Finish";
-  const done = () => { const p = seats.filter(x => (x.fromHole || 1) - 1 <= h); return p.length && p.every(x => x.scores[h] !== null); };
-  const bar = `${h === 0 ? `<a class="btn half" href="#players/${rid}">‹ Players</a>` : `<a class="btn half" href="#score/${rid}/${h - 1}">‹ Hole ${c.first_hole + h - 1}</a>`}
-    <a class="btn half ${done() ? "primary" : ""}" href="${h < n - 1 ? `#score/${rid}/${h + 1}` : `#review/${rid}`}">${esc(onward)} ›</a>`;
+  // the card runs round from the hole this group teed off on: off the tenth, 10 to 18 and then 1 to 9
+  const start = S.groupStart(r, gf || myGroup || 1) ?? 0;
+  const next = (h + 1) % n, prev = (h - 1 + n) % n, last = next === start;
+  const onward = last ? "Finish" : `Hole ${c.first_hole + next}`;
+  const done = () => { const p = seats.filter(x => !S.joinsLate(r, x, h)); return p.length && p.every(x => x.scores[h] !== null); };
+  const bar = `${h === start ? `<a class="btn half" href="#players/${rid}">‹ Players</a>` : `<a class="btn half" href="#score/${rid}/${prev}">‹ Hole ${c.first_hole + prev}</a>`}
+    <a class="btn half ${done() ? "primary" : ""}" href="${last ? `#review/${rid}` : `#score/${rid}/${next}`}">${esc(onward)} ›</a>`;
   const here = `${rid}/${h}`, again = ui.lastScore === here;
   ui.lastScore = here;
   const before = again ? SEEN.get(here) : null, now = r.entries.map(e => e.scores[h]);
@@ -278,7 +281,7 @@ export function score(rid, hArg) {
     if (noPar) return;
     const i = Number(b.dataset.i);
     const e = r.entries[i];
-    if (!e || (e.fromHole || 1) - 1 > h) return;
+    if (!e || S.joinsLate(r, e, h)) return;
     if (["inc", "dec", "par"].includes(act)) {
       const par = c.par[h], v = e.scores[h];
       if (act === "inc") S.setScore(r, e, h, (v === null || v === 0) ? par : Math.min(30, v + 1));

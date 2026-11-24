@@ -132,7 +132,7 @@ export function players(rid, only = 0, keep = false) {
     const i = r.entries.indexOf(e);
     const info = seatInfo(r, c, e);
     const sub = [e.accountId && e.accountId === me ? "you" : "",
-      info.error || match ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 ? `from hole ${c.first_hole + e.fromHole - 1}` : "", who === "some" && e.trackStats ? "putts and the rest" : ""].filter(Boolean).join(" · ");
+      info.error || match ? "" : `course hcp ${fmtHcp(info.ch)}`, showGroups ? `group ${e.group || 1}` : "", (e.fromHole || 1) > 1 && e.fromHole - 1 !== S.startOf(r, e) ? `from hole ${c.first_hole + e.fromHole - 1}` : "", who === "some" && e.trackStats ? "putts and the rest" : ""].filter(Boolean).join(" · ");
     const side = sidedMatch(fmt) ? `<div class="eseg sides">${["A", "B"].map(sd => `<button data-act="side" data-i="${i}" data-s="${sd}" class="${e.side === sd ? "on" : ""}">${sd}</button>`).join("")}</div>` : "";
     return `<div class="card who" data-i="${i}">
       <div class="whotop"><button class="wname" data-act="psheet" data-i="${i}"><b>${esc(e.name)}</b><small>${esc(sub)}${info.error ? ` <span class="warn">${esc(info.error)}</span>` : ""}</small></button>
@@ -193,7 +193,9 @@ export function players(rid, only = 0, keep = false) {
     const e = b.dataset.i !== undefined ? r.entries[Number(b.dataset.i)] : null;
     if (act === "tee-off") {
       if (r.status === "setup") { r.status = "scoring"; S.saveRound(r); }
-      if (g) { ui.groupFilter[rid] = g; const h = (people[0] || {}).fromHole || 1; if (people.every(e => e.scores.every(v => v === null))) S.setHole(r, h - 1); }
+      if (g) ui.groupFilter[rid] = g;
+      const h = S.groupStart(r, g || 1);
+      if (h !== null && people.every(e => e.scores.every(v => v === null))) S.setHole(r, h);
       return go(`#score/${r.id}/${S.holeOf(r)}`);
     }
     if (act === "drop-round") return dropRound(rid);
@@ -301,12 +303,12 @@ async function askIndex(name) {
   return hi;
 }
 
-function seat(r, c, p, hi, accountId) {
+function seat(r, c, p, hi, accountId, theirs = false) {
   const tees = Object.keys(c.tees);
   const people = r.entries.filter(e => e.role !== "team");
   const all = S.cardStatsWho(r) === "all" || !people.length && !!S.state.settings.statsEveryone;
   const e = S.addEntry(r, c.n, { name: p.name, hi, tee: S.lastTee(p.id, r.course, tees) || r.defaultTee, gender: p.gender || "m", courseHandicap: null,
-    accountId, trackStats: all || (accountId && accountId === S.myAccount() ? S.keepsAny(S.myKeep()) : false) });
+    accountId, golfer: theirs ? p : null, trackStats: all || (accountId && accountId === S.myAccount() ? S.keepsAny(S.myKeep()) : false) });
   if (sidedMatch(r.format)) S.setSide(r, e, people.filter(x => x.side === "A").length <= people.filter(x => x.side === "B").length ? "A" : "B");
   return e;
 }
@@ -323,14 +325,23 @@ export async function addSheet(r, c) {
   const friends = F.held().friends.filter(f => !onCardAccounts.has(f.id) && f.id !== S.myAccount())
     .sort((a, b) => (lastWith.get(b.id) || "").localeCompare(lastWith.get(a.id) || "") || a.name.localeCompare(b.name));
   const roster = S.players().filter(p => !onCard.has(p.id) && !(p.linkedAccount && onCardAccounts.has(p.linkedAccount)) && !friends.some(f => f.id === p.linkedAccount)).sort((a, b) => a.name.localeCompare(b.name));
-  const line = (kind, id, name, sub, look = null) => `<button class="addrow" data-sheet="${kind}:${esc(id)}" data-q="${esc(name.toLowerCase())}">${avatar(name, "", look)}<span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="plus">+</span></button>`;
+  // the golfers my playing partners keep, from cards we shared: the same guest, not a second copy of them
+  const covered = new Set([S.myAccount(), ...onCardAccounts, ...friends.map(f => f.id), ...roster.map(p => p.linkedAccount)].filter(Boolean));
+  const theirs = !S.myAccount() ? [] : S.golfers().filter(g => g.owner && g.owner !== S.myAccount() && !onCard.has(g.id) && !(g.linkedAccount && covered.has(g.linkedAccount)))
+    .filter((g, i, all) => !g.linkedAccount || all.findIndex(x => x.linkedAccount === g.linkedAccount) === i);
+  const keeper = owner => { for (const x of S.rounds()) { const e = x.entries.find(y => y.accountId === owner); if (e) return firstName(e.name); } return null; };
+  const twin = name => [...roster, ...theirs].filter(x => S.nameKey(x.name) === S.nameKey(name)).length > 1;
+  const playedWith = [...roster.filter(p => !me || p.id !== me.id).map(p => ({ kind: "roster", p })), ...theirs.map(p => ({ kind: "golfer", p }))]
+    .sort((a, b) => a.p.name.localeCompare(b.p.name));
+  const pwSub = ({ kind, p }) => [hiSub(S.currentIndex(p)), kind === "golfer" && twin(p.name) && keeper(p.owner) ? `kept by ${keeper(p.owner)}` : ""].filter(Boolean).join(" · ");
   const hiSub = hi => hi !== null && hi !== undefined ? `index ${fmtIndex(Number(hi))}` : "no index yet";
+  const line = (kind, id, name, sub, look = null) => `<button class="addrow" data-sheet="${kind}:${esc(id)}" data-q="${esc(name.toLowerCase())}">${avatar(name, "", look)}<span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="plus">+</span></button>`;
   const v = await sheet({ title: "Add a player", body: `
     <input id="aq" class="search" placeholder="Search, or type a new name" autocomplete="off">
     <div id="alist">
       ${me && !onCard.has(me.id) ? line("roster", me.id, me.name, "you", F.lookOf(S.myAccount())) : ""}
       ${friends.length ? `<p class="pickline">Friends</p>${friends.map(f => line("friend", f.id, f.name, hiSub(f.hi), f.look)).join("")}` : ""}
-      ${roster.filter(p => !me || p.id !== me.id).length ? `<p class="pickline">Played with</p>${roster.filter(p => !me || p.id !== me.id).map(p => line("roster", p.id, p.name, hiSub(S.currentIndex(p)), p.linkedAccount && F.lookOf(p.linkedAccount))).join("")}` : ""}
+      ${playedWith.length ? `<p class="pickline">Played with</p>${playedWith.map(x => line(x.kind, x.p.id, x.p.name, pwSub(x), x.p.linkedAccount && F.lookOf(x.p.linkedAccount))).join("")}` : ""}
     </div>
     <button class="addrow new" id="anew" data-sheet="new:" hidden><span class="plus">+</span><span><b id="anewname"></b><small>add to the card</small></span></button>`,
     onOpen: el => {
@@ -366,6 +377,12 @@ export async function addSheet(r, c) {
       if (me && p.id === me.id && A.signedIn()) { try { await A.update({ hi }); } catch (e) { /* the seat still carries it */ } }
     }
     seat(r, c, p, hi, p.linkedAccount || null);
+  } else if (kind === "golfer") {
+    const p = S.golfers().find(x => x.id === id);
+    if (!p) return;
+    let hi = S.currentIndex(p);
+    if ((hi === null || hi === undefined) && !match) { hi = await askIndex(p.name); if (hi === null) return; }
+    seat(r, c, p, hi, p.linkedAccount || null, true);
   } else if (kind === "new") {
     const name = id.trim();
     if (!name) return;

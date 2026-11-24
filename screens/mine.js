@@ -25,18 +25,12 @@ function tabRow(on) {
     .map(([k, label]) => `<button data-act="stab" data-t="${k}" class="${k === on ? "on" : ""}">${esc(label)}</button>`).join(""));
 }
 
-/** The headline numbers, with the form of the last ten rounds drawn the width of the card. */
+/** The headline numbers. */
 function tiles(p) {
   const a = A.account();
   const hi = a && a.hi !== null && a.hi !== undefined ? a.hi : null;
   const tile = (big, small) => `<div><b class="num">${big}</b><small>${small}</small></div>`;
-  const recent = p.rounds.slice(-10).map(x => x.pts);
-  const spark = recent.length > 1 ? (() => {
-    const lo = Math.min(...recent), hi2 = Math.max(...recent), w = 300, h = 40, k = (w - 8) / (recent.length - 1);
-    const pts = recent.map((v, i) => `${4 + i * k},${h - 4 - (hi2 === lo ? (h - 8) / 2 : ((v - lo) / (hi2 - lo)) * (h - 8))}`).join(" ");
-    return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="points in your last ${recent.length} rounds"><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg><div class="sparkcap muted small">points, last ${recent.length} rounds</div>`;
-  })() : "";
-  return `<div class="mecard"><div class="stats">${hi !== null ? tile(fix(hi), "hcp") : ""}${tile(fix(p.avgPts), "avg pts")}${tile(p.bestPts, "best")}${tile(p.played, plural(p.played, "round").split(" ")[1])}</div>${spark}</div>`;
+  return `<div class="mecard"><div class="stats">${hi !== null ? tile(fix(hi), "hcp") : ""}${tile(fix(p.avgPts), "avg pts")}${tile(p.bestPts, "best")}${tile(p.played, plural(p.played, "round").split(" ")[1])}</div></div>`;
 }
 
 export function stats(view, topic) {

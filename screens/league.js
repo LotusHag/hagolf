@@ -7,12 +7,12 @@ import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import { brandField } from "./partner.js";
-import { page, bind, esc, go, toast, ui, plural, firstName, inits, courseTitle, ordinal, fmtDate, shortDate, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge , onDesk} from "../ui.js";
-import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, fix } from "../model.js";
+import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge, onDesk, courseTitle } from "../ui.js";
+import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex } from "../model.js";
 import { ANIMALS, FIELDS, choices, crestOf, crestKey, swatchOf, isCrest } from "../avatar.js";
-import { seasonOf, seasonName, currentSeason, shownSeason, seasonRounds, FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, basisGame, basisTaker, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence } from "./formats.js";
-import { leagueStatsBody, leaguePlayerBody, tapeRow, basisSheetBody } from "./stats.js";
-import { claimSheet } from "./gate.js";
+import { seasonOf, seasonName, currentSeason, shownSeason, seasonRounds, FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, eloDelta, eloDay, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence, basisGame, basisTaker } from "./formats.js";
+import { leagueStatsBody, leaguePlayerBody, basisSheetBody, h2hParts, honourSheet, honoursPage } from "./stats.js";
+import { claimSheet, candidateSub } from "./gate.js";
 import { sendTable, sendSeason, sendDay } from "../images.js";
 import { comingUp, eventRow, newEvent } from "./event.js";
 
@@ -145,32 +145,51 @@ function stateOfPlay(C, Sx) {
   return `<p class="story">${lead}.${you}</p>`;
 }
 
+/** The head of the last-day panel: what it is, who took it, where and when, read left to right in three short lines. */
+const lastHead = (kicker, who, c) => `<div class="k caps">${kicker}</div><h2>${esc(who)}</h2>
+  <p class="where">${esc([dayWhere(c), fmtDate(c.date)].filter(Boolean).join(" · "))}</p>`;
+
+/**
+ * What the day did to one player's rating, and where it came from: the change on the right of the row, its
+ * parts in words underneath. Nothing when they had no game that day (alone among guests on their card).
+ */
+function eloMoved(Sx, id, day) {
+  const r = Sx.rows.find(x => x.id === id);
+  const h = r && r.history.find(x => String(x.date) === day);
+  if (!h) return { side: "", under: "" };
+  const E = eloDay(h);
+  const words = [...E.parts.map(([name, v]) => `${eloDelta(v)} ${name}`), ...(E.floored ? ["held at 0"] : [])].join(" · ");
+  const dir = E.change > 0 ? " up" : E.change < 0 ? " dn" : "";
+  return { side: `<span class="dv${dir}">${eloDelta(E.change)}</span>`, under: words ? `<small>${esc(words)}</small>` : "" };
+}
+
 /** The day the league last played, as the whole field that walked it rather than one group's sheet. */
-function lastDay(C, move, cards) {
+function lastDay(C, Sx, move, cards) {
   if (!move) return "";
   const c = move.last;
   const D = dayBoard(C.kind, c);
   const board = D.rows.filter(p => p.id === null || C.members.includes(p.id));
   const m = (c.matches || [])[0];
+  const link = text => `<a class="thru caps dayl" href="#league/${C.gid}/day/${cardKey(c)}">${text} ›</a>`;
   if (!board.length && m) {
-    return `<div class="panel lastout"><section class="inplay"><div class="rule"></div>
-      <div class="k">Last time out · match play</div>
-      <h1>${esc(m.leader ? m.sides[m.leader].map(firstName).join(" & ") : "Halved")}</h1>
-      <p class="where">${esc([dayWhere(c), fmtDate(c.date)].filter(Boolean).join(" · "))}</p></section>
-    <a class="thru caps dayl" href="#league/${C.gid}/day/${cardKey(c)}">${esc(matchSentence(m))} ›</a></div>`;
+    return `<div class="panel lastout">${lastHead("Last time out · match play", m.leader ? m.sides[m.leader].map(firstName).join(" & ") : "Halved", c)}
+    ${link(esc(matchSentence(m)))}</div>`;
   }
   if (!board.length) return "";
-  // one card in the league means the day and the season are the same list; printing it twice says nothing
-  const top = cards > 1 ? board.slice(0, 3) : [];
+  const elo = C.kind in ELO_BASIS;
+  // one card in the league means the day and the season are the same list; printing it twice says nothing --
+  // unless the table is a rating, where the day's own gains and losses are news the season list does not carry
+  const rows = elo ? (board.length > 7 ? board.slice(0, 6) : board) : cards > 1 ? board.slice(0, 3) : [];
   const win = board[0];
   const shared = board.filter(p => D.value(p) === D.value(win));
   const who = shared.length > 1 ? shared.slice(0, 2).map(p => firstName(p.name)).join(" & ") : firstName(win.name);
-  return `<div class="panel lastout"><section class="inplay"><div class="rule"></div>
-      <div class="k">Last time out${shared.length > 1 ? " · shared" : ""}</div>
-      <h1>${esc(who)}</h1>
-      <p class="where">${esc([dayWhere(c), fmtDate(c.date)].filter(Boolean).join(" · "))}</p></section>
-    ${top.length ? `<div class="board">${top.map((x, i) => `<div><span class="p">${i + 1}</span><span class="who">${esc(x.name)}</span><span class="v">${esc(D.value(x))}</span></div>`).join("")}</div>` : ""}
-    <a class="thru caps dayl" href="#league/${C.gid}/day/${cardKey(c)}">${plural(board.length, "player")} · the whole day ›</a></div>`;
+  const row = (x, i) => {
+    const e = elo && x.id !== null ? eloMoved(Sx, x.id, move.day) : { side: "", under: "" };
+    return `<div><span class="p">${i + 1}</span><span class="who">${esc(x.name)}${e.under}</span><span class="v">${esc(D.value(x))}</span>${elo ? e.side || `<span class="dv"></span>` : ""}</div>`;
+  };
+  return `<div class="panel lastout">${lastHead(`Last time out${shared.length > 1 ? " · shared" : ""}`, who, c)}
+    ${rows.length ? `<div class="board${elo ? " elo" : ""}">${rows.map(row).join("")}</div>` : ""}
+    ${link(`${plural(board.length, "player")} · the whole day`)}</div>`;
 }
 
 /** The league's face, and your own place under it, so nobody has to find themselves in the table. */
@@ -345,7 +364,7 @@ function boardView(C, keepScroll) {
       : `<p class="muted center" style="margin:22px 0">${C.kind in ELO_BASIS ? "Nobody has a rating yet — it needs two of the society's players out on the same day." : C.kind in MATCH_BASIS ? `Nobody has played a match yet — a ${esc(FORMAT_NAMES[C.kind])} table needs two of its players out on the same day.` : "Nothing to rank yet."}</p>`}
     ${boardNotes(C, Sx)}
     ${Sx.rows.length ? `<div class="sendrow"><button class="sendlink" data-act="send-table">Send the table</button></div>` : ""}</section>
-    ${lastDay(C, move, nCards)}`;
+    ${lastDay(C, Sx, move, nCards)}`;
   shell(g, g.name, body, { keepScroll, runs: C.runs, seg: "" });
   wireBoard(C, Sx);
   freshGolfers(C, `#league/${gid}`, () => boardView(ctx(g), true));
@@ -619,7 +638,6 @@ function playerView(C, pid, keep = false) {
       if (v) go(`#league/${C.gid}/vs/${pid}/${v}`);
       return;
     }
-    if (b.dataset.act === "ninetab") { ui.nineTab[C.gid] = b.dataset.slug; return playerView(C, pid, true); }
     if (b.dataset.act === "send-season") return sendSeason(C.gid, pid, C.kind);
   });
 }
@@ -665,7 +683,6 @@ function vsView(C, a, b) {
     const verdict = H.winsA === H.winsB ? `All square at ${H.winsA}&#8211;${H.winsB}` : `${esc(H.winsA > H.winsB ? fA : fB)} leads ${Math.max(H.winsA, H.winsB)}&#8211;${Math.min(H.winsA, H.winsB)}`;
     const streak = H.streak.n >= 2 ? `${esc(H.streak.who === "a" ? fA : fB)} has won the last ${H.streak.n}` : H.streak.n === 1 ? `${esc(H.streak.who === "a" ? fA : fB)} won the last one` : "the last one was halved";
     const holes = H.holesA + H.holesB + H.holesHalved;
-    const widest = H.winsA >= H.winsB ? H.widestA : H.widestB;
     const num = v => v === null ? "NR" : v;
     const hero = `<div class="card vscard"><div class="modeline mid"><span class="modetag">${esc(basisGame(basis))}</span><span>a round goes to ${esc(basisTaker(basis))}</span></div><div class="vsverdict">${verdict}</div>
       <div class="vs${C.g.showGolfers ? " figs" : ""}"><div class="vsside">${vsFace(C, a, A_, mA, "a", 1)}</div>
@@ -673,22 +690,16 @@ function vsView(C, a, b) {
         <div class="vsside">${vsFace(C, b, B_, mB, "b", -1)}</div></div>
       <div class="tug"><i class="a" style="width:${pc(H.winsA)}"></i><i class="t" style="width:${pc(H.ties)}"></i><i class="b" style="width:${pc(H.winsB)}"></i></div>
       <div class="vsline">${plural(H.rounds.length, "round")} together &middot; ${streak}</div></div>`;
-    const formStrip = `${h2tip("Round by round", `Every round they played together, oldest first. Each square carries the initials of whoever took it on ${esc(basisWord(basis))}; = means they tied. Tap one to see that card.`)}<div class="vsform">${H.rounds.map(r => `<a class="fdot ${r.winner}${r.winner !== "tie" && (r.winner === "a" ? mA : mB).length > 2 ? " long" : ""}" href="#review/${r.id}" title="${esc(fmtDate(r.date))} &middot; ${num(r.scoreA)}&#8211;${num(r.scoreB)}">${r.winner === "tie" ? "=" : esc(r.winner === "a" ? mA : mB)}</a>`).join("")}</div>`;
-    const holesBlock = `${h2tip("Match play, hole by hole", `Every hole the two of them have played together, each one won by ${esc(holeWord)}. Added up as one long match: ${esc(fA)}'s holes on the left, halved holes in the middle, ${esc(fB)}'s on the right.`)}<div class="card">
+    const P = h2hParts(C.Ms, H, a, b, A_, B_, basis);
+    const holesBlock = `${h2tip("Match play, hole by hole", `Every hole the two of them have played together, each one won by ${esc(holeWord)}. Added up as one long match: ${esc(fA)}'s holes on the left, halved holes in the middle, ${esc(fB)}'s on the right.`, "flag")}<div class="card">
       <div class="modeline"><span class="modetag">Match play</span><span>a hole goes to ${esc(basisTaker(basis))}</span></div>
       <div class="tug big"><i class="a" style="width:${(H.holesA / holes) * 100}%"></i><i class="t" style="width:${(H.holesHalved / holes) * 100}%"></i><i class="b" style="width:${(H.holesB / holes) * 100}%"></i></div>
       <div class="holeskey"><span><b>${H.holesA}</b> ${esc(fA)}</span><span class="muted">${H.holesHalved} halved</span><span><b>${H.holesB}</b> ${esc(fB)}</span></div>
       <p class="muted small" style="margin:10px 0 0">All ${holes} holes together as one long match: ${H.up === 0 ? "dead level" : `${esc(H.up > 0 ? fA : fB)} would be ${Math.abs(H.up)} up`}.</p></div>`;
-    const stats = `<details class="card fold"><summary>The numbers side by side${infoBtn("The numbers side by side", `${esc(fA)} on the left of every line, ${esc(fB)} on the right, over the rounds they played together. The green end is whoever is ahead — on gross scores that is the lower number.`)}</summary><div class="tapes">
-      ${tapeRow("average points", H.avgPtsA, H.avgPtsB, false, fix)}${tapeRow("best round", H.bestPtsA, H.bestPtsB)}${tapeRow("total points", H.ptsA, H.ptsB)}
-      ${basis === "net" ? tapeRow("average net", H.avgNetA, H.avgNetB, true, fix) + tapeRow("best net", H.bestNetA, H.bestNetB, true) : ""}
-      ${tapeRow("average gross", H.avgGrossA, H.avgGrossB, true, fix)}${tapeRow("best gross", H.bestGrossA, H.bestGrossB, true)}
-      ${H.birdiesA + H.birdiesB ? tapeRow("birdies or better", H.birdiesA, H.birdiesB) : ""}${tapeRow("match play wins", H.matchA, H.matchB)}</div></details>`;
-    const widestLine = widest ? `<p class="muted small" style="margin:-4px 4px 8px">Widest margin: ${esc(widest.winner === "a" ? fA : fB)} by ${widest.margin} ${basis === "points" ? "points" : "shots"} on ${esc(fmtDate(widest.date))}.</p>` : "";
-    const list = `${h2tip("Every round together", `One line a round, newest first: the two ${esc(basisWord(basis))} totals for that day, the winner's in colour. The line underneath says how the same round went as a match, hole by hole.`)}${widestLine}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
+    const list = `${h2tip("Every round together", `One line a round, newest first: the two ${esc(basisWord(basis))} totals for that day, the winner's in colour. The line underneath says how the same round went as a match, hole by hole.`, "card")}<div class="list">${[...H.rounds].reverse().map(r => `<a class="h2hrow" href="#review/${r.id}">
       <div class="when"><b>${esc(fmtDate(r.date))}</b><small class="muted">${esc(r.where)} &middot; ${r.up === 0 ? "match halved" : `${Math.abs(r.up)} up ${esc(firstName(r.up > 0 ? A_ : B_))}`}</small></div>
       <div class="sc"><b class="${r.winner === "a" ? "wa" : ""}">${num(r.scoreA)}</b><s>&#8211;</s><b class="${r.winner === "b" ? "wb" : ""}">${num(r.scoreB)}</b></div></a>`).join("")}</div>`;
-    body = sides + head + hero + formStrip + holesBlock + stats + list;
+    body = sides + head + hero + P.chart + P.holes + P.tapes + holesBlock + P.records + list;
   }
   shell(C.g, C.g.name, `${body}
     ${C.members.length > 2 ? `${sect(`${fA} against`)}<div class="rows">${C.members.filter(m => m !== a && m !== b).slice(0, 5).map(m => `<a class="hrow" href="#league/${C.gid}/vs/${esc(a)}/${esc(m)}">
@@ -718,9 +729,7 @@ function vsView(C, a, b) {
 // ---------------------------------------------------------------- the field's numbers
 function statsView(C, keep = false) {
   ui.statsWho[C.gid] = "";
-  const doors = C.Ms.length ? `<div class="list">
-      <a href="#league/${C.gid}/table/${C.kind}"><div><div class="name">The whole table</div><div class="muted small">${esc(FORMAT_NAMES[C.kind])}, every column</div></div><span class="chev">›</span></a></div>` : "";
-  shell(C.g, C.g.name, doors + leagueStatsBody(C.g, C.Ms, C.members, ui.numWho[C.gid] || null), { back: "#leagues", runs: C.runs, keepScroll: keep, seg: "stats" });
+  shell(C.g, C.g.name, leagueStatsBody(C.g, C.Ms, C.members, ui.numWho[C.gid] || null), { back: "#leagues", runs: C.runs, keepScroll: keep, seg: "stats" });
   bind(async ev => {
     if (await common(C, ev)) return;
     const b = ev.target.closest("[data-act]");
@@ -734,7 +743,24 @@ function statsView(C, keep = false) {
       ui.numWho[C.gid] = next && next.length === every.length ? null : next;
       return statsView(C, true);
     }
-    if (b.dataset.act === "ninetab") { ui.nineTab[C.gid] = b.dataset.slug; return statsView(C, true); }
+    if (b.dataset.act === "formby") { ui.formBy = b.dataset.v; return statsView(C, true); }
+
+  });
+  // the loop picker is a <select>: it speaks on change, which bind (clicks only) never hears
+  document.querySelector("main select[data-act=ninetab]")?.addEventListener("change", ev => { ui.nineTab[C.gid] = ev.target.value; statsView(C, true); });
+}
+
+/** The honours board, on a page of its own off the numbers: every record, and each one's top ten a tap away. */
+function honoursView(C) {
+  shell(C.g, C.g.name, C.Ms.length ? honoursPage(C.g, C.Ms, C.members) : `<p class="muted center" style="margin:30px 0">No finished rounds in this society yet.</p>`,
+    { back: `#league/${C.gid}/stats`, runs: C.runs });
+  bind(async ev => {
+    if (await common(C, ev)) return;
+    const b = ev.target.closest("[data-act=honour]");
+    if (!b) return;
+    const S_ = honourSheet(C.g, C.Ms, C.members, b.dataset.k);
+    const to = S_ && await sheet(S_);
+    if (to && to.startsWith("#")) go(to);
   });
 }
 
@@ -856,15 +882,16 @@ function roundsView(C, keep = false) {
 const uploaded = g => !!g.icon && !isCrest(g.icon);
 
 // Square, small and re-encoded on the phone: every member pulls the league row, so the icon has to stay a few kB.
-// Fitted, not cropped, and see-through where the file is: a wide logo keeps its sides and sits on the theme. A phone
-// that cannot write webp writes png, which keeps the transparency jpeg would lose.
+// Cropped to the middle square, so the picture fills the badge's square edge to edge and sits centred in it: the
+// short side fits, the long side loses an equal strip at each end. See-through where the file is. A phone that
+// cannot write webp writes png, which keeps the transparency jpeg would lose.
 function shrinkIcon(file, size = 128) {
   return new Promise((ok, no) => {
     const url = URL.createObjectURL(file), img = new Image();
     img.onload = () => {
       const c = document.createElement("canvas");
       c.width = c.height = size;
-      const k = size / Math.max(img.naturalWidth, img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
+      const k = size / Math.min(img.naturalWidth, img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
       c.getContext("2d").drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
       URL.revokeObjectURL(url);
       const webp = c.toDataURL("image/webp", 0.82);
@@ -1014,7 +1041,7 @@ async function wireMembers(C) {
     if (box) box.innerHTML = `
       <div class="list">${r.members.map(m => `<div><a class="lead" href="${m.id === me ? "#me" : `#person/${esc(m.id)}`}">${avatar(m.name || "?", "", F.lookOf(m.id))}<div><div class="name">${esc(m.name || "Somebody")}</div>${sub(m) ? `<div class="muted small">${esc(sub(m))}</div>` : ""}</div></a>${undo(m)}</div>`).join("")}</div>
       ${mineM && mineM.claim === "none" && free.length ? `<button class="btn small" data-act="claim-me" style="margin-top:8px">Which player on the cards is me?</button>` : ""}
-      ${free.length ? `${sect("Not on Hagolf yet")}<div class="list">${free.map(c => `<div><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${plural(c.rounds, "round")}</div></div></span><button class="btn small" data-act="send-name" data-pid="${esc(c.playerIds[0])}" data-name="${esc(c.name)}">Send link</button></div>`).join("")}</div>` : ""}`;
+      ${free.length ? `${sect("Not on Hagolf yet")}<div class="list">${free.map(c => `<div><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${esc(candidateSub(c, free))}</div></div></span><button class="btn small" data-act="send-name" data-pid="${esc(c.id)}" data-name="${esc(c.name)}">Send link</button></div>`).join("")}</div>` : ""}`;
   } catch (e) { if (box) box.innerHTML = `<p class="muted small">${esc(e.message)}</p>`; }
   const ibox = document.getElementById("invites");
   if (ibox && runs) {
@@ -1067,6 +1094,7 @@ export function league(gid, view, a, b, keep = false) {
   if (view === "p") return playerView(C, a);
   if (view === "vs") return vsView(C, a, b);
   if (view === "stats") return statsView(C);
+  if (view === "honours") return honoursView(C);
   if (view === "admin") return adminView(C, keep);
   if (view === "rounds") return roundsView(C, keep);
   if (view === "members") return membersView(C);

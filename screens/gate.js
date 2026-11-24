@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as Y from "../sync.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
-import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, redraw, appBase, qrHtml, atDoor, installRoute, isAndroid } from "../ui.js";
+import { page, bind, toast, esc, go, ui, parseHI, hiOk, sheet, firstName, avatar, plural, takeIntent, appBase, qrHtml, atDoor, installRoute, isAndroid, shortDate, courseBy, courseTitle, redraw } from "../ui.js";
 import { fmtIndex } from "../model.js";
 import { buildRound, courseOf } from "./public.js";
 import { isNative, plugin } from "../native.js";
@@ -35,7 +35,7 @@ export function welcome() {
 // The signed Android package, stamped by app/build.py from app/android/hagolf.apk: the door hands over this
 // file rather than asking Chrome to install the web app. Empty means none was built, and Android is shown its
 // browser's own install instead, so a missing package degrades rather than offering a dead link.
-const ANDROID_APK = "./hagolf.apk";
+const ANDROID_APK = "";
 
 /**
  * The door. app.hagolf.app hands out Hagolf; it is not where Hagolf is used. Every browser that is not already
@@ -158,7 +158,7 @@ function onboarding(acct) {
       <h1>${acct.name ? "Is this you?" : "What is your name?"}</h1>
       <p class="lead">This is how you appear to the people you play with. Never your email.</p>
       <form id="mef" class="card">
-        <label>Your name<input name="name" autocapitalize="words" autocomplete="name" value="${esc(acct.name || "")}" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
+        <label>Your name<input name="name" autocapitalize="words" autocomplete="name" value="${esc(acct.name || S.state.settings.nameHint || "")}" placeholder="e.g. Anne-Fleur van 't Hof" required></label>
         <div class="two"><label>Handicap index <span class="muted">(optional)</span><input name="hi" inputmode="decimal" placeholder="18,4 or +2.1" value="${acct.hi !== null && acct.hi !== undefined ? esc(fmtIndex(Number(acct.hi))) : ""}"></label>
         <label>Rating<select name="gender"><option value="m" ${acct.gender !== "f" ? "selected" : ""}>Men's</option><option value="f" ${acct.gender === "f" ? "selected" : ""}>Women's</option></select></label></div>
         <button class="btn primary wide" type="submit" style="margin-top:16px">That's me</button>
@@ -334,22 +334,64 @@ export async function join(arg) {
   go(`#league/${r.league.id}`);
 }
 
+/** Why a card cannot be ticked, or what to know before ticking it. */
+const cardNote = c => c.taken === "held" ? "somebody else has this one" : c.taken === "seated" ? "you are already on this card"
+  : c.clash ? "you played somewhere else that day" : "";
+
+/** A card as a claim lists it: where, then when and what it was called. */
+export const claimCard = c => ({ key: c.round, taken: c.taken, clash: c.clash, title: courseTitle(courseBy(c.course) || { name: c.course }),
+  sub: [c.date ? shortDate(c.date) : "", c.name].filter(Boolean).join(" · ") });
+
+/** The cards as ticks: one a row, with any reason not to tick it under it. A card that cannot be taken is greyed. */
+export const cardTicks = (cards, ticked) => `<div class="fmtlist">${cards.map(c => `<label><input type="checkbox" name="card" value="${esc(c.key)}" ${c.taken ? "disabled" : ticked ? "checked" : ""}>
+  <span><b>${esc(c.title)}</b><small>${esc([c.sub, cardNote(c)].filter(Boolean).join(" · "))}</small></span></label>`).join("")}</div>`;
+
+/** What the ticks say: the cards ticked and the ones left, or null with a word when none is ticked. */
+export function readTicks(el) {
+  const boxes = [...el.querySelectorAll("input[name=card]:not(:disabled)")];
+  if (!boxes.some(b => b.checked)) { toast("Tick at least one card that is yours"); return null; }
+  return { mine: boxes.filter(b => b.checked).map(b => b.value), not: boxes.filter(b => !b.checked).map(b => b.value) };
+}
+
+/** Which of these cards are you? Resolves to the ticks, or null when cancelled or nothing was ticked. */
+export async function cardsSheet({ title, lead, cards, ticked }) {
+  let el = null;
+  const v = await sheet({ title, lead, body: cardTicks(cards, ticked),
+    actions: [{ label: "These are me", value: "ok", kind: "primary" }, { label: "Cancel", value: "no" }], onOpen: e => { el = e; } });
+  return v === "ok" && el ? readTicks(el) : null;
+}
+
+/** A golfer on a society's cards in a line: its rounds, and when another has the same name, what tells them apart. */
+export function candidateSub(c, all) {
+  const twin = all.filter(x => x.key === c.key).length > 1;
+  return [plural(c.rounds, "round"), ...(twin ? [c.hi !== null && c.hi !== undefined ? `index ${fmtIndex(Number(c.hi))}` : "",
+    c.by ? `kept by ${c.by}` : "", c.last ? `last ${shortDate(c.last)}` : ""] : [])].filter(Boolean).join(" · ");
+}
+
 /**
- * "Which one are you?" after joining a society whose cards already carry names. The name that is the account's
- * own comes first. A pick stands at once; the organisers can undo a wrong one.
+ * "Which one are you?" after joining a society whose cards already carry names. One row a golfer, so two people
+ * of the same name are two rows, told apart by index, who keeps them and when they last played. The name that
+ * is the account's own comes first. Then the golfer's cards here, all ticked: untick one that was somebody else.
+ * A pick stands at once; the organisers can undo a wrong one.
  */
 export async function claimSheet(leagueId, candidates) {
   const free = candidates.filter(c => !c.claimedBy);
   if (!free.length) return;
   const mine = S.nameKey((A.account() || {}).name || "");
   free.sort((x, y) => (y.key === mine) - (x.key === mine));
+  const sub = c => candidateSub(c, free);
   const v = await sheet({ title: "Which one are you?", lead: "Your rounds in this society come with your name.",
-    body: `<div class="list">${free.map(c => `<button data-act="${esc(c.key)}" data-sheet-act><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${plural(c.rounds, "round")}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`,
+    body: `<div class="list">${free.map(c => `<button data-act="${esc(c.id)}" data-sheet-act><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${esc(sub(c))}</div></div></span><span class="chev">›</span></button>`).join("")}</div>`,
     actions: [{ label: "I'm not on a card yet", value: "none" }] });
   if (!v || v === "none") return;
-  const c = free.find(x => x.key === v);
+  const c = free.find(x => x.id === v);
+  const cards = (c.cards || []).map(claimCard);
+  const ticks = cards.filter(x => !x.taken).length > 1
+    ? await cardsSheet({ title: `Which of these were you?`, lead: `Untick any card that was another ${firstName(c.name)}.`, cards, ticked: true })
+    : { not: [] };
+  if (!ticks) return;
   try {
-    await F.claim(leagueId, c.name);
+    await F.claim(leagueId, c.id, ticks.not);
     toast(`You are ${c.name} here`);
     await Y.pull();
   } catch (e) { toast(e.message, 5000); }
@@ -369,15 +411,16 @@ export async function add(handle) {
   go("#people");
 }
 
-/** The cards on a golfer's link, each with that golfer's points on it. */
+/** The cards on a golfer's link, each with that golfer's points and who else was on it. */
 function golferCards(P) {
   return P.cards.map(card => {
     const course = courseOf(card.round.course, card.course ? [card.course] : []);
     let pts = null;
     try { const M = course && buildRound(card, card.round, card.entries, card.scores, course); const me = M && M.players.find(x => x.id === card.you); pts = me ? me.pts : null; } catch (e) { /* the card still lists */ }
     const others = card.entries.filter(e => e.id !== card.you).map(e => firstName(e.name));
-    return `<div><div><div class="name">${esc(course ? course.name : card.round.name)}</div><div class="muted small">${esc(card.round.date || "")}${others.length ? ` · with ${esc(others.join(", "))}` : ""}</div></div>${pts !== null ? `<span class="num"><b>${pts}</b> pts</span>` : ""}</div>`;
-  }).join("");
+    return { key: card.key, title: course ? course.name : card.round.name,
+      sub: [card.round.date ? shortDate(card.round.date) : "", others.length ? `with ${others.join(", ")}` : "", pts !== null ? `${pts} pts` : ""].filter(Boolean).join(" · ") };
+  });
 }
 
 /** `#you/<token>`: the link a scorer sent with your cards on it. "These are mine" makes them yours. */
@@ -388,17 +431,19 @@ export async function you(token) {
   try { P = await F.previewGolfer(token); }
   catch (e) { const gone = `<h3>This link has been used</h3><p class="muted">Ask for a new one, or sign in: rounds already yours are waiting.</p>`; return A.signedIn() ? (toast("This link has been used", 5000), go("#home")) : previewPage("Your rounds", gone, "#home"); }
   const head = `<h3>${P.by ? `${esc(P.by)} kept your score` : "Your scores"}</h3><p class="muted">${plural(P.cards.length, "round")} as ${esc(P.name)}</p>`;
-  const list = `<div class="list">${golferCards(P)}</div>`;
-  if (!A.signedIn()) return previewPage("Your rounds", `${head}${list}`, `#you/${token}`);
-  page("Your rounds", `<div class="card">${head}</div>${list}
+  const cards = golferCards(P);
+  if (!A.signedIn()) return previewPage("Your rounds", `${head}<div class="list">${cards.map(c => `<div><div><div class="name">${esc(c.title)}</div><div class="muted small">${esc(c.sub)}</div></div></div>`).join("")}</div>`, `#you/${token}`);
+  page("Your rounds", `<div class="card">${head}${cards.length > 1 ? `<p class="muted small">Untick any round that was somebody else.</p>` : ""}</div>${cardTicks(cards, true)}
     <div class="btnrow"><button class="btn primary" data-act="mine">These are mine</button><button class="btn" data-act="not">Not me</button></div>`, { back: "#home" });
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "not") return go("#home");
+    const ticks = cards.length ? readTicks(document.querySelector("main") || document) : { not: [] };
+    if (!ticks) return;
     b.disabled = true;
     try {
-      const r = await F.openGolfer(token);
+      const r = await F.openGolfer(token, ticks.not);
       await Y.pull();
       toast(`${plural(r.rounds, "round")} added to yours`);
       go("#stats/rounds");

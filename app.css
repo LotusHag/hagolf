@@ -606,12 +606,31 @@ b.sgdown { color: var(--sc-bogey-ink); }
 .bkey em { top: 1px; bottom: 1px; left: 1px; margin: 0; }
 .sleads > a { display: flex; flex-direction: column; min-width: 0; color: inherit; text-decoration: none; }
 .sleads > a i { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.trows { display: grid; gap: 26px; }
-.trhead { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 10px; }
-.trhead span { font-size: 0.875rem; color: var(--ink); line-height: 1.25; text-wrap: pretty; }
-.trhead b { font-size: 1.5rem; font-weight: 600; color: var(--ink); }
-.trhead em { font-style: normal; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink3); min-width: 44px; text-align: right; }
-.trhead em.up { color: var(--sc-birdie-ink); } .trhead em.down { color: var(--sc-bogey-ink); }
+/* Trends: one reading large, the rest as rows that open to their chart */
+.tmain { display: flex; align-items: center; gap: 14px; }
+.tmain b { font-size: 2.5rem; font-weight: 600; line-height: 1; color: var(--ink); }
+.tmain span { display: flex; flex-direction: column; gap: 2px; }
+.tmain em { font-style: normal; font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tmain small, .tsum, .tnote { font-size: 0.75rem; color: var(--ink3); text-wrap: pretty; }
+.tnote { margin: 10px 0 0; }
+.tsum { margin: -2px 0 0; }
+:is(.tmain em, .trow small).up { color: var(--sc-birdie-ink); }
+:is(.tmain em, .trow small).down { color: var(--sc-bogey-ink); }
+:is(.tmain em, .trow small).flat { color: var(--ink3); }
+.card.tlist { padding-block: 2px; }
+.trow + .trow { border-top: 1px solid var(--line); }
+.trow > summary { display: grid; grid-template-columns: 1fr 64px 3.25em 10px; align-items: center; gap: 12px; min-height: 56px; padding: 8px 0; cursor: pointer; }
+.trow > summary::after { content: "›"; color: var(--ink3); font-size: 1.25rem; line-height: 1; transform: rotate(90deg); transition: transform .15s var(--ease-out); }
+.trow[open] > summary::after { transform: rotate(-90deg); }
+.trow > summary > span { display: flex; flex-direction: column; min-width: 0; font-size: 0.9375rem; line-height: 1.25; color: var(--ink); text-wrap: pretty; }
+.trow small { font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.trow > summary > b { font-size: 1.25rem; font-weight: 600; text-align: right; color: var(--ink); }
+.trow > .tchart { margin-top: 2px; }
+.trow > .tdates { padding-bottom: 12px; }
+.tspark { display: block; width: 64px; height: 22px; overflow: visible; }
+.tspark path { fill: none; stroke: var(--ink3); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tspark.up path { stroke: var(--sc-birdie); } .tspark.down path { stroke: var(--sc-bogey); }
+@media (prefers-reduced-motion: reduce) { .trow > summary::after { transition: none; } }
 .tchart { display: block; width: 100%; height: auto; margin-top: 10px; overflow: visible; }
 .tbase { stroke: var(--line2); stroke-width: 1; stroke-dasharray: 3 4; }
 .tdot { fill: var(--ink3); opacity: .45; }
@@ -620,7 +639,6 @@ b.sgdown { color: var(--sc-bogey-ink); }
 .tlast { fill: var(--ink2); stroke: var(--card); stroke-width: 2; }
 .tlast.up { fill: var(--sc-birdie); } .tlast.down { fill: var(--sc-bogey); }
 .tdates { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 0.6875rem; }
-.sleads b.flat { color: var(--ink2); }
 .mrow { display: grid; grid-template-columns: 112px 1fr 44px; align-items: center; gap: 10px; padding: 5px 0; }
 .mrow > span { font-size: 0.8125rem; color: var(--ink2); line-height: 1.2; }
 .mrow > span small { display: block; font-size: 0.6875rem; color: var(--ink3); }
@@ -635,6 +653,22 @@ b.sgdown { color: var(--sc-bogey-ink); }
 .teefan .fantee { fill: var(--ink); }
 .teefan .fanv { fill: var(--ink); font-family: var(--fd); font-variant-numeric: tabular-nums; font-size: 0.9375rem; font-weight: 600; text-anchor: middle; }
 .teefan .fanl { fill: var(--ink3); font-size: 0.625rem; text-anchor: middle; text-transform: uppercase; letter-spacing: .6px; }
+.sandpit { display: block; width: 100%; max-width: 340px; margin: 14px auto 0; }
+.sandpit .psand { fill: var(--card2); stroke: var(--line2); stroke-width: 1.5; }
+.sandpit .pgreen { fill: color-mix(in oklch, var(--green) 32%, var(--card2)); }
+.sandpit .pcup { fill: var(--ink); }
+.sandpit .ppin { stroke: var(--ink2); stroke-width: 1.5; fill: none; }
+.sandpit .pflag { fill: var(--green); }
+.sandpit .pball.one, .pitkey i.one { fill: var(--sc-par); background: var(--sc-par); }
+.sandpit .pball.two, .pitkey i.two { fill: var(--sc-bogey); background: var(--sc-bogey); }
+.sandpit .pball.three, .pitkey i.three { fill: var(--sc-double); background: var(--sc-double); }
+.pitkey { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pitkey li { display: flex; flex-direction: column; min-width: 0; }
+.pitkey li.off { opacity: .7; }
+.pitkey span { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--ink2); }
+.pitkey i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.pitkey b { font-size: 1.0625rem; font-weight: 600; margin-top: 2px; }
+.pitkey small { font-size: 0.6875rem; color: var(--ink3); }
 .pcols { display: flex; gap: 12px; margin-top: 18px; }
 .pcol { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .pcol > b { font-size: 1.0625rem; font-weight: 600; }
@@ -708,11 +742,56 @@ b.sgdown { color: var(--sc-bogey-ink); }
 .tug i { display: block; }
 .tug .a { background: var(--green); } .tug .t { background: var(--line2); } .tug .b { background: var(--ink); }
 .vsline { text-align: center; color: var(--ink3); font-size: 0.8125rem; margin-top: 8px; }
-.vsform { display: flex; flex-wrap: wrap; gap: 5px; }
-.fdot { width: 2.125rem; height: 2.125rem; flex: none; border-radius: var(--r-xs); display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; letter-spacing: .3px; }
-.fdot.long { font-size: 0.6875rem; letter-spacing: 0; }
-.fdot.a { background: var(--green); color: var(--green-ink); } .fdot.b { background: var(--ink); color: var(--on-ink); }
-.fdot.tie { background: var(--card2); color: var(--ink3); border: 1px solid var(--line); }
+/* head to head, round by round: a bar a round, up for the left player and down for the right, as tall as the margin */
+.mkey { display: flex; justify-content: center; gap: 18px; margin-bottom: 8px; font-size: 0.75rem; color: var(--ink2); }
+.mkey span { display: flex; align-items: center; gap: 6px; }
+.mkey i { width: 10px; height: 10px; border-radius: var(--r-xs); }
+.mkey .a i { background: var(--green); } .mkey .b i { background: var(--ink); }
+.mchart { display: flex; justify-content: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.mchart::-webkit-scrollbar { display: none; }
+.mcol { flex: 1 1 26px; min-width: 22px; max-width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink3); text-decoration: none; }
+.mplot { position: relative; width: 100%; height: 160px; }
+.mplot::before { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; border-top: 1px solid var(--line2); }
+.mbar { position: absolute; left: 18%; right: 18%; }
+.mbar.a { bottom: 50%; background: var(--green); border-radius: var(--r-s) var(--r-s) 0 0; }
+.mbar.b { top: 50%; background: var(--ink); border-radius: 0 0 var(--r-s) var(--r-s); }
+:is(.chart-wait, .chart-in) .mbar.b.cg-y { transform-origin: 50% 0; }
+.mbar.nr { opacity: .35; }
+.mval { position: absolute; left: 0; right: 0; text-align: center; font-size: 0.6875rem; font-weight: 600; color: var(--ink2); }
+.mval.a { bottom: calc(50% + var(--h) + 2px); } .mval.b { top: calc(50% + var(--h) + 2px); }
+.mtie { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--ink3); }
+.mcol small { font-size: 0.625rem; white-space: nowrap; }
+/* head to head, the holes: two rings, and one key read from both sides */
+.h2rings { display: flex; justify-content: center; gap: 8px 22px; }
+.h2rings > div { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.h2rings .donut { width: 128px; height: 128px; }
+.h2rings > div > b { font-size: 0.875rem; font-weight: 600; }
+.h2rings .a > b { color: var(--green); }
+.h2key { list-style: none; margin: 14px 0 0; padding: 0; }
+.h2key li { display: grid; grid-template-columns: 2.4em 2.6em 1fr 2.6em 2.4em; align-items: baseline; gap: 4px; padding: 4px 0; font-size: 0.8125rem; }
+.h2key li.off { opacity: .7; }
+.h2key li > :nth-child(-n+2) { text-align: left; } .h2key li > :nth-child(n+4) { text-align: right; }
+.h2key span { display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--ink2); min-width: 0; }
+.h2key span i { width: 10px; height: 10px; border-radius: var(--r-xs); flex: none; }
+.h2key b { font-family: var(--fd); font-variant-numeric: tabular-nums; font-size: 1.0625rem; font-weight: 500; color: var(--ink3); }
+.h2key small { font-size: 0.6875rem; color: var(--ink3); font-variant-numeric: tabular-nums; }
+.h2key b.win { font-weight: 600; } .h2key b.win.a { color: var(--green); } .h2key b.win.b { color: var(--ink); }
+.h2key + p { text-wrap: balance; }
+/* head to head, the records: the left player's in the left column, the right player's in the right */
+.recs2 { padding: 14px 16px 16px; }
+.rhead, .rrow { display: grid; grid-template-columns: 1fr minmax(96px, auto) 1fr; align-items: center; gap: 10px; }
+.rhead { margin-bottom: 6px; font-size: 0.8125rem; }
+.rhead .a { grid-column: 1; color: var(--green); } .rhead .b { grid-column: 3; text-align: right; color: var(--ink); }
+.rrow { padding: 10px 0; }
+.rrow + .rrow { margin-top: 2px; }
+.rwhat { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; color: var(--ink3); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; line-height: 1.25; text-wrap: balance; }
+.rwhat svg { width: 40px; height: 40px; padding: 8px; border-radius: 50%; background: var(--card2); color: var(--ink2); fill: none; stroke: currentColor; stroke-width: calc(1.9px * var(--isw)); stroke-linecap: var(--icap); stroke-linejoin: var(--ijoin); }
+.rside { display: flex; flex-direction: column; min-width: 0; color: inherit; text-decoration: none; }
+.rside.b { align-items: flex-end; text-align: right; }
+.rside b { font-family: var(--fd); font-variant-numeric: tabular-nums; font-size: 1.625rem; font-weight: 500; line-height: 1.05; color: var(--ink3); }
+.rside.win b { font-weight: 600; } .rside.a.win b { color: var(--green); } .rside.b.win b { color: var(--ink); }
+.rside i { font-style: normal; font-size: 0.6875rem; color: var(--ink3); margin-top: 2px; white-space: nowrap; }
+.rside.none { color: var(--ink3); font-size: 1.25rem; }
 .tapes { padding: 6px 16px 14px; }
 .tape { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 10px; padding: 12px 0 0; border-top: 1px solid var(--line); margin-top: 12px; }
 .tape:first-child { border-top: 0; margin-top: 0; }
@@ -882,12 +961,12 @@ a.kv:active { background: var(--card2); }
 .dkey span { flex: 1; color: var(--ink2); min-width: 0; }
 .dkey b { font-family: var(--fd); font-variant-numeric: tabular-nums; font-size: 1rem; font-weight: 600; }
 .dkey small { color: var(--ink3); font-size: 0.6875rem; white-space: nowrap; }
-.dkey i.eagle, .dbar i.eagle, .dkeyline i.eagle { background: var(--sc-eagle); }
-.dkey i.birdie, .dbar i.birdie, .dkeyline i.birdie { background: var(--sc-birdie); }
-.dkey i.par, .dbar i.par, .dkeyline i.par { background: var(--sc-par); }
-.dkey i.bogey, .dbar i.bogey, .dkeyline i.bogey { background: var(--sc-bogey); }
-.dkey i.double, .dbar i.double, .dkeyline i.double { background: var(--sc-double); }
-.dkey i.triple, .dbar i.triple, .dkeyline i.triple { background: var(--sc-triple); }
+.dkey i.eagle, .dbar i.eagle, .dkeyline i.eagle, .h2key i.eagle { background: var(--sc-eagle); }
+.dkey i.birdie, .dbar i.birdie, .dkeyline i.birdie, .h2key i.birdie { background: var(--sc-birdie); }
+.dkey i.par, .dbar i.par, .dkeyline i.par, .h2key i.par { background: var(--sc-par); }
+.dkey i.bogey, .dbar i.bogey, .dkeyline i.bogey, .h2key i.bogey { background: var(--sc-bogey); }
+.dkey i.double, .dbar i.double, .dkeyline i.double, .h2key i.double { background: var(--sc-double); }
+.dkey i.triple, .dbar i.triple, .dkeyline i.triple, .h2key i.triple { background: var(--sc-triple); }
 .dkeyline { display: flex; flex-wrap: wrap; gap: 3px 12px; padding: 4px 0 8px; font-size: 0.6875rem; color: var(--ink3); }
 .dkeyline i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 5px; }
 .dists { padding: 4px 16px 12px; }
@@ -1004,6 +1083,26 @@ a.kv:active { background: var(--card2); }
 .lrow .avatar { width: 34px; height: 34px; margin-top: 1px; font-size: 0.8125rem; }
 .lrow .t span { color: var(--ink2); }
 .lrow .v { align-self: center; text-align: right; }
+/* the honours board: the honours, then the booby prizes under their own heading, three records to a row, a trophy
+   each, drawn in the theme's own icon strokes; a booby prize goes quiet, and a record nobody holds yet is greyed so
+   it reads as there for the taking. Not .hgrid: that is the scorecard's table, which this used to turn into a grid. */
+.hboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.htile { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 12px 6px 10px; border: 0;
+  border-radius: var(--r); background: var(--card); color: var(--ink); font: inherit; text-align: center; }
+.htile:active { background: var(--card2); }
+.htile .tro { width: 34px; height: 34px; margin-bottom: 2px; color: var(--green); }
+.htile.booby .tro { color: var(--ink3); }
+.htile.open .tro { color: var(--line2); }
+.htile .tro svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: calc(1.5px * var(--isw)); stroke-linecap: var(--icap); stroke-linejoin: var(--ijoin); }
+.htile .tro svg text { fill: currentColor; stroke: none; font: 600 7.5px var(--fd); }
+.htile b { font-size: 1.375rem; font-weight: 500; line-height: 1.1; }
+.htile b .u { font-size: 0.625rem; letter-spacing: 1px; color: var(--ink3); }
+.htile.open b, .htile.open .ht { color: var(--ink3); }
+.htile .ht { font-size: 0.75rem; line-height: 1.25; color: var(--ink2); text-wrap: balance; }
+.htile .hw { width: 100%; font-size: 0.6875rem; color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.going { font-style: normal; color: var(--green); }
+.sheetrows { margin: 4px 0 8px; }
+.honourtop { align-items: center; gap: 10px; }
 .lrow .v .u { display: block; margin-top: 1px; font-size: 0.625rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--ink3); }
 .lboard .lrow:first-child .v { color: var(--green); }
 /* the podium is a block of three, told from the field by one stronger hairline, not by three medals */
@@ -1034,9 +1133,20 @@ a.kv:active { background: var(--card2); }
 .lpanel .lboard .lrow { padding-left: 0; padding-right: 0; }
 .lpanel .lboard .lrow.me { padding-left: 8px; }
 .lpanel .bnotes { margin: 0 0 12px; }
-.panel.lastout { padding-top: 18px; }
-.panel.lastout .board { border-bottom: 0; }
-.panel.lastout a.dayl { border-top: 1px solid var(--line); margin-top: 0; }
+/* the last day: a short head read left to right, then the field as tight rules; on a rating, the day's change
+   sits in its own column and its parts in a quiet line under the name */
+.panel.lastout { padding-top: 14px; }
+.lastout > .k { font-size: 0.625rem; font-weight: 700; letter-spacing: 2px; color: var(--green); }
+.lastout > h2 { margin: 4px 0 0; font-family: var(--fd); font-weight: 500; font-size: 1.375rem; line-height: 1.1; letter-spacing: .3px; text-transform: uppercase; text-wrap: balance; }
+.lastout > .where { margin: 2px 0 0; font-size: 0.8125rem; color: var(--ink3); text-wrap: pretty; }
+.panel.lastout .board { margin-top: 12px; border-bottom: 0; }
+.lastout .board > div { gap: 12px; padding: 8px 2px; }
+.lastout .board .v { font-size: 1.1875rem; }
+.lastout .board .who small { display: block; margin-top: 1px; font-size: 0.6875rem; color: var(--ink3); overflow: hidden; text-overflow: ellipsis; }
+.lastout .board .dv { flex: none; min-width: 2.5em; text-align: right; font-size: 0.8125rem; font-weight: 700; color: var(--ink3); }
+.lastout .board .dv.up { color: var(--green); }
+.lastout .board.elo > div:first-child .v { color: inherit; }
+.panel.lastout a.dayl { border-top: 1px solid var(--line); margin-top: 0; padding: 10px 0; }
 .iconpick { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
 .iconpick > div { min-width: 0; }
 .iconpick b { display: block; font-size: 0.9375rem; }
@@ -1242,8 +1352,6 @@ a.dayl:active { color: var(--green); }
 
 .seg2 { display: grid !important; grid-template-columns: 1fr 1fr; margin: 6px 0 10px; }
 .seg2 > * { text-align: center; }
-.spark { display: block; width: 100%; height: 34px; margin-top: 8px; }
-.spark polyline { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .list.topics .name { font-size: 1rem; }
 .radios { padding: 4px 14px; }
 .radiorow, :is(.sheet, .sheet-out) .radiorow { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); margin: 0; }
@@ -1311,10 +1419,6 @@ button.dblock.tblock { cursor: pointer; }
 .tvboard .livematch .state { font-size: 8vh; }
 .tvboard .livematch .side { font-size: 4vh; }
 main.bare:has(.tvboard) { display: block; }
-
-.spark { display: block; width: 100%; height: 44px; margin-top: 10px; }
-.spark polyline { stroke-width: 2.5; }
-.sparkcap { margin-top: 2px; font-size: 0.6875rem; }
 
 /* ---- each theme's own touches. The tokens above carry its colours, faces, corners and icon stroke; these are the
    few things a token cannot say: Paper's tear line, Masters' green header in daylight, the tartan, the stripes. */

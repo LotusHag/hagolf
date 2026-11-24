@@ -10,7 +10,7 @@ export const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", m
 export const GP_BASIS = { gp: "points", gpstroke: "net" };
 // every match table not on Stableford goes hole by hole on strokes taken, never on handicap
 export const MATCH_BASIS = { match: "gross", matchpts: "points", soccer: "gross", soccerpts: "points" };
-export const ELO_BASIS = { elo: "all", elopts: "points", elostroke: "net", elomatch: "match" };
+export const ELO_BASIS = { elo: "all", elopts: "points", elostroke: "gross", elomatch: "match" };
 /** The game a head to head is compared in, named after what was picked: points are Stableford, not stroke play. */
 export const basisGame = b => b === "points" ? "Stableford" : b === "gross" ? "Stroke play" : "Net stroke play";
 export const basisTaker = b => b === "points" ? "the most points" : b === "gross" ? "the fewest strokes" : "the lowest net score";
@@ -32,16 +32,16 @@ export const FORMAT_BLURB = {
   soccerpts: "The same matches on Stableford points, in a football table: 3 for a win, 1 for a draw",
   gp: "Points for where you finish on each card on Stableford points, as in Formula 1: 25 for the win, then 18, 15, 12…",
   gpstroke: "The same points, with the day finished on net score against par instead; no card, no points",
-  elo: "A rating that rises when you beat the players you were out with, more for beating better ones and by more; Stableford, net score and the match all count",
+  elo: "A rating that rises when you beat the players you were out with, more for beating better ones and by more; half with handicap, half without",
   elopts: "The same rating, with each pair settled on Stableford points",
-  elostroke: "The same rating, with each pair settled on net score",
+  elostroke: "The same rating, with each pair settled on strokes taken, no handicap",
   elomatch: "The same rating, with each pair settled by a match on strokes taken, hole by hole, no handicap",
 };
 // What a game is in each Elo format: who wins it, and what the margin d is counted in.
 const ELO_GAME = {
-  elo: "Each game is worked out three times: on Stableford points (d in points), on net score (d in strokes) and as a match on strokes taken, hole by hole with no handicap (d in holes up). M × (R − E) is averaged over the three, so winning all three counts fully and a split counts for less.",
+  elo: "Each game is worked out three times: on Stableford points (d in points), as a match hole by hole on net strokes (d in holes up), and as a match on strokes taken with no handicap (d in holes up). M × (R − E) counts ¼ for Stableford, ¼ for the net match and ½ for the match without handicap, so the handicap decides half the game and the golf itself the other half.",
   elopts: "A game goes to whoever has more Stableford points, and d is the difference in points.",
-  elostroke: "A game goes to the lower net score, and d is the difference in net strokes. A card you did not finish loses to everyone who finished theirs, with M = 1.",
+  elostroke: "A game goes to whoever took fewer strokes, with no handicap, and d is the difference in strokes. A card you did not finish loses to everyone who finished theirs, with M = 1.",
   elomatch: "A game is a match on strokes taken, hole by hole with no handicap, over every hole played rather than stopped once it is decided, and d is the holes up at the end. A hole only one of you finished goes to that player.",
 };
 
@@ -63,7 +63,7 @@ ${readsMatches(kind) ? `<p>${MATCH_ROUND}</p>` : "<p>A match play round does not
 <b>E</b> your chance of winning, 1 ÷ (1 + 10<sup>(their rating − yours) ÷ ${ELO.scale}</sup>): 50% against an equal, 64% when you are 100 ahead<br>
 <b>M</b> the margin, ln(1 + d) ÷ ln 4, from ½ to 2: winning by 1 counts ½, by 3 counts 1, by 7 counts 1½, by 15 or more counts 2<br>
 <b>N</b> how many players you played that day</p>
-<p>Each game's points are added up for the day. The ratings in E are hidden: they start at ${ELO.start} and move by the same amounts, but never stop at a floor. At 0 a losing day costs nothing, and a day that gains anything adds at least 1. Equal points are split by the hidden rating.</p>
+<p>Each game's points are added up for the day. Your points are your rating, the same number E is worked out from: at 0 a losing day costs nothing. Equal points go to the decimals behind them, then to whoever has played more days.</p>
 <p><b>For example</b>, two new players, an even game (E = 0.5), won by 3 (M = 1): ${k0} × 1 × (1 − 0.5) ÷ 1 = <b>+${k0 / 2}</b> to the winner. The loser would lose ${k0 / 2}, but is on 0, so stays on 0.</p>`;
 }
 
@@ -183,7 +183,7 @@ export function boardLine(kind, r, g) {
   if (kind in ELO_BASIS) {
     const moved = r.last === null ? "" : ` · ${eloDelta(r.last)} last time`;
     return { value: String(Math.round(r.score)), unit: "pts",
-      sub: `${plural(r.played, "day")} · ${r.won}–${r.drawn}–${r.lost}${moved}` };
+      sub: `${plural(r.played, "day")}${moved}` };
   }
   if (kind in MATCH_BASIS) {
     const word = kind.startsWith("soccer") ? "played" : "matches";
@@ -209,8 +209,29 @@ export function boardLine(kind, r, g) {
 export const decidingValue = (kind, r) => kind in MATCH_BASIS ? r.points : kind in ELO_BASIS ? Math.round(r.score) : r.counted;
 export const eloDelta = d => { const x = Math.round(d); return x > 0 ? `+${x}` : x < 0 ? `−${-x}` : "±0"; };
 
+// The parts of a day's Elo, in the order ELO_GAME explains them.
+const ELO_PART_NAMES = { points: "Stableford", netmatch: "net match", match: "scratch match", net: "net score", gross: "strokes taken", played: "the match" };
+
+/**
+ * Where one day's rating change came from: each part as whole points that add up to the change shown, by
+ * largest remainder, so "+4 Stableford · +7 scratch match" never sums to something the board does not say.
+ * Parts that come to 0 are left out. A day the floor at 0 cut short says so, rather than adding up wrong.
+ */
+export function eloDay(h) {
+  const keys = Object.keys(ELO_PART_NAMES).filter(k => k in h.parts);
+  const floored = Math.round(h.delta) !== h.change && h.rating === 0;
+  const target = floored ? Math.round(h.delta) : h.change;
+  const whole = keys.map(k => Math.floor(h.parts[k]));
+  let left = target - whole.reduce((a, b) => a + b, 0);
+  const byFrac = keys.map((k, i) => [i, h.parts[k] - whole[i]]).sort((a, b) => b[1] - a[1]);
+  for (let j = 0; left > 0 && j < byFrac.length; j++, left--) whole[byFrac[j][0]]++;
+  for (let j = byFrac.length - 1; left < 0 && j >= 0; j--, left++) whole[byFrac[j][0]]--;
+  const parts = keys.map((k, i) => [ELO_PART_NAMES[k], whole[i]]).filter(([, v]) => v !== 0);
+  return { change: h.change, parts: parts.length > 1 || floored ? parts : [], floored };
+}
+
 /** What a round is settled on in each way of scoring: Stableford points, net strokes against par, or strokes taken. */
-export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind === "elomatch" ? "gross" : kind === "stroke" || kind === "elostroke" ? "net" : "points");
+export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind === "elomatch" || kind === "elostroke" ? "gross" : kind === "stroke" ? "net" : "points");
 
 /**
  * One day's board in the league's own currency. A football-table or stroke-play league whose day is read off

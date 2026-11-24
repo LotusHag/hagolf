@@ -18,6 +18,7 @@ function hrefOf(n) {
   if (["league_joined", "league_round", "claim_made"].includes(n.kind)) return n.league_id ? `#league/${n.league_id}` : null;
   if (["friend_request", "friend_accepted", "contact_linked"].includes(n.kind)) return n.account_id ? `#person/${n.account_id}` : null;
   if (n.kind === "friends_stats") return "#people";
+  if (["event_spot_given", "event_taken"].includes(n.kind)) return `#series/${encodeURIComponent(String(n.ref).split("|")[0])}`;
   return null;
 }
 
@@ -41,6 +42,9 @@ function textOf(n) {
     case "round_seated": return `<b>${who}</b> put you on their card: ${where}`;
     case "event_draw": { const p = n.payload || {}, hole = c ? c.first_hole + (p.hole || 1) - 1 : p.hole || 1;
       return `${esc(n.name || "Your event")}${n.date ? `, ${esc(fmtDate(n.date))}` : ""}: you're off ${p.time ? `at <b>${esc(p.time)}</b> ` : ""}from the ${ordinal(hole)}${(p.with || []).length ? ` with ${esc(p.with.map(firstName).join(", "))}` : ""}`; }
+    case "event_spot": return `<b>${esc((n.payload || {}).by || who)}</b> sent you a place in <b>${esc((n.payload || {}).event || "an event")}</b>`;
+    case "event_spot_given": return `<b>${who}</b> put you in <b>${esc((n.payload || {}).event || "an event")}</b>`;
+    case "event_taken": return `<b>${esc((n.payload || {}).name || who)}</b> took a place in <b>${esc((n.payload || {}).event || "your event")}</b>`;
     default: return esc(n.kind);
   }
 }

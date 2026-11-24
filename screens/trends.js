@@ -1,4 +1,5 @@
-// The Trends tab: how each part of a game has moved, round by round, oldest on the left.
+// The Trends tab: how a game has moved, round by round. The one reading that says most is drawn large; every other
+// one is a row saying in words whether it got better, worse or held, and opens to its own chart.
 import { esc, plural, shortDate, h2tip } from "../ui.js";
 import { fix, fmtSigned, statSummary, strokesGained } from "../model.js";
 
@@ -29,16 +30,16 @@ function readings(p, holes, cards) {
   }).filter(Boolean);
 
   return [
-    { group: "form", key: "hi", label: "Handicap index", lower: true, eps: 0.3, fmt: v => fix(v), s: rs.filter(r => num(r.hi) !== null).map(r => at(r, num(r.hi))) },
-    { group: "form", key: "pts", label: "Points a round", eps: 0.75, fmt: v => fix(v), s: rs.map(r => at(r, per18(r.pts, r.holes))) },
-    { group: "scoring", key: "topar", label: "Against par a round", lower: true, eps: 0.75, fmt: v => fmtSigned(v), s: rs.filter(r => r.topar !== null).map(r => at(r, per18(r.topar, r.holes))) },
-    { group: "scoring", key: "par", label: "Par or better", eps: 2, unit: "%", fmt: pctFmt, s: rs.map(r => at(r, ((r.counts[0] + r.counts[1] + r.counts[2]) / r.holes) * 100)) },
-    { group: "scoring", key: "dbl", label: "Doubles or worse a round", lower: true, eps: 0.25, fmt: v => fix(v), s: rs.map(r => at(r, per18(r.counts[4] + r.counts[5], r.holes))) },
-    { group: "shots", key: "sg", label: "Strokes gained a round", eps: 0.4, fmt: v => fmtSigned(v), s: sg },
-    { group: "shots", key: "fw", label: "Fairways hit", eps: 2, unit: "%", fmt: pctFmt, s: extra(x => x.fairway && x.fairway.holes >= 4 ? x.fairway.pct * 100 : null) },
-    { group: "shots", key: "gir", label: "Greens in regulation", eps: 2, unit: "%", fmt: pctFmt, s: extra(x => x.gir && x.gir.holes >= 9 ? x.gir.pct * 100 : null) },
-    { group: "shots", key: "putts", label: "Putts a round", lower: true, eps: 0.4, fmt: v => fix(v), s: extra(x => x.putts && x.putts.holes >= 9 ? x.putts.per18 : null) },
-    { group: "shots", key: "ud", label: "Up and down", eps: 3, unit: "%", fmt: pctFmt, s: extra(x => x.upDown && x.upDown.holes >= 4 ? x.upDown.pct * 100 : null) },
+    { key: "hi", label: "Handicap index", lower: true, eps: 0.3, fmt: v => fix(v), s: rs.filter(r => num(r.hi) !== null).map(r => at(r, num(r.hi))) },
+    { key: "pts", label: "Points a round", eps: 0.75, fmt: v => fix(v), s: rs.map(r => at(r, per18(r.pts, r.holes))) },
+    { key: "topar", label: "Score to par a round", lower: true, eps: 0.75, fmt: v => fmtSigned(v), s: rs.filter(r => r.topar !== null).map(r => at(r, per18(r.topar, r.holes))) },
+    { key: "par", label: "Holes at par or better", eps: 2, unit: "%", fmt: pctFmt, s: rs.map(r => at(r, ((r.counts[0] + r.counts[1] + r.counts[2]) / r.holes) * 100)) },
+    { key: "dbl", label: "Doubles or worse a round", lower: true, eps: 0.25, fmt: v => fix(v), s: rs.map(r => at(r, per18(r.counts[4] + r.counts[5], r.holes))) },
+    { key: "sg", label: "Strokes gained a round", eps: 0.4, fmt: v => fmtSigned(v), s: sg },
+    { key: "fw", label: "Fairways hit", eps: 2, unit: "%", fmt: pctFmt, s: extra(x => x.fairway && x.fairway.holes >= 4 ? x.fairway.pct * 100 : null) },
+    { key: "gir", label: "Greens in regulation", eps: 2, unit: "%", fmt: pctFmt, s: extra(x => x.gir && x.gir.holes >= 9 ? x.gir.pct * 100 : null) },
+    { key: "putts", label: "Putts a round", lower: true, eps: 0.4, fmt: v => fix(v), s: extra(x => x.putts && x.putts.holes >= 9 ? x.putts.per18 : null) },
+    { key: "ud", label: "Up and downs", eps: 3, unit: "%", fmt: pctFmt, s: extra(x => x.upDown && x.upDown.holes >= 4 ? x.upDown.pct * 100 : null) },
   ].map(m => m.s.length < MIN_POINTS ? null : measure(m)).filter(Boolean);
 }
 
@@ -55,12 +56,13 @@ function measure(m) {
   return { ...m, k, rolling, then, now, delta, moved, better, z };
 }
 
-const deltaText = m => `${fmtSigned(m.delta, m.unit ? 0 : 1)}${m.unit || ""}`;
 const toneOf = m => !m.moved ? "flat" : m.better ? "up" : "down";
+/** The move in words, so colour is never the only thing saying it: "better by 2.0", "worse by 5%", "steady". */
+const verdict = m => !m.moved ? "steady" : `${m.better ? "better" : "worse"} by ${m.unit ? pctFmt(Math.abs(m.delta)) : fix(Math.abs(m.delta))}`;
 
 /** The rounds as faint dots, the moving average as the line, and a dashed level where it started. */
-function chart(m) {
-  const W = 300, H = 92, T = 8, B = 8, L = 4, R = 8;
+function chart(m, H = 92) {
+  const W = 300, T = 8, B = 8, L = 4, R = 8;
   const vs = m.s.map(x => x.v);
   let lo = Math.min(...vs), hi = Math.max(...vs);
   if (hi - lo < m.eps * 2) { const mid = (hi + lo) / 2; lo = mid - m.eps; hi = mid + m.eps; }
@@ -75,32 +77,42 @@ function chart(m) {
     <div class="tdates muted"><span>${esc(shortDate(m.s[0].date))}</span><span>${esc(shortDate(m.s[m.s.length - 1].date))}</span></div>`;
 }
 
-const trendRow = m => `<div class="trow"><div class="trhead"><span>${esc(m.label)}</span>
-    <b class="num">${esc(m.fmt(m.now))}</b><em class="${toneOf(m)}">${m.moved ? esc(deltaText(m)) : "steady"}</em></div>${chart(m)}</div>`;
-
-/** The biggest movers either way, ranked by how far each moved against its own round-to-round wobble. */
-function movers(ms) {
-  const moved = ms.filter(m => m.moved).sort((a, b) => b.z - a.z);
-  const up = moved.filter(m => m.better).slice(0, 2), down = moved.filter(m => !m.better).slice(0, 2);
-  if (!up.length && !down.length) return `<div class="card"><p class="muted small" style="margin:0">Nothing has moved much yet.</p></div>`;
-  const fig = m => `<div><b class="num ${toneOf(m)}">${esc(deltaText(m))}</b><small>${esc(m.label)}</small><i>${esc(`${m.fmt(m.then)} → ${m.fmt(m.now)}`)}</i></div>`;
-  return `<div class="card">${up.length ? `<div class="subhead" style="margin-top:0">Getting better</div><div class="sleads grid">${up.map(fig).join("")}</div>` : ""}
-    ${down.length ? `<div class="subhead"${up.length ? "" : ` style="margin-top:0"`}>Slipping</div><div class="sleads grid">${down.map(fig).join("")}</div>` : ""}</div>`;
+/** The moving average alone, small enough to sit in a row: which way it went, not by how much. */
+function spark(m) {
+  // only the stretch the line covers, so it runs the sparkline's full width
+  const W = 64, H = 22, vs = m.rolling.filter(v => v !== null), n = Math.max(1, vs.length - 1);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  // a reading that held should look level, not have its wobble blown up to the full height
+  if (hi - lo < m.eps * 2) { const mid = (hi + lo) / 2; lo = mid - m.eps; hi = mid + m.eps; }
+  const d = vs.map((v, i) => `${i ? "L" : "M"}${((i / n) * (W - 4) + 2).toFixed(1)},${(2 + (1 - (v - lo) / (hi - lo)) * (H - 4)).toFixed(1)}`).join(" ");
+  return `<svg class="tspark ${toneOf(m)}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}"></path></svg>`;
 }
 
-const GROUPS = [
-  ["form", "Handicap and points", "<p>The handicap index is the one written on each card when it was played. Points are Stableford points.</p>", "gauge"],
-  ["scoring", "Scoring", "<p>Every hole by its score against par, before handicap strokes.</p>", "scorecard"],
-  ["shots", "Shots", "<p>Strokes gained against everyone on the same card, and the extras you kept: each round counts only if it kept enough holes of that reading to say something.</p>", "ball"],
-];
+/** The reading that says most about a game, drawn large: the figure now, what that means, and where it began. */
+const headline = m => `<div class="card"><div class="tmain"><b class="num">${esc(m.fmt(m.now))}</b>
+    <span><em class="${toneOf(m)}">${esc(verdict(m))}</em><small>${esc(`from ${m.fmt(m.then)} at the start`)}</small></span></div>
+    ${chart(m, 120)}<p class="tnote">Each dot is a round. The line is the average of the last ${m.k} at each point; the dashed level is where the first ${m.k} began.</p></div>`;
+
+/** Any other reading as one row; tap it for its chart. */
+const row = m => `<details class="trow"><summary><span>${esc(m.label)}<small class="${toneOf(m)}">${esc(verdict(m))}</small></span>
+    ${spark(m)}<b class="num">${esc(m.fmt(m.now))}</b></summary>${chart(m)}</details>`;
+
+const TIP = `<p>Each reading sets the average of the latest few rounds against the first few, and calls it steady when the gap is too small to mean much. Anything counted a round is scaled to 18 holes, so a nine sits fairly beside an eighteen.</p>
+  <p>The handicap index is the one written on each card when it was played. Score to par is before handicap strokes. Strokes gained is against everyone on the same card. Fairways, greens, putts and up and downs count a round only when it kept enough holes of them.</p>
+  <p>The rows that moved most, against how much each one normally wobbles, come first. Tap a row to see its rounds.</p>`;
 
 /** The whole tab, for one player: `holes` are statHoles rows, `cards` league cards for strokes gained. */
 export function trendsBody(p, holes, cards, who = "you") {
-  if (p.rounds.length < MIN_POINTS) return `<p class="muted center" style="margin:30px 0">Trends start after ${MIN_POINTS} rounds; ${who === "you" ? "you have" : `${esc(who)} has`} ${plural(p.rounds.length, "round")} so far.</p>`;
+  const wait = text => `<p class="muted center" style="margin:30px 0">${text}</p>`;
+  if (p.rounds.length < MIN_POINTS) return wait(`Trends start after ${MIN_POINTS} rounds; ${who === "you" ? "you have" : `${esc(who)} has`} ${plural(p.rounds.length, "round")} so far.`);
   const ms = readings(p, holes, cards);
-  const tip = `<p>Each dot is one round, oldest on the left; anything given a round is counted over 18 holes. The line is the average of the latest few rounds at every point, so one good or bad day bends it without breaking it. The dashed level is where the first few rounds started.</p>
-    <p>The figure is the average of the last few rounds, and beside it how far that is from the first few. Green is better, whichever way better runs: a falling handicap is green.</p>`;
-  return `${h2tip("What is moving", `<p>The readings that have moved furthest since the first rounds, measured against how much each one normally wobbles from round to round.</p>${tip}`, "trend")}${movers(ms)}
-    ${GROUPS.map(([g, title, more, icon]) => { const rows = ms.filter(m => m.group === g);
-      return rows.length ? `${h2tip(title, more + tip, icon)}<div class="card trows">${rows.map(trendRow).join("")}</div>` : ""; }).join("")}`;
+  if (!ms.length) return wait(`Trends start after ${MIN_POINTS} rounds of nine holes or more.`);
+  const main = ms.find(m => m.key === "hi") || ms.find(m => m.key === "pts") || ms[0];
+  const rest = ms.filter(m => m !== main).sort((a, b) => (b.moved - a.moved) || (b.moved ? b.z - a.z : 0));
+  const tally = ["up", "down", "flat"].map((t, i) => [rest.filter(m => toneOf(m) === t).length, ["better", "worse", "steady"][i]])
+    .filter(([n]) => n).map(([n, w]) => `${n} ${w}`).join(", ");
+  return `${h2tip(main.label, TIP, "trend")}${headline(main)}
+    ${rest.length ? `${h2tip("The rest of the game", TIP, "scorecard")}
+    <p class="tsum">${esc(`${who === "you" ? "Your" : `${who}'s`} latest rounds against the first: ${tally}.`)}</p>
+    <div class="card tlist">${rest.map(row).join("")}</div>` : ""}`;
 }

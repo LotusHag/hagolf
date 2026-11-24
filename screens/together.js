@@ -3,9 +3,11 @@
 import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as Y from "../sync.js";
+import * as F from "../social.js";
 import { page, bind, esc, go, toast, courseBy, courseTitle, fmtDate, sheet, rememberIntent, resumeHash, plural, shareLink } from "../ui.js";
 import { formatLabel } from "./home.js";
 import { seatOnEvent } from "./event.js";
+import { previewPage } from "./gate.js";
 
 /** A society's day on one loop is one card, whichever phone starts it first and however offline it is. */
 export function dayCardId(leagueId, date, slug) {
@@ -66,36 +68,78 @@ export async function liveSheet(r) {
   } catch (e) { toast(e.message, 5000); }
 }
 
-/** #j/<code>: an invite onto a card. Which seat is me, or add me. */
-export async function joinCard(code) {
+/** The card a code opens, as a line: its kind, name, course and day. */
+const cardHead = r => { const c = courseBy(r.course); return `<div class="card"><div class="k caps">${esc(formatLabel(r.format))}</div><div class="name">${esc(r.name)}</div>
+  <div class="muted small">${esc(c ? courseTitle(c) : r.course)}${r.date ? ` · ${esc(fmtDate(r.date))}` : ""}</div></div>`; };
+
+/** The names on the card still free, and "add me": the one question a code asks. */
+const seatPicker = seats => `<h2>Which one is you?</h2>
+  <div class="list">${seats.filter(s => !s.taken && !s.mine).map(s => `<button data-act="seat" data-seat="${esc(s.id)}" data-name="${esc(s.name)}"><div class="name">${esc(s.name)}</div><span class="chev">›</span></button>`).join("")}</div>
+  <button class="btn wide" data-act="addme">I'm not on it yet: add me</button>`;
+
+/**
+ * #j/<code>[/<seat>|/me]: an invite onto a card. Before signing in the code already shows the card and its names,
+ * so the one sign-in that follows lands straight on the right seat, with the name filled in for a new account.
+ * Signed in with a seat in the link, it is taken at once.
+ */
+export async function joinCard(code, pick = null) {
   if (!code) return go("#home");
-  if (!A.signedIn()) { rememberIntent(`#j/${code}`); return go("#welcome"); }
+  if (!A.signedIn()) return joinBeforeSignIn(code, pick);
+  if (pick) return takeSeat(code, pick === "me" ? null : pick);
   page("Join a card", `<p class="muted center">Opening the card…</p>`, { back: "#home", bell: false });
   let info;
   try { info = await A.api(`/round/invite/${encodeURIComponent(code)}`); } catch (e) {
     return page("Join a card", `<div class="banner warn">${esc(e.message)}</div><a class="btn" href="#home">Back to Play</a>`, { back: "#home" });
   }
-  const r = info.round, c = courseBy(r.course);
-  const free = info.seats.filter(s => !s.taken && !s.mine);
   const mine = info.seats.find(s => s.mine);
-  page("Join a card", `
-    <div class="card"><div class="k caps">${esc(formatLabel(r.format))}</div><div class="name">${esc(r.name)}</div>
-      <div class="muted small">${esc(c ? courseTitle(c) : r.course)} · ${esc(fmtDate(r.date))}</div></div>
-    ${mine ? `<p>You're already on this card as <b>${esc(mine.name)}</b>.</p><button class="btn primary wide" data-act="go">Score it</button>`
-      : `<h2>Which one is you?</h2>
-        <div class="list">${free.map(s => `<button data-act="seat" data-seat="${esc(s.id)}"><div class="name">${esc(s.name)}</div><span class="chev">›</span></button>`).join("")}</div>
-        <button class="btn wide" data-act="addme">I'm not on it yet: add me</button>`}
+  page("Join a card", `${cardHead(info.round)}
+    ${mine ? `<p>You're already on this card as <b>${esc(mine.name)}</b>.</p><button class="btn primary wide" data-act="go">Score it</button>` : seatPicker(info.seats)}
     <p class="muted small center">You'll score this card with them, live, until it's saved.</p>`, { back: "#home", bell: false });
-  bind(async ev => {
+  bind(ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
-    try {
-      if (b.dataset.act !== "go") await A.api("/round/join", { code, seat: b.dataset.seat || null });
-      await Y.fetchRound(r.id);
-      const local = S.getRound(r.id);
-      if (!local) return toast("The card didn't arrive; try again in a moment");
-      if (b.dataset.act === "addme" && !S.mySeat(local)) { const e = seatMe(local); if (e && local.event) seatOnEvent(local, courseBy(local.course), e); }
-      go(local.event ? `#event/${r.id}` : `#score/${r.id}/${S.holeOf(local)}`);
-    } catch (e) { toast(e.message, 5000); }
+    if (b.dataset.act === "go") return Y.fetchRound(info.round.id).then(() => openCard(info.round.id));
+    takeSeat(code, b.dataset.act === "seat" ? b.dataset.seat : null);
   });
+}
+
+async function joinBeforeSignIn(code, pick) {
+  page("Join a card", `<p class="muted center">Opening the card…</p>`, { bare: true });
+  let info;
+  try { info = await F.previewCard(code); } catch (e) {
+    return previewPage("Join a card", `<h3>This code has run out</h3><p class="muted">Ask whoever is scoring for a new one.</p>`, "#home");
+  }
+  const seat = pick && pick !== "me" ? info.seats.find(s => s.id === pick) : null;
+  if (!pick) {
+    page("Join a card", `<div class="gate"><div class="gatemark">Hagolf</div>${cardHead(info.round)}${seatPicker(info.seats)}
+      <p class="muted small center">Then sign in once, and you score this card with them, live.</p></div>`, { bare: true });
+    return bind(ev => {
+      const b = ev.target.closest("[data-act]");
+      if (!b) return;
+      if (b.dataset.act === "seat") S.setSetting("nameHint", b.dataset.name);
+      go(`#j/${code}/${b.dataset.act === "seat" ? encodeURIComponent(b.dataset.seat) : "me"}`);
+    });
+  }
+  rememberIntent(`#j/${code}/${encodeURIComponent(pick)}`);
+  previewPage("Join a card", `${cardHead(info.round)}<p>${seat ? `You're <b>${esc(seat.name)}</b>. Sign in and your seat is yours.` : "Sign in and you're added to the card."}</p>
+    <p class="center"><a class="linkish" href="#j/${esc(code)}">Not you? Pick again</a></p>`, `#j/${code}/${encodeURIComponent(pick)}`);
+}
+
+/** Onto the card as a scorer, in my seat or a new one, and straight to scoring. */
+async function takeSeat(code, seat) {
+  page("Join a card", `<p class="muted center">Taking your seat…</p>`, { back: "#home", bell: false });
+  try {
+    const res = await A.api("/round/join", { code, seat });
+    S.setSetting("nameHint", null);
+    await Y.fetchRound(res.round);
+    const local = S.getRound(res.round);
+    if (!local) { toast("The card didn't arrive; try again in a moment"); return go("#home"); }
+    if (!seat && !S.mySeat(local)) { const e = seatMe(local); if (e && local.event) seatOnEvent(local, courseBy(local.course), e); }
+    openCard(local.id);
+  } catch (e) { toast(e.message, 5000); go(`#j/${code}`); }
+}
+
+function openCard(id) {
+  const r = S.getRound(id);
+  return go(!r ? "#home" : r.event ? `#event/${id}` : `#score/${id}/${S.holeOf(r)}`);
 }

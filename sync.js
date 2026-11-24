@@ -52,16 +52,29 @@ const TABLES = {
       return took;
     },
   },
+  // An event: pushed by whoever runs it, like a league. `token` is the Worker's and only ever read.
+  events: {
+    collect: keys => S.state.events.filter(e => keys.has(e.id)).map(e => ({ id: e.id, owner_account: e.owner || null, league_id: e.leagueId || null, name: e.name,
+      format: e.format || "stableford", spots: e.spots || 0, open_to: e.openTo || "none", deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() })),
+    apply: r => lww(S.state.events, e => e.id === r.id, { id: r.id, owner: r.owner_account || null, leagueId: r.league_id || null, name: r.name, format: r.format || "stableford",
+      spots: Number(r.spots) || 0, openTo: r.open_to || "none", token: r.token || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+  },
+  // An event's field. Read only: places are filled through /event/*, which checks who is asking.
+  event_spots: {
+    collect: () => [],
+    apply: r => lww(S.state.eventSpots, x => x.event_id === r.event_id && x.spot === r.spot, { event_id: r.event_id, spot: r.spot, golfer: r.golfer_id || null,
+      account: r.account_id || null, name: r.name, invited: !!r.invited, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+  },
   rounds: {
     collect: keys => S.state.rounds.filter(r => keys.has(r.id) && !r.stub).map(r => ({ id: r.id, owner_account: r.owner || null, name: r.name, date: r.date || null, course: r.course,
       default_tee: r.defaultTee, allowance: r.allowance || 100, status: r.status, hole: r.hole || 0, created: r.created || null, brand: r.brand || null,
-      format: r.format || "stableford", league_id: r.leagueId || null, live: !!r.live, event: r.event || null,
+      format: r.format || "stableford", league_id: r.leagueId || null, live: !!r.live, event: r.event || null, event_id: r.eventId || null,
       deleted: !!r.deleted, updated_at: r.updated_at, device_id: dev() })),
     apply(r) {
       const mine = roundFor(r.id);
       if (mine.updated_at && !newer(r, mine)) return false;
       Object.assign(mine, { owner: r.owner_account || null, name: r.name, date: r.date, course: r.course, defaultTee: r.default_tee, allowance: r.allowance || 100,
-        status: r.status, hole: r.hole || 0, created: iso(r.created), brand: r.brand || null, format: r.format || "stableford", leagueId: r.league_id || null, live: !!r.live, event: r.event || null,
+        status: r.status, hole: r.hole || 0, created: iso(r.created), brand: r.brand || null, format: r.format || "stableford", leagueId: r.league_id || null, live: !!r.live, event: r.event || null, eventId: r.event_id || null,
         deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id, stub: false });
       const n = holesOf(S.courseBy(mine.course));
       for (const e of [...mine.entries, ...mine.removed]) {  // entries that arrived before the header were sized at 18
@@ -245,6 +258,8 @@ function sweep(seen) {
   prune(S.state.leagues, g => seen.leagues.has(g.id) || queued("leagues", g.id));
   prune(S.state.leagueRounds, x => seen.league_rounds.has(`${x.league_id}|${x.round_id}`) || queued("league_rounds", `${x.league_id}|${x.round_id}`));
   prune(S.state.leagueMembers, x => seen.league_members.has(`${x.league_id}|${x.account_id}`));
+  prune(S.state.events, x => seen.events.has(x.id) || queued("events", x.id));
+  prune(S.state.eventSpots, x => seen.event_spots.has(`${x.event_id}|${x.spot}`));
   prune(S.state.roundShares, x => seen.round_shares.has(`${x.round_id}|${x.account_id}`));
   prune(S.state.roundMembers, x => seen.round_members.has(`${x.round_id}|${x.account_id}`));
   prune(S.state.bag, x => seen.club_bag.has(`${x.account_id}|${x.club_id}`) || queued("club_bag", `${x.account_id}|${x.club_id}`));
@@ -256,6 +271,7 @@ function sweep(seen) {
 function keyOf(table, row) {
   if (table === "league_rounds") return `${row.league_id}|${row.round_id}`;
   if (table === "league_members") return `${row.league_id}|${row.account_id}`;
+  if (table === "event_spots") return `${row.event_id}|${row.spot}`;
   if (table === "round_shares" || table === "round_members") return `${row.round_id}|${row.account_id}`;
   if (table === "club_bag") return `${row.account_id}|${row.club_id}`;
   if (table === "round_entries") return `${row.round_id}|${row.player_id}`;
@@ -468,6 +484,8 @@ async function doPull(again = false) {
     // row alone, so a round that came without its card is fetched whole.
     const late = [...arrived].filter(id => { const r = S.state.rounds.find(x => x.id === id); return !r || r.stub || (!r.deleted && !r.entries.length); });
     if (late.length) { await fetchRounds(late); changed = true; }
+    // Somebody else's golfer on a card I can now read is older than my cursor too, so it is fetched by id.
+    if (await fetchGolfers()) changed = true;
     if (!again && newLeaguesSince(leaguesBefore)) {   // a league just became visible: its history predates the cursor
       localStorage.removeItem(CURSOR_KEY);
       sync.pulling = false;
@@ -512,6 +530,23 @@ async function fetchRounds(ids) {
   const orphanStats = S.state.orphanStats.splice(0);
   for (const row of orphanStats) TABLES.hole_stats.apply(row);
   S.afterPull();
+}
+
+const golfersAsked = new Set();
+/** The golfers on my cards that this phone does not hold yet, fetched once a session each. */
+async function fetchGolfers() {
+  const have = new Set(S.state.players.map(p => p.id));
+  const want = [...new Set(S.state.rounds.flatMap(r => r.entries.map(e => e.contactId)))].filter(id => id && !have.has(id) && !golfersAsked.has(id));
+  let got = false;
+  for (let i = 0; i < want.length; i += 40) {
+    const part = want.slice(i, i + 40);
+    part.forEach(id => golfersAsked.add(id));
+    let rows;
+    try { rows = await rest(`players?select=*&id=in.(${part.map(encodeURIComponent).join(",")})&limit=40`); } catch (e) { console.warn("sync: fetching golfers", e.message); return got; }
+    for (const row of rows || []) if (TABLES.players.apply(row)) got = true;
+  }
+  if (got) S.afterPull();
+  return got;
 }
 
 let pushTimer = null;

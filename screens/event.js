@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as Y from "../sync.js";
 import * as Mo from "../model.js";
-import { page, bind, esc, go, toast, plural, firstName, ordinal, fmtDate, courseTitle, courseBy, noCourse, sheet, confirmSheet, formSheet, ui, onDesk, monthShort , roundName} from "../ui.js";
+import { page, bind, esc, go, toast, plural, firstName, ordinal, fmtDate, courseTitle, courseBy, noCourse, sheet, confirmSheet, formSheet, onDesk, ui, monthShort, roundName } from "../ui.js";
 import { runsIt } from "./league.js";
 import { formatLabel } from "./home.js";
 import { seatMe, liveSheet } from "./together.js";
@@ -22,33 +22,11 @@ export const runsCard = r => {
 const planOf = r => ({ times: [], teams: [], ...(r.event || {}) });
 const people = r => r.entries.filter(e => e.role !== "team");
 const scrambleMatch = f => String(f || "").startsWith("scramblematch");
-const minutes = t => { const [h, m] = String(t || "").split(":").map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; };
-const clock = mins => `${String(Math.floor(((mins % 1440) + 1440) % 1440 / 60)).padStart(2, "0")}:${String(((mins % 60) + 60) % 60).padStart(2, "0")}`;
+const { minutes, clock } = S;
 const holeName = (c, h) => `${ordinal(c.first_hole + (h || 1) - 1)}`;
 export const halfPts = n => n === 0.5 ? "½" : `${Math.floor(n)}${n % 1 ? "½" : ""}`;
 
 function savePlan(r, patch) { r.event = { ...planOf(r), ...patch }; S.saveRound(r); }
-
-/** A slot for every group: the ones the organiser set, then the same gap again (a shotgun moves on a hole instead). */
-function slots(r, c, k) {
-  const t = planOf(r).times.map(x => ({ ...x }));
-  const gap = t.length > 1 ? minutes(t[t.length - 1].t) - minutes(t[t.length - 2].t) : 10;
-  while (t.length < k) {
-    const last = t[t.length - 1];
-    t.push(!last ? { t: null, h: 1 } : gap === 0 && t.length > 1 ? { t: last.t, h: last.h % c.n + 1 } : { t: last.t ? clock(minutes(last.t) + gap) : null, h: last.h });
-  }
-  return t;
-}
-
-/** Every seat starts on its group's hole, until it has a score. */
-function syncStarts(r, c) {
-  if (!planOf(r).times.length) return;
-  const sl = slots(r, c, Math.max(1, ...r.entries.map(S.groupOf)));
-  for (const e of r.entries) {
-    const h = (sl[S.groupOf(e) - 1] || {}).h || 1;
-    if ((e.fromHole || 1) !== h && e.scores.every(v => v === null)) { e.fromHole = h; S.saveEntry(r, e); }
-  }
-}
 
 /** A scramble plays one ball a team: a group is one team, or in a scramble match its two sides are. Made again whenever the groups change. */
 function rebuildTeams(r, c) {
@@ -94,7 +72,7 @@ const sideOf = (r, e) => {
  */
 export function teeSheet(r, c, { matches = [], tap = false } = {}) {
   const P = planOf(r), ps = people(r);
-  const gs = Mo.groupsOf(ps), sl = slots(r, c, gs.length ? gs[gs.length - 1] : 1);
+  const gs = Mo.groupsOf(ps), sl = S.startSlots(r, c.n, gs.length ? gs[gs.length - 1] : 1);
   const match = Mo.isMatchFormat(r.format);
   const nameBtn = e => tap ? `<button class="linkish" data-act="move" data-pid="${esc(e.playerId)}">${esc(e.name)}</button>` : esc(e.name);
   const team = k => P.teams[k - 1] ? P.teams[k - 1] : "";
@@ -128,24 +106,10 @@ function matchesNow(r, c) {
 }
 
 // ---------------------------------------------------------------- making one
-/** New event: the course picker of Play, then this page. A society's event is attached to it from the start. */
-export function newEvent(leagueId = null) {
-  if (!A.signedIn()) { toast("Sign in to run an event"); return go("#home"); }
-  ui.eventFor = { leagueId: leagueId || null };
-  go("#new");
-}
-
-export function createEvent(slug, leagueId) {
-  const c = courseBy(slug), tees = Object.keys(c.tees);
-  const g = leagueId && S.getLeague(leagueId);
-  const fmt = g && ["stroke", "gpstroke", "elostroke"].includes(S.cleanFormats(g.formats)[0]) ? "stroke" : "stableford";
-  const r = S.createRound({ course: slug, name: g ? `${g.name} at ${c.name}` : `${c.name} event`, date: S.today(), defaultTee: tees.includes("yellow") ? "yellow" : tees[0],
-    allowance: 100, format: fmt, leagueId: leagueId || null });
-  r.event = { times: [], teams: [] };
-  S.saveRound(r);
-  if (leagueId) S.setLeagueRound(leagueId, r.id, true);
-  ui.eventNew = r.id;
-  go(`#event/${r.id}`);
+/** New event: a few questions, a course for each round, then its page. A society's event belongs to it from the start. */
+export async function newEvent(leagueId = null) {
+  const { newSeries } = await import("./series.js");
+  return newSeries(leagueId);
 }
 
 // ---------------------------------------------------------------- the organiser's sheets
@@ -188,20 +152,18 @@ async function timesSheet(r, c) {
   const n = Math.max(1, Math.min(60, Math.floor(Number(f.get("k")) || k))), start = minutes(f.get("first")) ?? 540, gap = Number(f.get("gap")) || 10;
   const gun = f.get("start") === "shotgun";
   savePlan(r, { times: Array.from({ length: n }, (_, i) => gun ? { t: clock(start), h: i % c.n + 1 } : { t: clock(start + i * gap), h: 1 }) });
-  syncStarts(r, c);
 }
 
 async function slotSheet(r, c, g) {
-  const sl = slots(r, c, g)[g - 1];
+  const sl = S.startSlots(r, c.n, g)[g - 1];
   const [v, f] = await formSheet({ title: `Group ${g}`, body: `<div class="two">
       <label>Time<input name="t" type="time" value="${esc(sl.t || "")}"></label>
       <label>Starts on<select name="h">${c.par.map((_, i) => `<option value="${i + 1}" ${sl.h === i + 1 ? "selected" : ""}>${holeName(c, i + 1)}</option>`).join("")}</select></label></div>`,
     actions: [{ label: "Done", value: "ok", kind: "primary" }] });
   if (v !== "ok" || !f) return;
-  const times = slots(r, c, g);
+  const times = S.startSlots(r, c.n, g);
   times[g - 1] = { t: f.get("t") || null, h: Number(f.get("h")) || 1 };
   savePlan(r, { times });
-  syncStarts(r, c);
 }
 
 async function teamsSheet(r) {
@@ -239,7 +201,6 @@ async function drawSheet(r, c) {
   res.groups.forEach((x, i) => { if (x.players) x.players.forEach(id => put(id, i + 1, null)); else ["A", "B"].forEach(sd => x[sd].forEach(id => put(id, i + 1, sd))); });
   res.left.forEach(id => put(id, res.groups.length + 1, null));
   rebuildTeams(r, c);
-  syncStarts(r, c);
   if (res.left.length) toast(`${plural(res.left.length, "player")} without a match: in group ${res.groups.length + 1} to place by hand`, 5000);
 }
 
@@ -266,7 +227,6 @@ async function moveSheet(r, c, e) {
   if (f.get("sq")) e.squad = Number(f.get("sq"));
   S.saveEntry(r, e);
   rebuildTeams(r, c);
-  syncStarts(r, c);
 }
 
 async function sendDraw(r) {
@@ -290,14 +250,20 @@ export function seatOnEvent(r, c, e) {
   if (k && !e.squad) e.squad = Array.from({ length: k }, (_, i) => i + 1).sort((x, y) => onTeam(x) - onTeam(y))[0];
   S.saveEntry(r, e);
   rebuildTeams(r, c);
-  syncStarts(r, c);
 }
 
-/** I'm in: a society member comes onto its event themself; the organiser just takes a seat. */
+/**
+ * I'm in: a society member comes onto its event themself; the organiser just takes a seat. On a round of an event
+ * with a field, the place in the field comes first, and the seat on this round with it.
+ */
 async function joinEvent(r, c) {
   if (!A.signedIn()) return toast("Sign in first");
-  try { if (r.owner !== S.myAccount()) await A.api(`/round/${r.id}/dayjoin`, {}); } catch (e) { return toast(e.message, 5000); }
-  if (r.owner !== S.myAccount()) await Y.pull();
+  const mine = r.owner === S.myAccount();
+  try {
+    if (r.eventId && !mine && !S.myPlace(r.eventId)) { await A.api(`/event/${encodeURIComponent(r.eventId)}/join`, {}); await Y.resync(); }
+    else if (!r.eventId && !mine) { await A.api(`/round/${r.id}/dayjoin`, {}); await Y.pull(); }
+  } catch (e) { return toast(e.message, 5000); }
+  r = S.getRound(r.id) || r;
   const e = seatMe(r);
   if (!e) return toast("Set your name and handicap under Me first");
   seatOnEvent(r, c, e);
@@ -313,10 +279,12 @@ export function event(rid) {
   if (S.isScorer(r)) S.settleDay(r);
   const P = planOf(r), runs = runsCard(r), done = r.status === "done";
   const ps = people(r), mine = S.mySeat(r), g = mine ? S.groupOf(mine) : 0;
-  const sl = mine ? slots(r, c, g)[g - 1] : null;
+  const sl = mine ? S.startSlots(r, c.n, g)[g - 1] : null;
   const ms = matchesNow(r, c);
   const started = mine && r.entries.some(e => S.groupOf(e) === g && e.scores.some(v => v !== null));
-  const canJoin = !mine && !done && A.signedIn() && (runs || (r.leagueId && S.getLeague(r.leagueId)));
+  const ev = r.eventId ? S.getEvent(r.eventId) : null;
+  const inSociety = !!(r.leagueId && S.getLeague(r.leagueId));
+  const canJoin = !mine && !done && A.signedIn() && (runs || (ev ? !!S.myPlace(ev.id) || (ev.openTo === "society" && inSociety) : inSociety));
   const lg = r.leagueId ? S.getLeague(r.leagueId) : null;
 
   const me = done ? `<a class="btn primary wide" href="#review/${rid}">The results</a>`
@@ -343,8 +311,7 @@ export function event(rid) {
   const sub = [fmtDate(r.date), courseTitle(c), eventLabel(r.format), lg ? lg.name : ""].filter(Boolean).join(" · ");
   const desk = onDesk() && run;
   page(roundName(r), desk ? `<div class="evgrid"><div>${me}${teams}${sheetHead}${field}</div><div>${run}</div></div>` : `${me}${teams}${sheetHead}${field}${run}`,
-    { back: lg ? `#league/${lg.id}/days` : "#home", sub, bell: false, wide: !!desk });
-  if (ui.eventNew === rid) { ui.eventNew = null; detailsSheet(r).then(() => event(rid)); }
+    { back: ev ? `#series/${ev.id}` : lg ? `#league/${lg.id}/days` : "#home", sub: ev ? `${ev.name} · ${sub}` : sub, bell: false, wide: !!desk });
   bind(async ev => {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
@@ -377,19 +344,22 @@ export function event(rid) {
   });
 }
 
-/** Events I am on or my societies hold, from today on: what Play lists under its button. */
+/** Events I am on or my societies hold, from today on: what Play lists under its button. An event of several rounds is one line, its next round's. */
 export function comingUp() {
   const today = S.today(), mine = new Set(S.leagues().map(g => g.id));
-  return S.rounds().filter(r => r.event && r.status !== "done" && (r.date || "") >= today && (S.mySeat(r) || (r.leagueId && mine.has(r.leagueId)) || runsCard(r)))
+  const nextOf = id => S.eventRounds(id).find(x => x.status !== "done");
+  return S.rounds().filter(r => r.event && r.status !== "done" && (r.date || "") >= today && (!r.eventId || nextOf(r.eventId) === r)
+      && (S.mySeat(r) || (r.leagueId && mine.has(r.leagueId)) || runsCard(r) || (r.eventId && S.myPlace(r.eventId))))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String((planOf(a).times[0] || {}).t || "").localeCompare(String((planOf(b).times[0] || {}).t || "")));
 }
 
 /** One event as a row: the day, the name, and my tee time once there is one. */
 export function eventRow(r) {
   const c = courseBy(r.course), mine = S.mySeat(r), P = planOf(r);
-  const sl = mine && c ? slots(r, c, S.groupOf(mine))[S.groupOf(mine) - 1] : null;
+  const sl = mine && c ? S.startSlots(r, c.n, S.groupOf(mine))[S.groupOf(mine) - 1] : null;
   const t = new Date(`${r.date}T12:00:00`);
   const when = sl && sl.t ? `you're off ${sl.t}` : mine ? "you're in" : plural(people(r).length, "player");
-  return `<a class="hrow lead" href="#event/${esc(r.id)}"><span class="dblock"><b>${isNaN(t) ? "–" : t.getDate()}</b><small>${isNaN(t) ? "" : monthShort(t)}</small></span>
-    <span class="t"><b>${esc(r.name)}</b><span>${esc([c ? courseTitle(c) : r.course, eventLabel(r.format), P.teams.length ? P.teams.join(" v ") : "", when].filter(Boolean).join(" · "))}</span></span><span class="chev">›</span></a>`;
+  const ev = r.eventId && S.getEvent(r.eventId);
+  return `<a class="hrow lead" href="${ev ? `#series/${esc(ev.id)}` : `#event/${esc(r.id)}`}"><span class="dblock"><b>${isNaN(t) ? "–" : t.getDate()}</b><small>${isNaN(t) ? "" : monthShort(t)}</small></span>
+    <span class="t"><b>${esc(ev ? ev.name : r.name)}</b><span>${esc([c ? courseTitle(c) : r.course, eventLabel(r.format), P.teams.length ? P.teams.join(" v ") : "", when].filter(Boolean).join(" · "))}</span></span><span class="chev">›</span></a>`;
 }

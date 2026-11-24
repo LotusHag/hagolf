@@ -20,17 +20,19 @@ import { league } from "./screens/league.js";
 import { people, person, player } from "./screens/people.js";
 import { updates } from "./screens/updates.js";
 import { me } from "./screens/me.js";
-import { newCourse, scan } from "./screens/course.js";
+import { scan } from "./screens/course.js";
 import { board, card } from "./screens/public.js";
 import { privacy, terms } from "./screens/legal.js";
 import { partners, partner, admin, redeem } from "./screens/partner.js";
 import { event, newEvent } from "./screens/event.js";
+import { series, eventLink } from "./screens/series.js";
+import { addEmailLink } from "./screens/me.js";
 
 const screens = { home, welcome, signin, join, add, you, get: getApp, j: joinCard, live: liveScreen, stats, bag: bagPage, board, card, play, new: newRound, loops, players, score, review, attach, graphics,
-  people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, newcourse: newCourse, scan, partners, partner, admin, redeem, event, newevent: newEvent,
+  people, person, player, leagues, league, leagueimages: leagueImages, leagueposter: leagueImages, statsposter: leagueImages, updates, me, scan, partners, partner, admin, redeem, event, newevent: newEvent, series, ev: eventLink, addemail: addEmailLink,
   legal: which => (which === "terms" ? terms() : privacy()) };
 
-const OPEN_SCREENS = ["welcome", "signin", "board", "card", "join", "add", "you", "legal", "get", "live"];
+const OPEN_SCREENS = ["welcome", "signin", "board", "card", "join", "add", "you", "legal", "get", "live", "j", "ev"];
 // what a course, a company or the operator runs from a laptop: past the door in any browser, signing in on the page itself
 const WEB_SCREENS = ["partner", "admin", "redeem"];
 export const gated = () => Y.enabled() && !A.signedIn();

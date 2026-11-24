@@ -2,7 +2,7 @@
 // leagues, league-round attachments, courses added on phones, course handicaps from club tables, settings.
 // Every record carries updated_at and deleted; the queue remembers which records changed and when.
 import { DATA } from "./data.js";
-import { STAT_SWITCH_KEYS, emptyStat, blankStat, UNLISTED_TEE } from "./model.js";
+import { STAT_SWITCH_KEYS, emptyStat, blankStat, UNLISTED_TEE, playStart, missedHole } from "./model.js";
 import { mirror } from "./idb.js";
 import { crestOf, crestKey } from "./avatar.js";
 
@@ -30,7 +30,7 @@ function load() {
   }
   s = s || {};
   const st = { players: s.players || [], rounds: s.rounds || [], leagues: s.leagues || [], leagueRounds: s.leagueRounds || [],
-    leagueMembers: s.leagueMembers || [], roundShares: s.roundShares || [], roundMembers: s.roundMembers || [], bag: s.bag || [],
+    leagueMembers: s.leagueMembers || [], events: s.events || [], eventSpots: s.eventSpots || [], roundShares: s.roundShares || [], roundMembers: s.roundMembers || [], bag: s.bag || [],
     courses: s.courses || [], pch: s.pch || [], orphanScores: s.orphanScores || [], orphanStats: s.orphanStats || [], held: s.held || [], quarantine: s.quarantine || [],
     settings: s.settings || {} };
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
@@ -213,7 +213,10 @@ export function playerId(name, owner = null) {
 /** The account this phone is signed in as, or null. Set by sync.js once a session exists. */
 export function myAccount() { return state.settings.accountId || null; }
 
-export function players() { return live(state.players); }
+/** My own address book: the golfers I keep. Never somebody else's, which this phone may read but not change. */
+export function players() { const me = myAccount(); return live(state.players).filter(p => !me || !p.owner || p.owner === me); }
+/** Every golfer this phone can see: mine, and the ones other people keep who are on cards I share with them. */
+export function golfers() { return live(state.players); }
 
 /**
  * By current name or any earlier spelling (aliases), within my own address book only. Searching every contact
@@ -266,7 +269,7 @@ export function renamePlayer(p, newName) {
  * step and queues them, so a rename made before the app propagated them still reaches every screen.
  */
 export function reconcileNames() {
-  const by = new Map(state.players.map(p => [p.id, p]));
+  const by = new Map(players().map(p => [p.id, p]));   // my golfers only: somebody else's names their own seats
   let fixed = 0;
   for (const r of state.rounds) {
     for (const e of [...r.entries, ...r.removed]) {
@@ -613,10 +616,11 @@ const DELETED_SHOWN_FOR = 30 * 864e5;
 export const recentlyDeleted = () => state.rounds.filter(r => r.deleted && !r.stub && Date.now() - new Date(r.updated_at).getTime() < DELETED_SHOWN_FOR);
 
 /** Adds a player to a round: links to the roster, snapshots what they play with today. */
-export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1, trackStats = null, side = null, accountId = undefined }) {
-  const known = findPlayer(name);  // a scan of an old card must not rewrite the index they play off today
+export function addEntry(round, n, { name, hi, tee, gender, courseHandicap, group = 1, fromHole = 1, trackStats = null, side = null, accountId = undefined, golfer = null }) {
+  // somebody else's golfer is seated as it is: theirs to change, not mine to copy into my book
+  const known = golfer ? null : findPlayer(name);  // a scan of an old card must not rewrite the index they play off today
   const stale = known && round.date && lastPlayedDate(known.id, round.id) > round.date;
-  const p = upsertPlayer(name, stale ? null : hi, gender);
+  const p = golfer || upsertPlayer(name, stale ? null : hi, gender);
   const ghost = round.removed.find(x => x.playerId === p.id);  // taken out earlier: their scores come back with them
   round.removed = round.removed.filter(x => x.playerId !== p.id);
   const e = { playerId: p.id, name: p.name, hi, tee, gender: gender || "m", courseHandicap: courseHandicap ?? null, group, fromHole,
@@ -677,6 +681,34 @@ export function setSide(round, e, side) { e.side = side; saveEntry(round, e); }
 
 // ---------------------------------------------------------------- a card of several groups, and events
 export const groupOf = e => e.group || 1;
+
+export const minutes = t => { const [h, m] = String(t || "").split(":").map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; };
+export const clock = mins => `${String(Math.floor(((mins % 1440) + 1440) % 1440 / 60)).padStart(2, "0")}:${String(((mins % 60) + 60) % 60).padStart(2, "0")}`;
+
+/** A slot for every group: the ones the organiser set, then the same gap again (a shotgun moves on a hole instead). */
+export function startSlots(r, n, k) {
+  const t = ((r.event && r.event.times) || []).map(x => ({ ...x }));
+  const gap = t.length > 1 ? minutes(t[t.length - 1].t) - minutes(t[t.length - 2].t) : 10;
+  while (t.length < k) {
+    const last = t[t.length - 1];
+    t.push(!last ? { t: null, h: 1 } : gap === 0 && t.length > 1 ? { t: last.t, h: last.h % n + 1 } : { t: last.t ? clock(minutes(last.t) + gap) : null, h: last.h });
+  }
+  return t;
+}
+
+/** The hole a group tees off on, 0-based, from the event's tee sheet; null on a round without one. */
+export function groupStart(r, g) {
+  if (!r.event || !(r.event.times || []).length) return null;
+  const c = courseBy(r.course);
+  return ((startSlots(r, c ? c.n : 18, g)[g - 1] || {}).h || 1) - 1;
+}
+export const startOf = (r, e) => groupStart(r, groupOf(e));
+
+/** A seat that joined late has no hole `h`; counted from where its group teed off, so a shotgun wraps round. */
+export function joinsLate(r, e, h) {
+  const c = courseBy(r.course);
+  return missedHole(h, c ? c.n : e.scores.length, e.fromHole || 1, startOf(r, e) ?? 0);
+}
 export const manyGroups = r => new Set(r.entries.map(groupOf)).size > 1;
 /** Whether a group has handed its card in. */
 export const groupIn = (r, g) => r.entries.some(e => groupOf(e) === g) && r.entries.filter(e => groupOf(e) === g).every(e => e.signed);
@@ -787,6 +819,8 @@ export function toModelRound(round, collapse = false) {
     seen.add(id);
     entries.push({ id, name: collapse && !e.accountId ? identityName(id, e.name) : e.name, hi: e.hi, tee: e.tee, gender: e.gender, group: e.group,
       courseHandicap: e.courseHandicap ?? getPch(e.contactId || e.playerId, round.course, e.tee), scores: e.scores, penalties: e.penalties, fromHole: e.fromHole || 1,
+      // where they teed off: the tee sheet's hole, or else read off when each score went in (playStart)
+      startHole: startOf(round, e) ?? ((e.fromHole || 1) > 1 ? 0 : playStart(e.scoreTs, 0)),
       stats: e.stats || [], trackStats: !!e.trackStats, side: e.side || null, role: e.role || "player", squad: e.squad || 0,
       members: (e.members || []).map(m => (round.entries.find(x => x.playerId === m) || {}).name).filter(Boolean),
       memberIds: collapse ? (e.members || []).map(m => round.entries.find(x => x.playerId === m)).filter(Boolean).map(seatIdentity) : null });
@@ -844,6 +878,20 @@ export function createLeague(name, bestN = 0, createdBy = null, formats = ["stab
 }
 
 export function getLeague(id) { return state.leagues.find(g => g.id === id && !g.deleted) || null; }
+
+// ---------------------------------------------------------------- events: a series of rounds with one field
+export function getEvent(id) { return state.events.find(e => e.id === id && !e.deleted) || null; }
+export const eventRounds = id => rounds().filter(r => r.eventId === id).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || String(a.created || "").localeCompare(String(b.created || "")));
+export const fieldOf = id => state.eventSpots.filter(s => s.event_id === id && !s.deleted);
+/** My place in an event, if I have one. */
+export const myPlace = id => fieldOf(id).find(s => s.account && s.account === myAccount()) || null;
+export function saveEvent(e) { touch("events", e); save(); }
+export function newEventRecord({ name, leagueId = null, format = "stableford", spots = 0, openTo = "none" }) {
+  const e = { id: uid(), owner: myAccount(), leagueId, name, format, spots, openTo, token: null, deleted: false };
+  state.events.push(e);
+  saveEvent(e);
+  return e;
+}
 
 export function saveLeague(g) { touch("leagues", g); save(); }
 

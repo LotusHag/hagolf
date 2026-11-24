@@ -1,5 +1,5 @@
-// The Shots tab: strokes gained first, then the ball's own way round -- off the tee, into the green, around it, and in.
-import { esc, plural, h2tip } from "../ui.js";
+// The Shots tab: strokes gained first, then the ball's own way round -- off the tee, into the green and around it, and in.
+import { esc, plural, h2tip, switched } from "../ui.js";
 import { fix, fmtSigned, fmtPct, strokesGained } from "../model.js";
 import { SG_TIP } from "./extras.js";
 
@@ -95,47 +95,122 @@ function teeSection(x) {
     : `Misses go ${L > R ? "left" : "right"}: ${Math.max(L, R)} of ${L + R}.`;
   const ff = x.fromFairway;
   return `${h2tip("Off the tee", `<p>Every par 4 and par 5 where the tee shot was kept: on the fairway, or missed left or right. A par 3 has no fairway, so it is never asked.</p>
-      <p><b>From the fairway</b> and <b>from the rough</b> are how often the green was then hit in regulation, which is what finding the fairway is worth to you.</p>${sideless > 0 ? `<p>${plural(sideless, "miss", "misses")} kept without a side ${sideless === 1 ? "is" : "are"} left out of the fan.</p>` : ""}`, "tee")}
+      <p><b>From the fairway</b> and <b>GIR after hitting the rough</b> are how often the green was then hit in regulation, which is what finding the fairway is worth to you.</p>${sideless > 0 ? `<p>${plural(sideless, "miss", "misses")} kept without a side ${sideless === 1 ? "is" : "are"} left out of the fan.</p>` : ""}`, "tee")}
     <div class="card">
       ${leads([lead(fmtPct(f.pct), "fairways hit", `${f.hit} of ${f.holes}`)])}
       ${teeFan(f.hit, L, R)}
       ${bias ? `<p class="muted small center" style="margin:4px 0 0">${esc(bias)}</p>` : ""}
-      ${ff ? `<div class="subhead">Greens hit after it</div>${meter("From the fairway", ff.hit.gir, ff.hit.holes, "up")}${meter("From the rough", ff.miss.gir, ff.miss.holes)}` : ""}
+      ${ff ? `<div class="subhead">Greens hit after it</div>${meter("From the fairway", ff.hit.gir, ff.hit.holes, "up")}${meter("GIR after hitting the rough",ff.miss.gir, ff.miss.holes)}` : ""}
     </div>`;
 }
 
 // ---------------------------------------------------------------- into the green
-function approachSection(x) {
+function approachSection(x, perRound) {
   const g = x.gir;
-  if (!g || g.holes < 4) return "";
+  if (!g || g.holes < 4) return null;
   const pars = Object.keys(x.girByPar || {}).filter(k => x.girByPar[k].holes >= 3).sort();
-  const extra = [];
-  if (x.birdies && x.birdies.holes >= 6) extra.push(lead(fmtPct(x.birdies.pct), "greens turned into birdies", `${x.birdies.made} of ${x.birdies.holes}`));
-  if (x.fromGir) extra.push(lead(fix(x.fromGir.edge, 2), "strokes a green saves", `${fmtSigned(x.fromGir.hit.topar, 2)} on, ${fmtSigned(x.fromGir.miss.topar, 2)} off`));
-  return `${h2tip("Into the green", `<p><b>Greens in regulation</b>: on the green with two strokes still left for par, so a par 3 in one, a par 4 in two, a par 5 in three. Worked out from your strokes and your putts, never asked for: your score less your putts, two under par or better. Only holes played out with putts kept count; a hole picked up does not.</p>
+  const figs = [
+    lead(fmtPct(g.pct), "greens in regulation", `${g.hit} of ${g.holes}`),
+    ...(perRound ? [`<div><b class="num">${esc(fix((g.hit / g.holes) * 18, 1))}<span class="to">/</span>18</b><small>greens a round</small></div>`] : []),
+  ];
+  if (x.birdies && x.birdies.holes >= 6) figs.push(lead(fmtPct(x.birdies.pct), "GIR turned into birdies", `${x.birdies.made} of ${x.birdies.holes}`));
+  if (x.fromGir) figs.push(lead(fix(x.fromGir.edge, 2), "strokes a green saves", `${fmtSigned(x.fromGir.hit.topar, 2)} on, ${fmtSigned(x.fromGir.miss.topar, 2)} off`));
+  return { tip: `<p><b>Greens in regulation</b>: on the green with two strokes still left for par, so a par 3 in one, a par 4 in two, a par 5 in three. Worked out from your strokes and your putts, never asked for: your score less your putts, two under par or better. Only holes played out with putts kept count; a hole picked up does not.</p>
       <p>As a rough guide, a tour player hits about two greens in three, a scratch golfer a little over half, a 10 handicap about one in three and a 20 handicap about one in six.</p>
-      <p><b>Greens a round</b> is your rate scaled to 18 holes.</p>
+      ${perRound ? `<p><b>Greens a round</b> is your rate scaled to 18 holes: how many of the 18 greens you would hit in a typical round.</p>` : ""}
       <p><b>By the kind of hole</b> splits the same greens between par 3s, 4s and 5s, for each kind you have played at least three of. The bar is the share of those holes where you were on in regulation.</p>
-      <p><b>Greens turned into birdies</b> is how often a green in regulation became a birdie or better, which is mostly down to the putter.</p>
-      <p><b>Strokes a green saves</b> is how much better against par you play a hole where you hit the green than one where you missed it. Under it, <b>on</b> is your average against par on greens hit and <b>off</b> on greens missed; the big number is the gap between them.</p>`, "approach")}
-    <div class="card">
-      ${leads([lead(fmtPct(g.pct), "greens in regulation", `${g.hit} of ${g.holes}`), lead(fix((g.hit / g.holes) * 18, 1), "greens a round")])}
-      ${pars.length > 1 ? `<div class="subhead">By the kind of hole</div>${pars.map(k => meter(`Par ${k}s`, x.girByPar[k].hit, x.girByPar[k].holes, "up")).join("")}` : ""}
-      ${extra.length ? `<div class="sgap"></div>${leads(extra)}` : ""}
-    </div>`;
+      <p><b>GIR turned into birdies</b> is how often a green in regulation became a birdie or better, which is mostly down to the putter.</p>
+      <p><b>Strokes a green saves</b> is how many strokes fewer you take on a hole when you hit the green in regulation than when you miss it. The line under it shows both sides: <b>on</b> is how far you finish over par on average when you hit the green, <b>off</b> when you miss it. The big number is the difference between the two.</p>`,
+    html: `<div class="sleads grid">${figs.join("")}</div>
+      ${pars.length > 1 ? `<div class="subhead">By the kind of hole</div>${pars.map(k => meter(`Par ${k}s`, x.girByPar[k].hit, x.girByPar[k].holes, "up")).join("")}` : ""}` };
 }
 
 // ---------------------------------------------------------------- around it
-function shortSection(x) {
+function shortSection(x, sandHere) {
   const rows = [];
   if (x.upDown && x.upDown.holes >= 4) rows.push(meter("Up and down", x.upDown.made, x.upDown.holes, "up"));
-  if (x.sand && x.sand.holes >= 3) rows.push(meter("Sand saves", x.sand.saved, x.sand.holes, "up"));
+  if (sandHere) rows.push(meter("Sand saves", x.sand.saved, x.sand.holes, "up"));
   const pen = x.penalty && x.penalty.holes >= 9 ? x.penalty : null;
-  if (!rows.length && !pen) return "";
-  return `${h2tip("Around the green", `<p><b>Up and down</b>: the green missed in regulation and par or better made anyway. <b>Sand saves</b> ask the same of a greenside bunker. Neither is asked for; both come from your score.</p>
-      <p><b>Penalty shots</b> are counted a round of 18, over the holes where you kept them.</p>`, "bunker")}
-    <div class="card">${rows.join("")}
-      ${pen ? `${rows.length ? `<div class="sgap"></div>` : ""}${leads([lead(fix((pen.total / pen.holes) * 18, 1), "penalty shots a round", `${pen.total} over ${plural(pen.holes, "hole")}`)])}` : ""}</div>`;
+  if (!rows.length && !pen) return null;
+  return { tip: `<p><b>Up and down</b>: the green missed in regulation and par or better made anyway.${sandHere ? ` <b>Sand saves</b> ask the same of a greenside bunker.` : ""} Never asked for; it comes from your score.</p>
+      <p><b>Penalty shots</b> are counted a round of 18, over the holes where you kept them.</p>`,
+    html: `${rows.join("")}
+      ${pen ? `${rows.length ? `<div class="sgap"></div>` : ""}${leads([lead(fix((pen.total / pen.holes) * 18, 1), "penalty shots a round", `${pen.total} over ${plural(pen.holes, "hole")}`)])}` : ""}` };
+}
+
+// ---------------------------------------------------------------- into the green and around it, one card
+/** The approach and what happens when it misses: two readings of the same greens, so they share a card. */
+function greenSection(x, perRound, sandHere) {
+  const a = approachSection(x, perRound), s = shortSection(x, sandHere);
+  if (!a && !s) return "";
+  const tip = [a && `<p><b>Into the green</b></p>${a.tip}`, s && `<p><b>Around the green</b></p>${s.tip}`].filter(Boolean).join("");
+  return `${h2tip("Approach and short game", tip, "approach")}
+    ${switched("green", [a && { k: "into", label: "Into the green", html: a.html }, s && { k: "around", label: "Around the green", html: s.html }], body => `<div class="card">${body}</div>`)}`;
+}
+
+// ---------------------------------------------------------------- in the sand
+const TAKES = [["one", "Out in one"], ["two", "In two"], ["three", "Three or more"]];
+// a kidney-shaped bunker below and left of the green, bitten in on the side that faces it
+const PIT = { cx: 122, cy: 98, a: 104, b: 44, bite: -Math.PI / 4 };
+const pitEdge = t => {
+  const d = Math.atan2(Math.sin(t - PIT.bite), Math.cos(t - PIT.bite));
+  return 1 - 0.3 * Math.exp(-(d * d) / 0.22) + 0.04 * Math.cos(3 * t + 0.6);
+};
+const pitOutline = () => Array.from({ length: 96 }, (_, i) => {
+  const t = (i / 96) * 2 * Math.PI, k = pitEdge(t);
+  return `${i ? "L" : "M"}${(PIT.cx + PIT.a * k * Math.cos(t)).toFixed(1)},${(PIT.cy + PIT.b * k * Math.sin(t)).toFixed(1)}`;
+}).join("") + "Z";
+
+/** The largest even spacing of balls that still puts `m` of them inside the bunker, left to right, centred in it. */
+function packPit(m) {
+  for (let s = 26; s >= 4; s -= 0.25) {
+    const rad = s * 0.38, pts = [];
+    for (let j = 0, y = PIT.cy - PIT.b; y <= PIT.cy + PIT.b; j++, y = PIT.cy - PIT.b + j * s * 0.866)
+      for (let x = PIT.cx - PIT.a + (j % 2) * s / 2; x <= PIT.cx + PIT.a; x += s) {
+        const u = (x - PIT.cx) / PIT.a, v = (y - PIT.cy) / PIT.b;
+        if (Math.hypot(u, v) < pitEdge(Math.atan2(v, u)) - (rad + 3) / PIT.b) pts.push([x, y]);
+      }
+    if (pts.length < m) continue;
+    const skip = Math.floor((pts.length - m) / 2);
+    return { rad, pts: pts.sort((p, q) => Math.round(p[0] / (s / 2)) - Math.round(q[0] / (s / 2)) || p[1] - q[1]).slice(skip, skip + m) };
+  }
+  return null;
+}
+
+/** One ball for every bunker visited, coloured by how many shots it took to get out, in a bunker beside the green. */
+function sandPit(takes) {
+  const n = takes.reduce((a, v) => a + v, 0);
+  if (!n) return "";
+  // past this a ball stands for several bunkers, or the balls shrink to specks
+  const per = Math.ceil(n / 120);
+  const counts = takes.map(v => v ? Math.max(1, Math.round(v / per)) : 0);
+  const pack = packPit(counts.reduce((a, v) => a + v, 0));
+  if (!pack) return "";
+  let at = 0;
+  const balls = counts.map((c, i) => pack.pts.slice(at, at += c)
+    .map(([x, y]) => `<circle class="pball ${TAKES[i][0]}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${pack.rad.toFixed(1)}"></circle>`).join("")).join("");
+  const said = TAKES.map(([, w], i) => `${w.toLowerCase()}: ${takes[i]}`).join(", ");
+  return `<svg class="sandpit" viewBox="0 0 300 150" role="img" aria-label="${esc(`Bunkers by shots to get out. ${said}`)}">
+      <ellipse class="pgreen" cx="236" cy="46" rx="54" ry="30"></ellipse><ellipse class="pcup" cx="250" cy="44" rx="3" ry="1.6"></ellipse>
+      <path class="ppin" d="M250 43.5V11"></path><path class="pflag" d="M250 11l15 5-15 5z"></path>
+      <path class="psand" d="${pitOutline()}"></path><g class="pballs">${balls}</g></svg>
+    <ul class="pitkey">${TAKES.map(([k, w], i) => `<li class="${takes[i] ? "" : "off"}"><span><i class="${k}"></i>${esc(w)}</span>
+      <b class="num">${takes[i]}</b><small>${pctOf(takes[i], n)}%</small></li>`).join("")}</ul>
+    ${per > 1 ? `<p class="muted small center" style="margin:6px 0 0">Each ball is ${per} bunkers.</p>` : ""}`;
+}
+
+function sandSection(x) {
+  const b = x.bunkers;
+  if (!b || b.holes < 9) return "";
+  const heads = [lead(fix(b.per18, 1), "bunkers per 18 holes", `${b.visits} in ${plural(b.holes, "hole")}`)];
+  if (b.visits >= 3) heads.unshift(lead(fix(b.out, 1), "shots to get out", `${b.shots} from ${plural(b.visits, "bunker")}`));
+  const saves = x.sand && x.sand.holes >= 3 ? meter("Sand saves", x.sand.saved, x.sand.holes, "up") : "";
+  return `${h2tip("Bunkers", `<p>Every greenside bunker, on the holes where bunker shots were kept.</p>
+      <p><b>Shots to get out</b> is how many shots a bunker took on average: 1.0 is every one out first time.</p>
+      <p><b>Bunkers per 18 holes</b> is how often a hole put you in one, scaled to 18. A hole kept with no bunker counts too.</p>
+      <p>Each ball is one bunker, coloured by how many shots it took to get out.</p>
+      <p><b>Sand saves</b>: par or better from a greenside bunker. Never asked for; it comes from your score.</p>`, "bunker")}
+    <div class="card">${leads(heads)}${sandPit(b.takes)}${saves ? `<div class="sgap"></div>${saves}` : ""}</div>`;
 }
 
 // ---------------------------------------------------------------- on it
@@ -161,14 +236,15 @@ function puttSection(x) {
 }
 
 /** The whole tab. `cards` are league cards for strokes gained; `x` the player's summed extras. */
-export function shotsBody(x, cards, pid, who) {
+// Society stats leave out greens a round: owners found it unclear there. Bunkers are drawn on society stats only.
+export function shotsBody(x, cards, pid, who, { perRound = true, bunkers = false } = {}) {
   const sg = cards.length ? strokesGained(cards, pid) : null;
   const any = x && x.any;
   return [
     sgSection(sg, who),
     any ? teeSection(x) : "",
-    any ? approachSection(x) : "",
-    any ? shortSection(x) : "",
+    any ? greenSection(x, perRound, !bunkers && x.sand && x.sand.holes >= 3) : "",
+    any && bunkers ? sandSection(x) : "",
     any ? puttSection(x) : "",
   ].join("");
 }
