@@ -35,7 +35,7 @@ export function welcome() {
 // The signed Android package, stamped by app/build.py from app/android/hagolf.apk: the door hands over this
 // file rather than asking Chrome to install the web app. Empty means none was built, and Android is shown its
 // browser's own install instead, so a missing package degrades rather than offering a dead link.
-const ANDROID_APK = "";
+const ANDROID_APK = "./hagolf.apk";
 
 /**
  * The door. app.hagolf.app hands out Hagolf; it is not where Hagolf is used. Every browser that is not already
