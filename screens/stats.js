@@ -281,9 +281,12 @@ const MATCH_TIP = "Match play rounds count here and nowhere else on this page: a
 function matchTable(St) {
   if (!St.matches || !St.matches.length) return "";
   const rows = [...St.matches].sort((a, b) => (b.won - b.lost) - (a.won - a.lost) || (b.holesWon - b.holesLost) - (a.holesWon - a.holesLost) || a.name.localeCompare(b.name));
+  // each of the three hole counts gets a slot as wide as its longest count in the table, so they line up row to row
+  const w = k => Math.max(...rows.map(m => String(m[k]).length));
+  const slots = `--w:${w("holesWon")}ch;--h:${w("holesHalved")}ch;--l:${w("holesLost")}ch`;
   return `${h2tip("Match play", MATCH_TIP)}
     <table class="stand"><thead><tr><th class="l">Player</th><th>Pl</th><th>W</th><th>H</th><th>L</th><th>Holes</th></tr></thead>
-      <tbody>${rows.map(m => `<tr><td class="l">${esc(m.name)}</td><td>${m.played}</td><td>${m.won}</td><td>${m.halved}</td><td>${m.lost}</td><td class="acc nw">${m.holesWon}–${m.holesHalved}–${m.holesLost}</td></tr>`).join("")}</tbody></table>`;
+      <tbody>${rows.map(m => `<tr><td class="l">${esc(m.name)}</td><td>${m.played}</td><td>${m.won}</td><td>${m.halved}</td><td>${m.lost}</td><td class="acc nw mpholes" style="${slots}"><span>${m.holesWon}</span>–<span>${m.holesHalved}</span>–<span>${m.holesLost}</span></td></tr>`).join("")}</tbody></table>`;
 }
 
 /** `who` is null for the whole society, or the chosen players' names, already escaped. */

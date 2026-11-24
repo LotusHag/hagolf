@@ -1003,6 +1003,11 @@ a.kv:active { background: var(--card2); }
 .xtab .xnarrow { display: none; }
 @media (max-width: 560px) { .xtab .xwide { display: none; } .xtab .xnarrow { display: inline; } }
 .stand.nowrap th, .stand.nowrap td { white-space: nowrap; }
+/* won–halved–lost holes: each count in a slot as wide as its widest in the table, so they line up between players;
+   won sits against its dash, lost against its own, halved in the middle */
+.mpholes span { display: inline-block; text-align: center; min-width: var(--h); }
+.mpholes span:first-child { text-align: right; min-width: var(--w); }
+.mpholes span:last-child { text-align: left; min-width: var(--l); }
 /* A table with more columns than a phone is wide scrolls sideways rather than breaking every name over
    three lines; it bleeds into the page gutter so the edge of it is visibly there to be pushed. */
 .tscroll { overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
