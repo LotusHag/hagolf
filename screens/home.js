@@ -19,8 +19,8 @@ export const offeredFormat = k => k !== "stroke" && FORMATS_ROUND.some(f => f.ke
 /** This phone hides Stableford points while scoring; a match settled on points always shows them. */
 export const pointsHidden = r => !!S.state.settings.hidePoints && !isMatchFormat(r.format);
 
-/** The board while a round is in play: points, or net to par, over the holes each card has played. */
-export function liveBoard(r, course = null, { net = false } = {}) {
+/** The board while a round is in play: points, strokes or net to par, over the holes each card has played. `net` forces net; `strokes` is points hidden. */
+export function liveBoard(r, course = null, { net = false, strokes = false } = {}) {
   const c = course || courseBy(r.course);
   if (!c) return null;
   const rows = [];
@@ -33,11 +33,13 @@ export function liveBoard(r, course = null, { net = false } = {}) {
     through = Math.max(through, holes);
     rows.push({ id: e.playerId, name: e.name, group: e.group || 1, pts, holes, gross, toPar: gross - par, netToPar: gross - par - strokes });
   }
-  const byNet = net || r.format === "stroke" || r.format === "scramble";
-  rows.sort((a, b) => (byNet ? a.netToPar - b.netToPar : b.pts - a.pts) || b.holes - a.holes);
+  // a stroke card (a society's stroke day) goes on strokes taken; a scramble's team ball goes on net
+  const by = net ? "net" : r.format === "stroke" ? "gross" : strokes || r.format === "scramble" ? "net" : "pts";
+  const key = { pts: x => -x.pts, net: x => x.netToPar, gross: x => x.toPar }[by];
+  rows.sort((a, b) => key(a) - key(b) || b.holes - a.holes);
   const fmtTo = v => v === 0 ? "E" : v > 0 ? `+${v}` : `${v}`;
-  rows.forEach((x, i) => { x.place = x.holes ? i + 1 : null; x.main = byNet ? `${fmtTo(x.netToPar)} net` : `${x.pts} pts`; x.sub = x.holes ? `thru ${x.holes}` : "not started"; });
-  return { rows, through, byNet };
+  rows.forEach((x, i) => { x.place = x.holes ? i + 1 : null; x.main = by === "pts" ? `${x.pts} pts` : by === "net" ? `${fmtTo(x.netToPar)} net` : fmtTo(x.toPar); x.sub = x.holes ? `thru ${x.holes}` : "not started"; });
+  return { rows, through, by };
 }
 
 export function liveLine(r) {
@@ -50,7 +52,7 @@ export function liveLine(r) {
       return m && m.thru ? `<div class="live">${esc(m.result || m.status)}</div>` : "";
     } catch (e) { return ""; }
   }
-  const L = liveBoard(r, null, { net: pointsHidden(r) });
+  const L = liveBoard(r, null, { strokes: pointsHidden(r) });
   const v = x => x.main.replace(/ (pts|net)$/, "");
   return L && L.rows.length && L.through ? `<div class="live">through ${L.through} · ${L.rows.slice(0, 3).map((x, i) => `${i + 1}. ${esc(firstName(x.name))} <b>${v(x)}</b>`).join(" · ")}</div>` : "";
 }

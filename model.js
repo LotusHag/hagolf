@@ -457,7 +457,7 @@ export function compute(courseIn, round) {
 
 // ---------------------------------------------------------------- round formats
 // every way a card can be scored; a new card picks a group, then one of its kinds, then strokes or points on the setup screen.
-// Stroke play and Stableford are one card, the standard one; a society's stroke day keeps "stroke" so its board ranks on net.
+// Stroke play and Stableford are one card, the standard one; a society's stroke day keeps "stroke" so its board ranks on strokes taken.
 export const FORMATS_ROUND = [
   { key: "stableford", label: "Standard card", blurb: "Stroke / Stableford" },
   { key: "stroke", label: "Standard card", blurb: "Stroke / Stableford" },
@@ -1221,7 +1221,7 @@ export function standings(results, memberIds, bestN = 0) {
 }
 
 /**
- * Stroke play league: net score against par per round (so 9- and 18-hole rounds compare), lowest total wins.
+ * Stroke play league: strokes taken against par per round, no handicap (so 9- and 18-hole rounds compare), lowest total wins.
  * A round without a return (pick-up or late start) does not count for that player.
  */
 export function strokeStandings(results, memberIds, bestN = 0) {
@@ -1231,15 +1231,15 @@ export function strokeStandings(results, memberIds, bestN = 0) {
   for (const M of cards) {
     const mine = M.players.filter(p => p.id !== null && members.has(p.id));
     if (!mine.length) continue;
-    const returned = mine.filter(p => p.net !== null);
-    const best = returned.length ? Math.min(...returned.map(p => p.net - M.course_par)) : null;
+    const returned = mine.filter(p => p.topar !== null);
+    const best = returned.length ? Math.min(...returned.map(p => p.topar)) : null;
     for (const p of mine) {
       if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, rounds: [], wins: 0, nr: 0 });
       const r = rows.get(p.id);
       r.name = p.name;
-      if (p.net === null) { r.nr += 1; continue; }
-      const topar = p.net - M.course_par;
-      r.rounds.push({ round: p.roundId ?? M.id, name: M.name, date: M.date, net: p.net, topar });
+      if (p.topar === null) { r.nr += 1; continue; }
+      const topar = p.topar;
+      r.rounds.push({ round: p.roundId ?? M.id, name: M.name, date: M.date, gross: p.gross, topar });
       if (topar === best) r.wins += 1;
     }
   }
@@ -1362,17 +1362,19 @@ export const GP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
  */
 function gpBoard(M, members, basis) {
   const mine = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
-  if (basis !== "net") return { order: mine, nr: [] };
+  if (basis !== "net" && basis !== "gross") return { order: mine, nr: [] };
+  // to par, not gross, so a card off a tee with another par is not a stroke or two behind before it starts
+  const [total, holes] = basis === "net" ? ["net", "nets"] : ["topar", "scores"];
   const n = M.n, segments = M.segments || [], back = [...Array(n).keys()].reverse();
-  const key = p => [p.net, ...segments.map(k => sum(p.nets.slice(n - k))), ...back.map(h => p.nets[h])];
-  const returned = mine.filter(p => p.net !== null && !p.nr);
+  const key = p => [p[total], ...segments.map(k => sum(p[holes].slice(n - k))), ...back.map(h => p[holes][h])];
+  const returned = mine.filter(p => p[total] !== null && !p.nr);
   return { order: [...returned].sort((a, b) => cmpTuple(key(a), key(b))), nr: mine.filter(p => !returned.includes(p)) };
 }
 
 /**
  * Grand Prix scoring: each round hands out points by finishing position, as Formula 1 does, so one
  * good day counts for more than being steadily mid-table. `basis` is what settles the day: "points"
- * the Stableford board, "net" net score against par. A small turnout still gives the winner full points.
+ * the Stableford board, "gross" strokes taken, "net" net score. A small turnout still gives the winner full points.
  */
 export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS, basis = "points") {
   const members = new Set(memberIds);

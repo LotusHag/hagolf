@@ -4,9 +4,10 @@
 import * as S from "./store.js";
 import * as B from "./brand.js";
 import * as A from "./auth.js";
-import { ui, go, previewSheet, courseBy, toast, plural, firstName, themeForRound, themeFor, appTheme, makeTheme, sizedLooks, fmtDate } from "./ui.js";
-import { compute, leagueStats, isMatchFormat, onPoints, fix } from "./model.js";
-import { grossLeaderboard, stablefordLeaderboard, netLeaderboard, matchPoster, bothBoards, holesPoster, standingsPoster, dayPoster, STANDINGS_TITLES } from "./posters.js";
+import { ui, go, previewSheet, courseBy, courseTitle, toast, plural, firstName, themeForRound, themeFor, appTheme, makeTheme, sizedLooks, fmtDate } from "./ui.js";
+import { compute, leagueStats, isMatchFormat, onPoints, fix, fmtToPar } from "./model.js";
+import { grossLeaderboard, stablefordLeaderboard, netLeaderboard, matchPoster, bothBoards, holesPoster, standingsPoster, dayPoster, eventPoster, STANDINGS_TITLES } from "./posters.js";
+import * as Fl from "./flights.js";
 import { statsFieldPoster, statsPlayerPoster, statsMinePoster } from "./statsposters.js";
 import { renderCards } from "./cards.js";
 import { BRAND_STYLES, dayOutSheet, leagueSheet } from "./brandsheets.js";
@@ -111,6 +112,49 @@ export async function sendRound(rid, want = null, pid = null) {
 }
 
 const styleOf = (b, kind) => { const s = b && b.template && b.template.styles && b.template.styles[kind]; return BRAND_STYLES[kind].some(x => x.key === s) ? s : BRAND_STYLES[kind][0].key; };
+
+// ---------------------------------------------------------------- an event
+/** The event's format as a poster: every round, every flight, who goes where, and how each stands. */
+function eventFormat(e, P) {
+  const finals = new Set(Fl.finals(P).map(f => f.id));
+  const lines = f => Fl.isMatch(f)
+    ? Fl.matchesOf(e, f).slice(0, 4).map(m => [`${m.sides.A.map(firstName).join(" & ")} v ${m.sides.B.map(firstName).join(" & ")}`, m.result ? m.margin : m.thru ? m.status.replace(/ thru \d+$/, "") : ""])
+    : Fl.standing(e, f, P).filter(x => x.holes).slice(0, 3).map((x, i) => [`${i + 1}  ${x.name}`, f.format === "stroke" ? fmtToPar(x.net) : `${x.pts}`]);
+  return {
+    title: e.name, kicker: "The format",
+    sub: P.rounds.length ? `${fmtDate(P.rounds[0].date)}${P.rounds.length > 1 ? ` – ${fmtDate(P.rounds[P.rounds.length - 1].date)}` : ""}` : "",
+    rounds: P.rounds.map((rd, k) => ({ title: `Round ${k + 1}`, sub: `${fmtDate(rd.date)} · ${courseTitle(courseBy(rd.course) || { name: rd.course })}`,
+      flights: Fl.flightsIn(P, rd.id).map(f => {
+        const to = f.from.map(s => s.flight).filter(Boolean);
+        return { id: f.id, name: f.name, how: `${Fl.FLIGHT_FORMATS[f.format][0]}${Fl.carried(P, f).length ? ", scores carried" : ""}`, from: (s => s.charAt(0).toUpperCase() + s.slice(1))(Fl.sourceText(P, f)),
+          lines: lines(f), final: finals.has(f.id), to, carry: (f.carry || []).filter(id => !to.includes(id)) };
+      }) })),
+  };
+}
+
+/** A flight's board as a sheet: its places with what they carried in, or its matches. */
+function flightBoard(e, P, f) {
+  const rd = P.rounds.find(x => x.id === f.round), match = Fl.isMatch(f), net = f.format === "stroke", carries = Fl.carried(P, f).length > 0;
+  return { title: Fl.flightTitle(P, f), kicker: e.name, sub: `${fmtDate(rd.date)} · ${courseTitle(courseBy(rd.course) || { name: rd.course })}`,
+    right: Fl.FLIGHT_FORMATS[f.format][0], unit: net ? "Net" : "Points",
+    rows: match ? [] : Fl.standing(e, f, P).filter(x => x.holes).map((x, i) => ({ place: i + 1, name: x.name, value: net ? fmtToPar(x.net) : String(x.pts),
+      sub: carries ? `${plural(x.rounds, "round")} · ${x.holes} holes` : `${x.holes} holes` })),
+    matches: match ? Fl.matchesOf(e, f).map(m => `${m.sides.A.join(" & ")} v ${m.sides.B.join(" & ")}: ${m.result || m.status}`) : [] };
+}
+
+/** An event's images: the format first, then the board of every flight that ends it and has a score on it. */
+export async function sendEvent(id) {
+  const e = S.getEvent(id), P = e && Fl.planOf(e), first = e && Fl.cardOf(e, P.flights[0]);
+  if (!first) return toast("Nothing to draw yet");
+  const T = makeTheme(themeForRound(first.id));
+  const D = eventFormat(e, P);
+  const choices = [{ key: "format", label: "The format", sub: plural(P.flights.length, "flight"), render: () => sized(T, e.name, "The format", Tz => eventPoster(D, Tz)) }];
+  for (const f of Fl.finals(P)) {
+    const B = flightBoard(e, P, f);
+    if (B.rows.length || B.matches.length) choices.push({ key: f.id, label: B.title, sub: Fl.flightState(e, f, P), render: () => sized(T, e.name, B.title, Tz => dayPoster(B, Tz)) });
+  }
+  await previewSheet({ title: choices[0].label, lead: e.name, choices: choices.slice(0, 4), more: false });
+}
 
 // ---------------------------------------------------------------- a society
 function society(gid) {

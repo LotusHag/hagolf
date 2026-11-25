@@ -86,16 +86,16 @@ const dayWhere = c => (c.course && (c.course.unlisted ? c.course.loop || c.cours
 /** Invite, share and (for whoever runs it) the settings, as icons in the header. */
 const headActions = runs => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share and images") + (runs ? iconBtn("lgsettings", "settings", "Settings") : "");
 
-/** Board, Days, Numbers, Head to head, Members: the parts of a society, one tap each. */
-const segs = (gid, on) => `<div class="filter lsegs">${[["", "Board"], ["days", "Days"], ["stats", "Numbers"], ["vs", "Head to&nbsp;head"], ["members", "Members"]]
+/** Board, Numbers, Head to head, Days, Members: the parts of a society, one tap each. */
+const segs = (gid, on) => `<div class="filter lsegs">${[["", "Board"], ["stats", "Numbers"], ["vs", "Head to&nbsp;head"], ["days", "Days"], ["members", "Members"]]
   .map(([v, l]) => `<a href="#league/${gid}${v ? `/${v}` : ""}" class="${on === v ? "on" : ""}">${l}</a>`).join("")}</div>`;
 
 function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = runsIt(g), seg = null, wide = false, gear = true } = {}) {
-  const season = seg !== null && seg !== "members" && g.seasonStart ? `<p class="center"><button class="btn small" data-act="season">Season ${esc(seasonName(g, shownSeason(g)))} ›</button></p>` : "";
+  const season = seg !== null && seg !== "members" && g.seasonStart ? `<button class="seasonbar" data-act="season"><span class="caps">Season</span><b class="num">${esc(seasonName(g, shownSeason(g)))}</b><span class="chev">›</span></button>` : "";
   page(title, `${seg !== null ? segs(g.id, seg) : ""}${season}${body}`, { back, actions: headActions(runs && gear), bell: false, keepScroll, wide });
 }
 
-/** Today: the society's day card, or the way to start it. One card a day, every group on it. */
+/** Today: the society's day card while one is going; starting one lives under Days. */
 function todayCard(C) {
   const today = S.today();
   const day = S.rounds().find(r => r.leagueId === C.gid && r.date === today && r.status !== "done");
@@ -105,7 +105,7 @@ function todayCard(C) {
     return `<div class="card todaycard"><div><div class="k caps">Today</div><div class="name">${esc(roundWhere(day))}</div><div class="muted small">${plural(n, "player")} · ${plural(new Set(day.entries.map(e => e.group || 1)).size, "group")}</div></div>
       ${seated ? `<a class="btn primary" href="${resumeHash(day)}">Open</a>` : `<button class="btn primary" data-act="dayjoin" data-rid="${esc(day.id)}">I'm playing</button>`}</div>`;
   }
-  return `<button class="card todaycard start" data-act="play-today"><div><div class="k caps">Playing today?</div><div class="name">Start the society's card</div><div class="muted small">Every group on one card, live for everyone</div></div><span class="chev">›</span></button>`;
+  return "";
 }
 
 // ---------------------------------------------------------------- the board
@@ -326,20 +326,6 @@ function boardNotes(C, Sx) {
   return out.length ? `<p class="muted small bnotes">${out.join(" ")}</p>` : "";
 }
 
-/** A day of yours this league has not got, offered where it is noticed rather than buried under a tab. */
-function attachPrompt(C) {
-  const attached = new Set(S.leagueRoundIds(C.gid));
-  const loose = S.rounds().filter(r => r.status === "done" && !attached.has(r.id) && S.iPlayed(r));
-  if (!loose.length) return "";
-  const byDate = loose.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-  const d = byDate[0].date;
-  const recent = d && (Date.now() - new Date(`${d}T12:00:00`).getTime()) < 15 * 864e5;
-  if (!recent) return "";   // an old round is found under Running the league, not offered for ever on the board
-  const sameDay = d ? byDate.filter(r => r.date === d) : [byDate[0]];
-  return `<button class="banner accent" data-act="attach-day" data-date="${esc(d || "")}" data-rid="${esc(byDate[0].id)}">
-    You played ${esc(d ? fmtDate(d) : roundWhere(byDate[0]))} — add ${sameDay.length > 1 ? `${plural(sameDay.length, "sheet")}` : "it"} to this society?</button>`;
-}
-
 function boardView(C, keepScroll) {
   const { g, gid } = C;
   ui.statsWho[gid] = "";   // the stats poster reads this; the board is the field
@@ -355,7 +341,7 @@ function boardView(C, keepScroll) {
   // the table, the last day and you; everything else about the league is one tap away under the menu
   const body = `
     ${todayCard(C)}
-    ${claimBanner(C)}${attachPrompt(C)}
+    ${claimBanner(C)}
     ${leagueHero(C, Sx, move, nCards)}
     <section class="panel lpanel"><div class="ph">${ICONS.trophy}${pick}${climbBtn(C.kind, C.Ms)}${infoBtn(FORMAT_NAMES[C.kind], FORMAT_NOTES[C.kind])}</div>
     ${nCards > 1 ? stateOfPlay(C, Sx) : ""}
@@ -470,13 +456,6 @@ function wireBoard(C, Sx) {
     if (act === "board-cols") return columnsSheet(C, Sx);
     if (act === "new-in-league") return playToday(C);
     if (act === "new-event") return newEvent(C.gid);
-    if (act === "attach-day") {
-      const d = b.dataset.date;
-      const ids = d ? S.rounds().filter(r => r.status === "done" && r.date === d && S.iPlayed(r) && !S.leagueRoundIds(C.gid).includes(r.id)).map(r => r.id) : [b.dataset.rid];
-      for (const id of ids) S.setLeagueRound(C.gid, id, true);
-      toast(`Added ${plural(ids.length, "round")}`);
-      return league(C.gid);
-    }
     if (act === "claim-me") { try { const r = await F.candidatesOf(C.gid); await claimSheet(C.gid, r.candidates); league(C.gid); } catch (e) { toast(e.message, 5000); } }
   });
 }
@@ -1061,7 +1040,6 @@ async function common(C, ev) {
   const act = b.dataset.act;
   if (act === "invite") { await inviteSheet(C.g); return true; }
   if (act === "lgsettings") { go(`#league/${C.gid}/admin`); return true; }
-  if (act === "play-today") { playToday(C); return true; }
   if (act === "dayjoin") { const { joinDay } = await import("./together.js"); joinDay(b.dataset.rid); return true; }
   if (act === "share-board") { await boardShare(C.g, C.kind); return true; }
   if (act === "send-table") { await sendTable(C.gid, b.dataset.kind || C.kind); return true; }

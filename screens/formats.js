@@ -7,7 +7,7 @@ export const FORMAT_NAMES = { stableford: "Stableford", stroke: "Stroke play", m
   matchpts: "Matchplay (Stableford)", soccer: "Football table (stroke)", soccerpts: "Football table (Stableford)",
   gp: "Grand Prix (Stableford)", gpstroke: "Grand Prix (stroke)",
   elo: "Elo rating", elopts: "Elo (Stableford)", elostroke: "Elo (stroke)", elomatch: "Elo (matchplay)" };
-export const GP_BASIS = { gp: "points", gpstroke: "net" };
+export const GP_BASIS = { gp: "points", gpstroke: "gross" };
 // every match table not on Stableford goes hole by hole on strokes taken, never on handicap
 export const MATCH_BASIS = { match: "gross", matchpts: "points", soccer: "gross", soccerpts: "points" };
 export const ELO_BASIS = { elo: "all", elopts: "points", elostroke: "gross", elomatch: "match" };
@@ -25,13 +25,13 @@ export const FORMAT_MODE = { stableford: "Stroke play", stroke: "Stroke play", g
   elo: "Rating", elopts: "Rating", elostroke: "Rating", elomatch: "Rating" };
 export const FORMAT_BLURB = {
   stableford: "Everyone's Stableford points added up; most points wins",
-  stroke: "Everyone's net score against par added up; lowest wins",
+  stroke: "Everyone's strokes against par added up, no handicap; lowest wins",
   match: "Everyone out the same day plays a match, each hole to the fewest strokes taken, no handicap: 2 for a win, 1 for a draw",
   matchpts: "Everyone out the same day plays a match, each hole to the higher Stableford points: 2 for a win, 1 for a draw",
   soccer: "The same matches on strokes taken, in a football table: 3 for a win, 1 for a draw",
   soccerpts: "The same matches on Stableford points, in a football table: 3 for a win, 1 for a draw",
   gp: "Points for where you finish on each card on Stableford points, as in Formula 1: 25 for the win, then 18, 15, 12…",
-  gpstroke: "The same points, with the day finished on net score against par instead; no card, no points",
+  gpstroke: "The same points, with the day finished on strokes against par instead, no handicap; no card, no points",
   elo: "A rating that rises when you beat the players you were out with, more for beating better ones and by more; half with handicap, half without",
   elopts: "The same rating, with each pair settled on Stableford points",
   elostroke: "The same rating, with each pair settled on strokes taken, no handicap",
@@ -69,13 +69,13 @@ ${readsMatches(kind) ? `<p>${MATCH_ROUND}</p>` : "<p>A match play round does not
 
 export const FORMAT_NOTES = {
   stableford: "<b>Stroke play.</b> Everyone plays for their own score and nobody plays against anybody: each round gives you your Stableford points and this table adds them up. <b>Rds</b> is rounds played, <b>Wins</b> how often you had the most points on the day, <b>Avg</b> your points per round.",
-  stroke: "<b>Stroke play.</b> Each round counts your net score against par, so −2 means two under. The lowest total wins. A round you did not finish a full card for counts nothing and is marked NR.",
+  stroke: "<b>Stroke play.</b> Each round counts the strokes you took against par, with no handicap, so −2 means two under. The lowest total wins. A round you did not finish a full card for counts nothing and is marked NR.",
   match: "<b>Match play.</b> A match play round counts as the match that was played, with no handicap, side against side. On any other card, everyone out on it played a match against everyone else on it. Each hole goes to the fewest strokes taken, with no handicap, and whoever wins more holes wins the match. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost across every match.",
   matchpts: "<b>Match play.</b> A match play round counts as the match that was played, with no handicap, side against side. On any other card, everyone out on it played a match against everyone else on it, and each hole goes to the higher Stableford points. Points stop at zero, so two ruined holes are halved where net scores would still separate them. 2 points for a win, 1 each for a draw. <b>Up</b> is holes won minus holes lost.",
   soccer: "<b>Match play, football table.</b> The same matches, each hole to the fewest strokes taken with no handicap, scored the way a football league is: 3 points for a win, 1 for a draw, nothing for a loss.",
   soccerpts: "<b>Match play, football table.</b> The same matches, each hole on the higher Stableford points, scored 3 for a win, 1 for a draw, nothing for a loss.",
   gp: `<b>Stroke play.</b> Each card hands out points for where you finished on the day on Stableford points, as Formula 1 does: ${GP_POINTS.join(", ")} down the board and nothing after that. Equal points are separated by countback. Only this society's players count towards a position, so a guest cannot take the win off you.`,
-  gpstroke: `<b>Stroke play.</b> The same ${GP_POINTS.join(", ")} down the board, with the day finished on net score against par rather than on points, so the best card takes the win instead of the best points haul and a 9 and an 18 are ranked the same way. Equal net scores are separated by countback on net strokes. A card you did not finish has no position and scores nothing, marked NR.`,
+  gpstroke: `<b>Stroke play.</b> The same ${GP_POINTS.join(", ")} down the board, with the day finished on strokes against par with no handicap rather than on points, so the best card takes the win instead of the best points haul and a 9 and an 18 are ranked the same way. Equal scores are separated by countback on strokes. A card you did not finish has no position and scores nothing, marked NR.`,
   elo: eloHow("elo"),
   elopts: eloHow("elopts"),
   elostroke: eloHow("elostroke"),
@@ -192,8 +192,8 @@ export function boardLine(kind, r, g) {
   }
   if (kind === "stroke") {
     const nr = r.nr ? ` · ${plural(r.nr, "no return")}` : "";
-    if (!r.played) return { value: "–", unit: g.bestN ? `best ${g.bestN}` : "net", sub: r.nr ? `no card returned${nr}` : "no cards yet" };
-    return { value: fmtToPar(r.counted), unit: g.bestN ? `best ${g.bestN}` : "net",
+    if (!r.played) return { value: "–", unit: g.bestN ? `best ${g.bestN}` : "to par", sub: r.nr ? `no card returned${nr}` : "no cards yet" };
+    return { value: fmtToPar(r.counted), unit: g.bestN ? `best ${g.bestN}` : "to par",
       sub: `${cards(r.played)} · ${fmtToPar(r.avg)} avg${r.wins ? ` · ${plural(r.wins, "win")}` : ""}${nr}` };
   }
   if (kind in GP_BASIS) {
@@ -230,13 +230,13 @@ export function eloDay(h) {
   return { change: h.change, parts: parts.length > 1 || floored ? parts : [], floored };
 }
 
-/** What a round is settled on in each way of scoring: Stableford points, net strokes against par, or strokes taken. */
-export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind === "elomatch" || kind === "elostroke" ? "gross" : kind === "stroke" ? "net" : "points");
+/** What a round is settled on in each way of scoring: Stableford points, net strokes, or strokes taken. */
+export const dayBasis = kind => GP_BASIS[kind] || MATCH_BASIS[kind] || (kind === "elomatch" || kind === "elostroke" || kind === "stroke" ? "gross" : "points");
 
 /**
  * One day's board in the league's own currency. A football-table or stroke-play league whose day is read off
  * the Stableford board crowns the wrong player in the largest type on the screen, so the sort follows the
- * league. `gross_board` is no use here: it ranks gross strokes, and a stroke league is settled on net.
+ * league.
  */
 /** A match on a society's day, in words: "Ties beat Maurits 2 UP", or how it stands. */
 export function matchSentence(m) {
@@ -274,7 +274,7 @@ export function standingsTable(kind, Sx, g, me, cls = "") {
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best}</td><td>${fix(r.avg)}</td><td class="acc">${r.counted}</td></tr>`).join("")}</tbody></table>`;
   if (kind in ELO_BASIS) return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Days</th><th>W</th><th>D</th><th>L</th><th>Peak</th><th>Last</th><th>Pts</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${Math.round(r.peak)}</td><td>${r.last === null ? "–" : eloDelta(r.last)}</td><td class="acc">${Math.round(r.score)}</td></tr>`).join("")}</tbody></table>`;
-  if (kind === "stroke") return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "Net ±"}</th></tr></thead>
+  if (kind === "stroke") return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>Rds</th><th>Wins</th><th>Best</th><th>Avg</th><th>${g.bestN ? `Best ${g.bestN}` : "To par"}</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}${r.nr ? ` <span class="muted small">(${r.nr} NR)</span>` : ""}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.best === null ? "–" : fmtToPar(r.best)}</td><td>${r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"}</td><td class="acc">${r.played ? fmtToPar(r.counted) : "–"}</td></tr>`).join("")}</tbody></table>`;
   return `<table class="stand ${cls}"><thead><tr><th class="pos">#</th><th class="l">Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>Up</th><th>Pts</th></tr></thead>
     <tbody>${rows.map(r => `<tr class="${mark(r)}"><td class="pos">${r.place}</td><td class="l">${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${r.up > 0 ? "+" : ""}${r.up}</td><td class="acc">${r.points}</td></tr>`).join("")}</tbody></table>`;

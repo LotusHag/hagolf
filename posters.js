@@ -384,6 +384,60 @@ export function dayPoster(D, T) {
 }
 const ordinalOf = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
 
+/**
+ * An event's format: round under round, each flight a box with how it is played, who is in it and how it stands,
+ * and a line from each flight to the ones it sends players on to (dashed where only the scores go on). `D` is
+ * { title, kicker, sub, rounds: [{ title, sub, flights: [{ id, name, how, from, lines: [[left, right]], final, to: [ids], carry: [ids] }] }] }.
+ */
+export function eventPoster(D, T) {
+  const ph = isPhone(T), PER = ph ? 2 : 4, GAP = 0.22, LINK = 0.55, PAD = 0.16, LINE_H = 0.27;
+  const LINES_AT = 1.16, boxH = fs => LINES_AT + Math.max(0, ...fs.map(f => f.lines.length)) * LINE_H + (fs.some(f => f.lines.length) ? PAD : 0);
+  const rowsOf = fs => Array.from({ length: Math.ceil(fs.length / PER) }, (_, i) => fs.slice(i * PER, (i + 1) * PER));
+  const roundH = rd => headingIn + 0.12 + rowsOf(rd.flights).length * (boxH(rd.flights) + GAP) - GAP;
+  const h = () => D.rounds.reduce((a, rd) => a + roundH(rd), 0) + (D.rounds.length - 1) * LINK;
+  // laid out first, so the lines go down before the boxes and every box sits on top of the lines into it
+  const draw = (fig, x, top, w) => {
+    const at = new Map(), boxes = [];
+    let y = top;
+    for (const rd of D.rounds) {
+      heading(fig, x, y, w, rd.title, rd.sub);
+      const head = { top: y - 0.04, bottom: y + headingIn + 0.04 };
+      y += headingIn + 0.12;
+      const bh = boxH(rd.flights), n = Math.min(PER, rd.flights.length), bw = (w - GAP * (n - 1)) / n;
+      for (const row of rowsOf(rd.flights)) {
+        const x0 = x + (w - (bw * row.length + GAP * (row.length - 1))) / 2;
+        row.forEach((f, i) => { const bx = x0 + i * (bw + GAP); boxes.push({ f, bx, y, bw, bh }); at.set(f.id, { cx: bx + bw / 2, top: y, bottom: y + bh, head }); });
+        y += bh + GAP;
+      }
+      y += LINK - GAP;
+    }
+    // a line bends above the round it goes to, passes behind that round's heading and drops straight into the box
+    const curve = (a, b) => Array.from({ length: 25 }, (_, i) => {
+      const t = i / 24, u = 1 - t, end = b.head.top, m = (end - a.bottom) / 2;
+      return [(u * u * u + 3 * u * u * t) * a.cx + (3 * u * t * t + t * t * t) * b.cx,
+        u * u * u * a.bottom + 3 * u * u * t * (a.bottom + m) + 3 * u * t * t * (end - m) + t * t * t * end];
+    });
+    const link = (a, b, lw, dash) => { fig.stroke(curve(a, b), T.INK_3, lw, { dash }); fig.stroke([[b.cx, b.head.bottom], [b.cx, b.top]], T.INK_3, lw, { dash }); };
+    for (const { f } of boxes) {
+      for (const id of f.to) if (at.has(id)) link(at.get(id), at.get(f.id), 1.3, null);
+      for (const id of f.carry) if (at.has(id)) link(at.get(id), at.get(f.id), 1.1, [3, 3]);
+    }
+    for (const { f, bx, y: by, bw, bh } of boxes) {
+      const inner = bw - 2 * PAD;
+      fig.rbox(bx, by, bw, bh, T.PANEL, 0.08, { ec: f.final ? T.ACCENT : T.LINE, lw: f.final ? 1.6 : 0.8 });
+      fig.fitText(bx + PAD, by + PAD + 0.2, f.name, inner, 15, 9, { family: "display", color: T.INK });
+      fig.fitText(bx + PAD, by + PAD + 0.47, f.how, inner, 10, 7, { color: T.INK_2 });
+      fig.fitText(bx + PAD, by + PAD + 0.72, f.from, inner, 9, 6.5, { color: T.INK_3 });
+      f.lines.forEach(([l, r], k) => {
+        const ly = by + LINES_AT + k * LINE_H, rw = r ? fig.measure(r, 11, "display") + 0.1 : 0;
+        fig.fitText(bx + PAD, ly, l, inner - rw, 11, 7, { color: k ? T.INK_2 : T.INK, family: "display" });
+        if (r) fig.text(bx + bw - PAD, ly, r, { size: 11, family: "display", color: k ? T.INK_2 : T.ACCENT, ha: "right" });
+      });
+    }
+  };
+  return sheet(T, { title: D.title, kicker: D.kicker, sub: D.sub, right: null, tiles: null }, [block("chart", 0, h, draw)], { maxCols: 1, minInner: 9.4 });
+}
+
 /** One sheet with both boards, for the clubhouse wall. Two columns wherever the family will allow them. */
 export function bothBoards(M, T) {
   const gRows = M.gross_board, sRows = M.stbl_board, n = M.n, N = M.field;
@@ -613,11 +667,11 @@ export function standingsPoster(S, group, T, kind = "stableford") {
       num("Rounds", 4.6, 5.4, r => String(r.played)), num("Wins", 5.5, 6.2, r => String(r.wins)),
       num("Best", 6.3, 7.1, r => r.best === null ? "–" : fmtToPar(r.best)),
       num("Avg", 7.2, 8.1, r => r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"),
-      col(S.bestN > 0 ? `Best ${S.bestN}` : "Net to par", 8.2, 9.95, dVal(r => r.played ? fmtToPar(r.counted) : "–", 22, (r, T) => T.ACCENT, "display"))];
-    total = [S.bestN > 0 ? `Best ${S.bestN}` : "Net to par", r => r.played ? fmtToPar(r.counted) : "–"];
+      col(S.bestN > 0 ? `Best ${S.bestN}` : "To par", 8.2, 9.95, dVal(r => r.played ? fmtToPar(r.counted) : "–", 22, (r, T) => T.ACCENT, "display"))];
+    total = [S.bestN > 0 ? `Best ${S.bestN}` : "To par", r => r.played ? fmtToPar(r.counted) : "–"];
     pairs = r => [["rounds", r.played], ["wins", r.wins], ["best", r.best === null ? "–" : fmtToPar(r.best)],
       ["avg", r.played ? fmtToPar(Math.round(r.avg * 10) / 10) : "–"]];
-    right = "Net strokes against par";
+    right = "Strokes against par, no handicap";
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [fmtToPar(lead), "the leader", T.ACCENT]];
   } else if (kind.startsWith("match") || kind.startsWith("soccer")) {
     const maxPts = Math.max(1, ...rows.map(r => r.points));
@@ -647,7 +701,6 @@ export function standingsPoster(S, group, T, kind = "stableford") {
 ${how}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [lead, "the leader", T.ACCENT]];
   } else if (kind === "gp" || kind === "gpstroke") {
-    const net = S.basis === "net";
     const maxPts = Math.max(1, ...rows.map(r => r.counted));
     const scaleMax = 25 * Math.ceil((maxPts + 1) / 25);
     cols = [pos, col("Player", 1.15, 4.1, dName, "left"),
@@ -657,7 +710,7 @@ ${how}`;
       col(`Points, 0 to ${scaleMax}`, 8.15, 9.95, pointsMeter(scaleMax, null, "counted"), "left")];
     total = [S.bestN > 0 ? `Best ${S.bestN}` : "Points", r => String(r.counted)];
     pairs = r => [["rounds", r.played], ["wins", r.wins], ["best", r.best], ["avg", fix(r.avg)]];
-    right = `Points by finishing position\n${net ? "net against par" : "Stableford"}`;
+    right = `Points by finishing position\n${S.basis === "net" ? "net against par" : S.basis === "gross" ? "strokes against par" : "Stableford"}`;
     tiles = [[rows.length, "players"], [rounds.length, "rounds"], [maxPts, "the leader", T.ACCENT]];
   } else {
     const maxPts = Math.max(1, ...rows.map(r => r.counted));

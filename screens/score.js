@@ -117,10 +117,10 @@ async function boardSheet(r, c) {
     try { list = Mo.matchesOf(c, groupRound(r, 0)).filter(M => !gf || M.group === gf).map(M => ({ name: `${groups.length > 1 ? `${M.group}. ` : ""}${M.sides.A.join(" & ")} v ${M.sides.B.join(" & ")}`, main: M.result || M.status })); } catch (e) { list = []; }
     board = list.length ? `<div class="hboard">${list.map(x => `<div class="hrowb"><span>${esc(x.name)}</span><span class="num">${esc(x.main)}</span></div>`).join("")}</div>` : `<p class="muted">Nothing to rank yet.</p>`;
   } else {
-    const L = liveBoard(r, null, { net: pointsHidden(r) });
+    const L = liveBoard(r, null, { strokes: pointsHidden(r) });
     const list = L ? L.rows.filter(x => !gf || x.group === gf) : [];
     through = L ? L.through : 0;
-    board = list.length ? holeGrid(r, c, list, L.byNet, pointsHidden(r)) :`<p class="muted">Nothing to rank yet.</p>`;
+    board = list.length ? holeGrid(r, c, list, L.by !== "pts", pointsHidden(r)) :`<p class="muted">Nothing to rank yet.</p>`;
   }
   const v = await sheet({ title: formatLabel(r.format), lead: `${r.name} · as it stands`,
     body: `${groups.length > 1 ? `<div class="filter">${[0, ...groups].map(g => `<button data-sheet="gf-${g}" class="${gf === g ? "on" : ""}">${g ? `Group ${g}` : "All"}</button>`).join("")}</div>` : ""}${board}`,
@@ -131,7 +131,7 @@ async function boardSheet(r, c) {
 }
 
 /** Every player a row, every hole a box, the total at the far right; rows in the order of the board. */
-function holeGrid(r, c, list, byNet, hidePts = false) {
+function holeGrid(r, c, list, onStrokes, hidePts = false) {
   const seats = new Map(S.scoringSeats(r).map(e => [e.playerId, e]));
   const holes = c.par.map((_, h) => h);
   const head = `<tr class="hghead"><th class="hgname">Hole</th>${holes.map(h => `<th>${c.first_hole + h}</th>`).join("")}<th class="hgtot">Tot</th></tr>
@@ -143,7 +143,7 @@ function holeGrid(r, c, list, byNet, hidePts = false) {
     const pts = h => { const v = e.scores[h]; return hidePts || !info || c.unlisted || v === null ? "" : v === 0 ? 0 : stableford(v, info.par[h], info.strokes[h]); };
     const cells = holes.map(h => S.joinsLate(r, e, h) ? `<td data-h="${h}"></td>`
       : `<td data-h="${h}">${mark(e.scores[h], info ? info.par[h] : c.par[h])}<small class="hgpts num">${pts(h)}</small></td>`).join("");
-    const tot = !x.holes ? "" : `${hidePts ? "" : `<small>${x.pts} pts</small>`}${byNet ? `<small>${esc(x.main)}</small>` : ""}`;
+    const tot = !x.holes ? "" : `${hidePts ? "" : `<small>${x.pts} pts</small>`}${onStrokes ? `<small>${esc(x.main)}</small>` : ""}`;
     return `<tr><th class="hgname"><b>${x.place ?? "–"}</b> ${esc(x.name)}</th>${cells}<td class="hgtot"><b class="num">${x.holes ? x.gross : "–"}</b>${tot}</td></tr>`;
   }).join("");
   return `<div class="hgwrap"><table class="hgrid">${head}${rows}</table></div>`;

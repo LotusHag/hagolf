@@ -10,6 +10,7 @@ import { runsIt } from "./league.js";
 import { formatLabel } from "./home.js";
 import { seatMe, liveSheet } from "./together.js";
 import { addSheet, inviteSheet, refreshTeam, dropRound } from "./players.js";
+import * as Fl from "../flights.js";
 
 /** Whoever runs a card: its owner, or an organiser of the society whose day it is. */
 export const runsCard = r => {
@@ -117,13 +118,15 @@ export async function newEvent(leagueId = null) {
 const EVENT_KINDS = { stableford: ["Stableford", "the board ranked on points"], stroke: ["Stroke play", "the board ranked on net score"] };
 const eventLabel = k => (EVENT_KINDS[k] || [formatLabel(k)])[0];
 
+/** A flight's card is named and dated by its event, and played in one of the flights' ways, which goes back on the plan. */
 async function detailsSheet(r) {
-  const match = Mo.isMatchFormat(r.format);
-  const [v, f] = await formSheet({ title: "The event", body: `
-    <label>Name<input name="name" value="${esc(r.name)}"></label>
-    <label>Date<input name="date" type="date" value="${esc(r.date || "")}"></label>
+  const match = Mo.isMatchFormat(r.format), ev = r.eventId && S.getEvent(r.eventId);
+  const kinds = ev ? Mo.FORMATS_ROUND.filter(x => Fl.FLIGHT_FORMATS[x.key]) : Mo.FORMATS_ROUND;
+  const [v, f] = await formSheet({ title: ev ? "The flight" : "The event", body: `
+    ${ev ? "" : `<label>Name<input name="name" value="${esc(r.name)}"></label>
+    <label>Date<input name="date" type="date" value="${esc(r.date || "")}"></label>`}
     <p class="pickline">How it is played</p>
-    <div class="card radios">${Mo.FORMATS_ROUND.map(x => `<label class="radiorow"><input type="radio" name="fmt" value="${x.key}" ${r.format === x.key ? "checked" : ""}><span><b>${esc(eventLabel(x.key))}</b><small>${esc((EVENT_KINDS[x.key] || [])[1] || x.blurb)}</small></span></label>`).join("")}</div>
+    <div class="card radios">${kinds.map(x => `<label class="radiorow"><input type="radio" name="fmt" value="${x.key}" ${r.format === x.key ? "checked" : ""}><span><b>${esc(eventLabel(x.key))}</b><small>${esc((EVENT_KINDS[x.key] || [])[1] || x.blurb)}</small></span></label>`).join("")}</div>
     ${match ? "" : `<label>Handicap allowance<select name="allow">${[100, 95, 90, 85, 75].map(a => `<option value="${a}" ${Number(r.allowance) === a ? "selected" : ""}>${a}%</option>`).join("")}</select></label>`}`,
     actions: [{ label: "Done", value: "ok", kind: "primary" }] });
   if (v !== "ok" || !f) return;
@@ -131,6 +134,10 @@ async function detailsSheet(r) {
   r.name = String(f.get("name") || "").trim() || r.name;
   r.date = f.get("date") || r.date;
   r.format = f.get("fmt") || r.format;
+  if (ev) {
+    const P = Fl.planOf(ev), fl = P.flights.find(x => x.id === ((r.event && r.event.flight) || r.id));
+    if (fl && fl.format !== r.format) { fl.format = r.format; const { savePlan } = await import("./series.js"); savePlan(ev, P); }
+  }
   if (f.get("allow") !== null) r.allowance = Number(f.get("allow")) || 100;
   if (!Mo.isMatchFormat(r.format) && planOf(r).teams.length) r.event = { ...planOf(r), teams: [] };
   S.saveRound(r);
@@ -166,16 +173,22 @@ async function slotSheet(r, c, g) {
   savePlan(r, { times });
 }
 
-async function teamsSheet(r) {
-  const P = planOf(r), n = P.teams.length;
-  const names = k => Array.from({ length: k }, (_, i) => P.teams[i] || ["Red", "Blue", "Gold", "Green", "White", "Black"][i] || `Team ${i + 1}`);
+/** How many teams and what they are called; "split" deals the field out again, "keep" leaves everybody where they are. */
+export async function askTeams(current) {
+  const n = current.length;
+  const names = k => Array.from({ length: k }, (_, i) => current[i] || ["Red", "Blue", "Gold", "Green", "White", "Black"][i] || `Team ${i + 1}`);
   const [v, f] = await formSheet({ title: "Teams", lead: "Every match is two teams. A win is a point for the winner's team, a halved match half each.", body: `
     <label>How many teams<select name="k">${[0, 2, 3, 4, 5, 6].map(k => `<option value="${k}" ${k === n ? "selected" : ""}>${k ? k : "No teams"}</option>`).join("")}</select></label>
     ${names(6).map((x, i) => `<label class="teamname" ${i >= Math.max(n, 2) ? "hidden" : ""}>Team ${i + 1}<input name="t${i}" value="${esc(x)}"></label>`).join("")}`,
     actions: [{ label: "Split the field evenly", value: "split", kind: "primary" }, { label: "Keep who is in which", value: "keep" }, { label: "Cancel", value: "no" }] });
-  if (!["split", "keep"].includes(v) || !f) return;
+  if (!["split", "keep"].includes(v) || !f) return [null, current];
   const k = Number(f.get("k")) || 0;
-  const teams = Array.from({ length: k }, (_, i) => String(f.get(`t${i}`) || "").trim() || `Team ${i + 1}`);
+  return [v, Array.from({ length: k }, (_, i) => String(f.get(`t${i}`) || "").trim() || `Team ${i + 1}`)];
+}
+
+async function teamsSheet(r) {
+  const [v, teams] = await askTeams(planOf(r).teams), k = teams.length;
+  if (!v) return;
   savePlan(r, { teams });
   const ps = people(r);
   // dealt down the handicaps, so no team is stacked
@@ -204,11 +217,20 @@ async function drawSheet(r, c) {
   if (res.left.length) toast(`${plural(res.left.length, "player")} without a match: in group ${res.groups.length + 1} to place by hand`, 5000);
 }
 
-/** One golfer by hand: another group, the other side, another team. */
+/** The other flights of the round a flight's card is in, each with its card. */
+function otherFlights(r) {
+  const ev = r.eventId && S.getEvent(r.eventId);
+  if (!ev) return [];
+  const P = Fl.planOf(ev), mine = P.flights.find(x => x.id === ((r.event && r.event.flight) || r.id));
+  return mine ? Fl.flightsIn(P, mine.round).filter(x => x !== mine).map(x => ({ f: x, r: Fl.cardOf(ev, x) })).filter(x => x.r && x.r.status !== "done") : [];
+}
+
+/** One golfer by hand: another group, the other side, another team, or another flight of the round. */
 async function moveSheet(r, c, e) {
   const P = planOf(r), gs = Mo.groupsOf(people(r)), match = Mo.isMatchFormat(r.format);
-  const next = (gs[gs.length - 1] || 0) + 1;
+  const next = (gs[gs.length - 1] || 0) + 1, others = e.scores.some(x => x !== null) ? [] : otherFlights(r);
   const [v, f] = await formSheet({ title: e.name, body: `
+    ${others.length ? `<p class="pickline">Flight</p><div class="card radios">${[{ f: { id: "", name: "This one" } }, ...others].map(x => `<label class="radiorow"><input type="radio" name="fl" value="${esc(x.f.id)}" ${x.f.id ? "" : "checked"}><span><b>${esc(x.f.name)}</b></span></label>`).join("")}</div>` : ""}
     <p class="pickline">Group</p><div class="card radios">${[...gs, next].map(g => `<label class="radiorow"><input type="radio" name="g" value="${g}" ${S.groupOf(e) === g ? "checked" : ""}><span><b>${g === next ? "A new group" : `Group ${g}`}</b>
       <small>${esc(people(r).filter(x => S.groupOf(x) === g && x !== e).map(x => firstName(x.name)).join(", "))}</small></span></label>`).join("")}</div>
     ${match ? `<p class="pickline">Side</p><div class="card radios">${["A", "B"].map(sd => `<label class="radiorow"><input type="radio" name="side" value="${sd}" ${e.side === sd ? "checked" : ""}><span><b>Side ${sd}</b></span></label>`).join("")}</div>` : ""}
@@ -222,6 +244,15 @@ async function moveSheet(r, c, e) {
     return;
   }
   if (v !== "ok" || !f) return;
+  const to = f.get("fl") && others.find(x => x.f.id === f.get("fl"));
+  if (to) {
+    const { placeOn } = await import("./series.js"), c2 = courseBy(to.r.course);
+    const seat = placeOn(to.r, c2, { name: e.name, account: e.accountId, golfer: e.contactId, hi: e.hi, gender: e.gender });
+    if (seat) { seat.squad = e.squad || 0; seatOnEvent(to.r, c2, seat); }
+    S.removeEntry(r, r.entries.indexOf(e));
+    rebuildTeams(r, c);
+    return toast(`${firstName(e.name)} moved to ${to.f.name}`);
+  }
   e.group = Number(f.get("g")) || S.groupOf(e);
   if (f.get("side")) e.side = f.get("side");
   if (f.get("sq")) e.squad = Number(f.get("sq"));
@@ -328,7 +359,11 @@ export function event(rid) {
     else if (act === "invite") return inviteSheet(r);
     else if (act === "times") await timesSheet(r, c);
     else if (act === "slot") await slotSheet(r, c, Number(b.dataset.g));
-    else if (act === "teams") { await teamsSheet(r); rebuildTeams(r, c); }
+    else if (act === "teams") {
+      const ev = r.eventId && S.getEvent(r.eventId);
+      if (ev) { const { eventTeamsSheet } = await import("./series.js"); await eventTeamsSheet(ev); } else await teamsSheet(r);
+      rebuildTeams(r, c);
+    }
     else if (act === "draw") await drawSheet(r, c);
     else if (act === "move") { const e = r.entries.find(x => x.playerId === b.dataset.pid); if (e) await moveSheet(r, c, e); }
     else if (act === "send") await sendDraw(r);
@@ -347,7 +382,8 @@ export function event(rid) {
 /** Events I am on or my societies hold, from today on: what Play lists under its button. An event of several rounds is one line, its next round's. */
 export function comingUp() {
   const today = S.today(), mine = new Set(S.leagues().map(g => g.id));
-  const nextOf = id => S.eventRounds(id).find(x => x.status !== "done");
+  // an event of several flights is its next card I am on, or else its next card
+  const nextOf = id => { const left = S.eventRounds(id).filter(x => x.status !== "done"); return left.find(x => S.mySeat(x)) || left[0]; };
   return S.rounds().filter(r => r.event && r.status !== "done" && (r.date || "") >= today && (!r.eventId || nextOf(r.eventId) === r)
       && (S.mySeat(r) || (r.leagueId && mine.has(r.leagueId)) || runsCard(r) || (r.eventId && S.myPlace(r.eventId))))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String((planOf(a).times[0] || {}).t || "").localeCompare(String((planOf(b).times[0] || {}).t || "")));

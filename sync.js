@@ -55,9 +55,9 @@ const TABLES = {
   // An event: pushed by whoever runs it, like a league. `token` is the Worker's and only ever read.
   events: {
     collect: keys => S.state.events.filter(e => keys.has(e.id)).map(e => ({ id: e.id, owner_account: e.owner || null, league_id: e.leagueId || null, name: e.name,
-      format: e.format || "stableford", spots: e.spots || 0, open_to: e.openTo || "none", deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() })),
+      format: e.format || "stableford", spots: e.spots || 0, open_to: e.openTo || "none", plan: e.plan || null, deleted: !!e.deleted, updated_at: e.updated_at, device_id: dev() })),
     apply: r => lww(S.state.events, e => e.id === r.id, { id: r.id, owner: r.owner_account || null, leagueId: r.league_id || null, name: r.name, format: r.format || "stableford",
-      spots: Number(r.spots) || 0, openTo: r.open_to || "none", token: r.token || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+      spots: Number(r.spots) || 0, openTo: r.open_to || "none", plan: r.plan || null, token: r.token || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   // An event's field. Read only: places are filled through /event/*, which checks who is asking.
   event_spots: {
