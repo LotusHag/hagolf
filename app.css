@@ -1491,6 +1491,15 @@ main.bare:has(.tvboard) { display: block; }
 [data-theme="sweetheart"] .mk:is(.c1, .c2)::before, [data-theme="sweetheart"] .mk.c2::after { content: ""; position: absolute; inset: -5px -5px -3px;
   background: var(--sc-birdie); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='20 8 80 68'%3E%3Cpath d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z' fill='none' stroke='%23000' stroke-width='5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='20 8 80 68'%3E%3Cpath d='M60 72C33 55 24 41 24 29c0-10 7.5-17 17-17 8 0 14 4.5 19 12 5-7.5 11-12 19-12 9.5 0 17 7 17 17 0 12-9 26-36 43z' fill='none' stroke='%23000' stroke-width='5'/%3E%3C/svg%3E") center / contain no-repeat; pointer-events: none; }
 [data-theme="sweetheart"] .mk.c2::after { inset: -10px -10px -7px; }
+/* Golf Goons: the society's rulebook. A claret header with a gold sash in both versions; gold never touches white */
+[data-theme="goons"] { --gn-claret: #731A2B; --gn-gold: #E8B84A; }
+[data-theme="goons"] .top { background: var(--gn-claret); color: #FFFFFF; border-bottom: 0; box-shadow: inset 0 -4px 0 var(--gn-gold); padding-bottom: 12px; }
+[data-theme="goons"] .top :is(h1, .back, .iconbtn, .brand) { color: #FFFFFF; }
+[data-theme="goons"] .top .sub { color: oklch(1 0 0 / 0.78); }
+[data-theme="goons"] .top :is(.back, .iconbtn):active { background: oklch(1 0 0 / 0.12); }
+[data-theme="goons"] .top .iconbtn.on { color: var(--gn-gold); }
+[data-theme="goons"] .top .iconbtn .n.quiet { background: var(--gn-gold); color: var(--gn-claret); }
+[data-theme="goons"] .pl .pos.p1 { background: var(--green); color: var(--green-hi); }
 
 /* ---- motion. Each theme's own moments are in themes/<name>.motion.css (built into motion.css); these are the
    stage they play on, and the quiet motion every theme shares. DESIGN-RULES.md (Motion) sets the limits. */

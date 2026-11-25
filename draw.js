@@ -527,6 +527,11 @@ export function headerRule(fig, y) {
       for (let i = 0; i < n; i++) fig.heart(x0 + i * step, y, 0.11, i % 2 ? T.ACCENT_2 : T.ACCENT);
       break;
     }
+    // a claret sash with a gold stripe through it: the stripe only ever sits on the bar, never on the page
+    case "sash":
+      fig.rbox(M, y - 0.06, R - M, 0.12, T.ACCENT, 0);
+      fig.rbox(M, y - 0.014, R - M, 0.028, T.ACCENT_HI || on(T, T.ACCENT), 0);
+      break;
     case "neon": {
       const ctx = fig.ctx, g = ctx.createLinearGradient(fig.px(M), 0, fig.px(R), 0);
       g.addColorStop(0, T.ACCENT); g.addColorStop(1, T.ACCENT_2);

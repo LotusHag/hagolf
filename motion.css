@@ -678,3 +678,30 @@
   [data-theme="sweetheart"].arrive #app { -webkit-mask: none; mask: none; animation: none; }
   [data-theme="sweetheart"] .mk.run:is(.c1, .c2) { animation: none; }
 }
+/* goons: how this theme moves. The screen change, a score landing, the theme being picked and its charts;
+   STYLEGUIDE.md and DESIGN-RULES.md (Motion) say what each may do. */
+/* Golf Goons: the society's rulebook, and the committee's rubber stamp. A stamp comes down gathering speed and
+   stops dead on the paper: no bounce, no slide. */
+
+/* 1. Screen change: the next ruling stamped down onto the last; going back, the top sheet is lifted off the pile */
+[data-theme="goons"][data-nav] #app.vt-new { animation: gn-press 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+[data-theme="goons"][data-nav][data-nav="back"] #app.vt-new { animation: none; }
+[data-theme="goons"][data-nav][data-nav="back"] .vt-old { z-index: 3; animation: gn-lift 180ms cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes gn-press { from { transform: scale(1.03); opacity: 0; } 60% { opacity: 1; } to { transform: none; opacity: 1; } }
+@keyframes gn-lift { to { transform: scale(1.03); opacity: 0; } }
+
+/* 2. A score lands: the ring or box stamped on round the figure; par needs no ruling and does not move */
+[data-theme="goons"] .mk.run:is(.c1, .c2, .s1, .s2) { animation: gn-stamp 110ms cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes gn-stamp { from { transform: scale(1.4); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* 3. This theme is picked: the society's seal pressed onto the whole book, once and firmly */
+[data-theme="goons"].arrive #app { animation: gn-seal 320ms cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes gn-seal { from { transform: scale(1.06); opacity: 0; } 70% { opacity: 1; } to { transform: none; opacity: 1; } }
+
+/* 4. Charts, the first time they are seen: each bar ruled in from its baseline with a firm hand */
+[data-theme="goons"] { --chart-dur: 360ms; --chart-ease: cubic-bezier(0.2, 0.8, 0.2, 1); --chart-sweep: 200ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="goons"][data-nav] #app.vt-new, [data-theme="goons"][data-nav][data-nav="back"] .vt-old,
+  [data-theme="goons"].arrive #app, [data-theme="goons"] .mk.run:is(.c1, .c2, .s1, .s2) { animation: none; }
+}

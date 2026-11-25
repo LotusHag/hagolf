@@ -66,7 +66,7 @@ export function screenPalette(t) {
     bg, card: t.PANEL, card2: t.PANEL_2, line: t.LINE, line2: mix(t.LINE, ink, 0.14), ink, ink2: t.INK_2, ink3: legible(t.INK_3),
     "sc-birdie-ink": legible(ui["sc-birdie"]), "sc-bogey-ink": legible(ui["sc-bogey"]),
     green: t.ACCENT, green2: t.ACCENT_2 || t.ACCENT, "green-dark": mix(t.ACCENT, "#000000", 0.20), "green-soft": mix(t.ACCENT, bg, 0.86), "green-ink": on(t.ACCENT),
-    "green-hi": readable(ui.gold, t.ACCENT, on(t.ACCENT)), bronze: t.BRONZE, "on-bronze": on(t.BRONZE),
+    "green-hi": readable(t.ACCENT_HI || ui.gold, t.ACCENT, on(t.ACCENT)), bronze: t.BRONZE, "on-bronze": on(t.BRONZE),
     "on-ink": on(ink), "on-gold": on(ui.gold),
     "gold-soft": mix(FIXED.gold, bg, 0.86), "gold-ink": dark ? ui.gold : mix(FIXED.gold, "#000000", 0.55),
     "danger-soft": mix(FIXED.danger, bg, 0.88), scheme: dark ? "only dark" : "only light",
