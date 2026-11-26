@@ -8,13 +8,14 @@ import * as A from "../auth.js";
 import * as F from "../social.js";
 import { brandField } from "./partner.js";
 import { page, bind, esc, go, toast, ui, plural, firstName, inits, ordinal, fmtDate, shortDate, resumeHash, roundWhere, roundClub, roundLoop, sect, sectRaw, tip, h2tip, infoBtn, sheet, confirmSheet, shareLink, qrHtml, avatar, themeRadios, bindChips, appTheme, leagueTheme, themePin, leagueLookName, swatchStrip, paint, themeHere, app, iconBtn, ICONS, leagueBadge, onDesk, courseTitle } from "../ui.js";
-import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex } from "../model.js";
+import { headToHead, leagueCards, leagueStats, fmtToPar, fmtIndex, memberSet, golfersOf } from "../model.js";
 import { ANIMALS, FIELDS, choices, crestOf, crestKey, swatchOf, isCrest } from "../avatar.js";
 import { seasonOf, seasonName, currentSeason, shownSeason, seasonRounds, FORMAT_NAMES, FORMAT_MODE, FORMAT_BLURB, FORMAT_NOTES, MATCH_BASIS, ELO_BASIS, H2H_BASES, basisRow, basisWord, leagueResults, standingsFor, standingsTable, boardLine, decidingValue, dayBoard, eloDelta, eloDay, sinceLast, isMyRow, myRow, boardOverTime, climbs, matchSentence, basisGame, basisTaker } from "./formats.js";
 import { leagueStatsBody, leaguePlayerBody, basisSheetBody, h2hParts, honourSheet, honoursPage } from "./stats.js";
 import { claimSheet, candidateSub } from "./gate.js";
 import { sendTable, sendSeason, sendDay } from "../images.js";
 import { comingUp, eventRow, newEvent } from "./event.js";
+import { rosterJoin, rosterLeave, rosterAct, resignWords, withList } from "./roster.js";
 
 /** Whether this phone's account runs the league. */
 export function runsIt(g) {
@@ -83,16 +84,16 @@ const personHash = id => (S.state.players.find(x => x.id === id && !x.deleted) ?
 // club first, loop second: "18 holes" alone does not say where the day was
 const dayWhere = c => (c.course && (c.course.unlisted ? c.course.loop || c.course.name : courseTitle(c.course))) || c.name || "";
 
-/** Invite, share and (for whoever runs it) the settings, as icons in the header. */
-const headActions = runs => iconBtn("invite", "friend", "Invite people") + iconBtn("share-board", "share", "Share and images") + (runs ? iconBtn("lgsettings", "settings", "Settings") : "");
+/** Invite (not where a roster decides who is in), share and, for whoever runs it, the settings, as icons in the header. */
+const headActions = (g, runs) => (rosterOf(g) ? "" : iconBtn("invite", "friend", "Invite people")) + iconBtn("share-board", "share", "Share and images") + (runs ? iconBtn("lgsettings", "settings", "Settings") : "");
 
-/** Board, Numbers, Head to head, Days, Members: the parts of a society, one tap each. */
-const segs = (gid, on) => `<div class="filter lsegs">${[["", "Board"], ["stats", "Numbers"], ["vs", "Head to&nbsp;head"], ["days", "Days"], ["members", "Members"]]
-  .map(([v, l]) => `<a href="#league/${gid}${v ? `/${v}` : ""}" class="${on === v ? "on" : ""}">${l}</a>`).join("")}</div>`;
+/** Board, Numbers, Head to head, Days and Members: one tap each. */
+const segs = (g, on) => `<div class="filter lsegs">${[["", "Board"], ["stats", "Numbers"], ["vs", "Head to&nbsp;head"], ["days", "Days"], ["members", "Members"]]
+  .map(([v, l]) => `<a href="#league/${g.id}${v ? `/${v}` : ""}" class="${on === v ? "on" : ""}">${l}</a>`).join("")}</div>`;
 
 function shell(g, title, body, { back = "#leagues", keepScroll = false, runs = runsIt(g), seg = null, wide = false, gear = true } = {}) {
   const season = seg !== null && seg !== "members" && g.seasonStart ? `<button class="seasonbar" data-act="season"><span class="caps">Season</span><b class="num">${esc(seasonName(g, shownSeason(g)))}</b><span class="chev">›</span></button>` : "";
-  page(title, `${seg !== null ? segs(g.id, seg) : ""}${season}${body}`, { back, actions: headActions(runs && gear), bell: false, keepScroll, wide });
+  page(title, `${seg !== null ? segs(g, seg) : ""}${season}${body}`, { back, actions: headActions(g, runs && gear), bell: false, keepScroll, wide });
 }
 
 /** Today: the society's day card while one is going; starting one lives under Days. */
@@ -168,7 +169,7 @@ function lastDay(C, Sx, move, cards) {
   if (!move) return "";
   const c = move.last;
   const D = dayBoard(C.kind, c);
-  const board = D.rows.filter(p => p.id === null || C.members.includes(p.id));
+  const board = D.rows.filter(p => p.id === null || memberSet(C.members).has(p.id, c.date));
   const m = (c.matches || [])[0];
   const link = text => `<a class="thru caps dayl" href="#league/${C.gid}/day/${cardKey(c)}">${text} ›</a>`;
   if (!board.length && m) {
@@ -490,7 +491,7 @@ function daysView(C) {
   const upcoming = comingUp().filter(r => r.leagueId === C.gid);
   const row = c => {
     const D = dayBoard(C.kind, c);
-    const board = D.rows.filter(p => p.id === null || C.members.includes(p.id));
+    const board = D.rows.filter(p => p.id === null || memberSet(C.members).has(p.id, c.date));
     const top = board[0];
     const mine = C.me ? board.find(p => isMyRow(p, C.me)) : null;
     const matches = (c.matches || []).map(matchSentence);
@@ -519,7 +520,7 @@ function dayView(C, key) {
   const c = leagueCards(C.Ms).find(x => String(x.key ?? x.id) === want);
   if (!c) return go(`#league/${C.gid}/days`);
   const D = dayBoard(C.kind, c);
-  const board = D.rows.filter(p => p.id === null || C.members.includes(p.id));
+  const board = D.rows.filter(p => p.id === null || memberSet(C.members).has(p.id, c.date));
   const move = sinceLast(C.g, C.Ms, C.members, C.kind);
   const isLast = move && String(move.last.key ?? move.last.id) === want;
   const changed = isLast && move.was ? movedOnTheDay(C, move) : "";
@@ -979,59 +980,6 @@ function wireSettings(C) {
   });
 }
 
-/** The people side: who is in it and as which name, names still waiting for their golfer, invite links, merging two spellings, and leaving. */
-async function wireMembers(C) {
-  const { gid, runs } = C;
-  bind(async ev => {
-    if (await common(C, ev)) return;
-    const b = ev.target.closest("[data-act]");
-    if (!b) return;
-    const act = b.dataset.act;
-    if (act === "merge") {
-      const keep = document.getElementById("mkeep").value, drop = document.getElementById("mdrop").value;
-      if (keep === drop) return toast("Pick two different names");
-      if (!await confirmSheet("Merge these names?", `${nameIn(C, drop)} becomes ${nameIn(C, keep)} on every phone. This cannot be undone.`, { label: "Merge", danger: true })) return;
-      if (!S.mergePlayers(keep, drop)) return toast("Those two cannot be merged on this phone", 5000);
-      toast("Merged"); return league(gid, "members");
-    }
-    if (act === "revoke") { try { await F.revokeInvite(gid, b.dataset.id); toast("Link revoked"); league(gid, "members"); } catch (e) { toast(e.message, 5000); } }
-    if (act === "unclaim") {
-      if (!await confirmSheet(`Not ${b.dataset.name}?`, "Their seats on this society's cards go back to the name, and they can pick again.", { label: "Undo", danger: true })) return;
-      try { await F.unclaim(gid, b.dataset.id); toast("Undone"); await Y.pull(); league(gid, "members"); } catch (e) { toast(e.message, 5000); }
-    }
-    if (act === "send-name") {
-      try { const r = await F.inviteLink(gid, false, b.dataset.pid); await shareLink(r.url, `${C.g.name} on Hagolf`, `Your rounds in ${C.g.name}, as ${b.dataset.name}`); } catch (e) { toast(e.message, 5000); }
-    }
-    if (act === "claim-me") { try { const r = await F.candidatesOf(gid); await claimSheet(gid, r.candidates); league(gid, "members"); } catch (e) { toast(e.message, 5000); } }
-    if (act === "leave") {
-      if (!await confirmSheet("Leave this society?", "Your rounds stay on its cards; you stop seeing the table.", { label: "Leave", danger: true })) return;
-      try { await F.leaveLeague(gid); await Y.pull(); toast("You left the society"); go("#leagues"); } catch (e) { toast(e.message, 5000); }
-    }
-  });
-  if (!A.signedIn()) return;
-  const box = document.getElementById("members");
-  try {
-    const r = await F.membersOf(gid);
-    const me = S.myAccount();
-    const mineM = r.members.find(m => m.id === me);
-    const free = (await F.candidatesOf(gid).catch(() => ({ candidates: [] }))).candidates.filter(c => !c.claimedBy);
-    const sub = m => [m.role && !["member", "player"].includes(m.role) ? m.role : "", m.playsAs && m.playsAs !== m.name ? `on the cards as ${m.playsAs}` : ""].filter(Boolean).join(" · ");
-    const undo = m => runs && m.id !== me && m.playsAs ? `<button class="btn small" data-act="unclaim" data-id="${esc(m.id)}" data-name="${esc(m.playsAs)}">Undo</button>` : "";
-    if (box) box.innerHTML = `
-      <div class="list">${r.members.map(m => `<div><a class="lead" href="${m.id === me ? "#me" : `#person/${esc(m.id)}`}">${avatar(m.name || "?", "", F.lookOf(m.id))}<div><div class="name">${esc(m.name || "Somebody")}</div>${sub(m) ? `<div class="muted small">${esc(sub(m))}</div>` : ""}</div></a>${undo(m)}</div>`).join("")}</div>
-      ${mineM && mineM.claim === "none" && free.length ? `<button class="btn small" data-act="claim-me" style="margin-top:8px">Which player on the cards is me?</button>` : ""}
-      ${free.length ? `${sect("Not on Hagolf yet")}<div class="list">${free.map(c => `<div><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${esc(candidateSub(c, free))}</div></div></span><button class="btn small" data-act="send-name" data-pid="${esc(c.id)}" data-name="${esc(c.name)}">Send link</button></div>`).join("")}</div>` : ""}`;
-  } catch (e) { if (box) box.innerHTML = `<p class="muted small">${esc(e.message)}</p>`; }
-  const ibox = document.getElementById("invites");
-  if (ibox && runs) {
-    try {
-      const r = await F.invitesOf(gid);
-      ibox.innerHTML = r.invites.length ? `<div class="list">${r.invites.map(i => `<div><div><div class="name">${i.reusable ? "Group link" : i.personal ? "Personal invite" : "One-time link"}</div><div class="muted small">${i.uses || 0} used${i.expires ? ` · expires ${esc(shortDate(String(i.expires).slice(0, 10)))}` : ""}</div></div><button class="btn small" data-act="revoke" data-id="${esc(i.id)}">Revoke</button></div>`).join("")}</div>`
-        : `<p class="muted small">No links made yet. The invite button at the top makes one.</p>`;
-    } catch (e) { ibox.innerHTML = `<p class="muted small">${esc(e.message)}</p>`; }
-  }
-}
-
 // ---------------------------------------------------------------- what every view answers
 /** The header icons, handled once. Returns true when it took the event. */
 async function common(C, ev) {
@@ -1089,17 +1037,184 @@ function playToday(C) {
   go("#new");
 }
 
-/** Who is in it, claims to confirm, invite links: the people side of a society, on a page of its own. */
-function membersView(C) {
+// ---------------------------------------------------------------- members: who is in it, who counts, how people join
+// the last answer per society, so a redraw shows the list it had while a fresh one is asked for
+const heldMembers = new Map();
+const rosterOf = g => (heldMembers.get(g.id) || {}).roster || null;
+const ROLE = { owner: "Owner", organiser: "Organiser" };
+const countWords = from => from ? `counts from ${shortDate(from)}` : "counts every card";
+// a member's date is their own row's, whether or not this phone has pulled their membership yet (model.tableCounting)
+const memberFrom = (gid, id) => (S.tableRows(gid).find(t => t.golfer_id === id) || {}).counts_from || null;
+
+async function loadMembers(C) {
+  const { gid, runs } = C;
+  try {
+    const [r, cands, inv] = await Promise.all([F.membersOf(gid), F.candidatesOf(gid).catch(() => ({ candidates: [] })),
+      runs ? F.invitesOf(gid).catch(() => ({ invites: [] })) : { invites: [] }]);
+    heldMembers.set(gid, { ...r, roster: await withList(r.roster), free: cands.candidates.filter(c => !c.claimedBy), invites: inv.invites });
+  } catch (e) { heldMembers.set(gid, { error: e.message }); }
+}
+
+/** What an organiser may change about one member; only the owner touches another organiser. */
+function memberCan(C, m, R) {
+  const me = S.myAccount(), iOwn = C.g.owner === me, owner = m.role === "owner", self = m.id === me, above = m.role === "organiser" && !iOwn;
+  const can = { count: !!C.g.membersOnly, role: !owner && !self && !above, owner: iOwn && !owner, out: !R.roster && !owner && !self && !above, unclaim: !!m.playsAs && !self };
+  return { ...can, any: Object.values(can).some(Boolean) };
+}
+
+/** The golfers on a members-only society's cards who are not members: in its table only once an organiser puts them in. */
+function othersOnCards(C) {
+  const { g, gid } = C;
+  const ms = S.state.leagueMembers.filter(m => !m.deleted && m.league_id === gid);
+  const members = new Set([g.owner, ...ms.map(m => m.account_id), ...ms.filter(m => m.claim_state === "confirmed").map(m => m.claimed_player)].filter(Boolean));
+  return [...new Map(leagueResults(g, null).Ms.flatMap(golfersOf).filter(p => p.id && !members.has(p.id)).map(p => [p.id, p.name]))].sort((a, b) => a[1].localeCompare(b[1]));
+}
+
+/** All cards, or from a date the organiser fills in; somebody who is not a member can also be left out. */
+const countPick = (pick, date, canOff) => `<label>Counts in the table</label>${segs3("cfrom", pick, [...canOff ? [["off", "Not in it"]] : [], ["all", "All cards"], ["from", "From a date"]])}
+  <div class="cfdate"${pick === "from" ? "" : " hidden"}><label for="cfdate">Their cards count from</label><input type="date" id="cfdate" value="${esc(date)}"></div>`;
+
+/** One golfer's settings: how they count and, for a member, their role. Resolves the button picked with what was chosen. */
+async function golferSheet({ title, lead, count, role, actions }) {
+  const st = { pick: count ? count.pick : null, date: count ? count.date : null, role };
+  const act = await sheet({ title, lead, actions,
+    body: `${count ? countPick(st.pick, st.date, count.canOff) : ""}${role ? `<label>Role</label>${segs3("role", role, [["player", "Player"], ["organiser", "Organiser"]])}` : ""}`,
+    onOpen: el => {
+      el.addEventListener("click", ev => {
+        const b = ev.target.closest(".segpick [data-act]");
+        if (!b) return;
+        st[b.dataset.act === "cfrom" ? "pick" : "role"] = b.dataset.v;
+        b.parentElement.querySelectorAll("button").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); });
+        const d = el.querySelector(".cfdate");
+        if (d) d.hidden = st.pick !== "from";
+      });
+      const d = el.querySelector("#cfdate");
+      if (d) d.addEventListener("input", () => { st.date = d.value; });
+    } });
+  return { ...st, act };
+}
+
+/** A golfer's table row as the sheet left it, written only when it changed. False when the date is missing. */
+function saveCount(gid, id, was, st, since) {
+  if (st.pick === "from" && !/^\d{4}-\d{2}-\d{2}$/.test(st.date || "")) { toast("Fill in the date their cards count from", 4000); return false; }
+  const from = st.pick === "from" ? st.date : null;
+  if (st.pick === was.pick && (st.pick !== "from" || from === was.date)) return true;
+  S.setTableRow(gid, id, st.pick === "off" ? { counts: false } : { counts: true, since: since || from || S.today(), counts_from: from });
+  return true;
+}
+
+async function memberSheet(C, m, R) {
+  const { gid } = C, can = memberCan(C, m, R), first = firstName(m.name) || "them";
+  const since = (S.tableRows(gid).find(t => t.golfer_id === m.id) || {}).since || String(m.joined || "").slice(0, 10) || S.today();
+  const from = memberFrom(gid, m.id), was = { pick: from ? "from" : "all", date: from };
+  const role = m.role === "organiser" ? "organiser" : "player";
+  const v = await golferSheet({ title: m.name || "Somebody", lead: [ROLE[m.role] || "Player", m.playsAs && m.playsAs !== m.name ? `on the cards as ${m.playsAs}` : ""].filter(Boolean).join(" · "),
+    count: can.count ? { pick: was.pick, date: from || since } : null, role: can.role ? role : null,
+    actions: [...can.count || can.role ? [{ label: "Save", value: "save", kind: "primary" }] : [],
+      ...can.owner ? [{ label: `Hand ${first} the society`, value: "owner" }] : [],
+      ...can.unclaim ? [{ label: `Not ${m.playsAs} on the cards`, value: "unclaim" }] : [],
+      ...can.out ? [{ label: "Take out of the society", value: "remove", kind: "danger" }] : [],
+      { label: "Cancel", value: "no" }] });
+  try {
+    if (v.act === "save") {
+      if (can.count && !saveCount(gid, m.id, was, v, since)) return;
+      if (can.role && v.role !== role) { await F.setRole(gid, m.id, v.role); await Y.pull(); }
+    }
+    if (v.act === "owner") {
+      if (!await confirmSheet(`Hand ${first} the society?`, `${first} becomes its owner. You stay on as an organiser, and can leave it then.`, { label: "Hand it over" })) return;
+      await F.handOver(gid, m.id); await Y.pull(); toast(`${first} owns the society now`);
+    }
+    if (v.act === "remove") {
+      if (!await confirmSheet(`Take ${first} out?`, "They stop seeing the society. Their rounds stay on its cards.", { label: "Take out", danger: true })) return;
+      await F.removeMember(gid, m.id); await Y.pull(); toast(`${first} is out of the society`);
+    }
+    if (v.act === "unclaim") {
+      if (!await confirmSheet(`Not ${m.playsAs}?`, "Their seats on this society's cards go back to the name, and they can pick again.", { label: "Undo", danger: true })) return;
+      await F.unclaim(gid, m.id); await Y.pull(); toast("Undone");
+    }
+  } catch (e) { toast(e.message, 5000); }
+  if (location.hash === `#league/${gid}/members`) league(gid, "members");
+}
+
+async function otherSheet(C, id, name) {
+  const { g, gid } = C, row = S.tableRows(gid).find(t => t.golfer_id === id) || {};
+  const counting = S.tableCountingOf(g), from = counting.get(id) || null;
+  const was = { pick: counting.has(id) ? (from ? "from" : "all") : "off", date: from };
+  const v = await golferSheet({ title: name, lead: "Not a member. They count in the table only once you put them in.",
+    count: { pick: was.pick, date: from || row.since || S.today(), canOff: true },
+    actions: [{ label: "Save", value: "save", kind: "primary" }, { label: "Cancel", value: "no" }] });
+  if (v.act === "save" && saveCount(gid, id, was, v, row.since) && location.hash === `#league/${gid}/members`) membersView(ctx(g), true);
+}
+
+/** Who is in it and who counts, each member's settings, how people join, and leaving: the people side of a society. */
+function membersView(C, fresh = false) {
   const { g, gid, runs } = C;
-  shell(g, g.name, `
-    ${A.signedIn() ? `<div class="card" id="members"><p class="muted small">Loading…</p></div>` : `<p class="muted center">Sign in to see the members.</p>`}
+  const R = heldMembers.get(gid) || null, roster = R && R.roster, me = S.myAccount();
+  const counting = g.membersOnly ? S.tableCountingOf(g) : null;
+  const others = counting && !roster ? othersOnCards(C) : [];
+  const says = roster ? "Only members count in the table, each from the date beside them. A +1 stays on the day's card, never in the table."
+    : g.membersOnly ? "Only members count in the table, each from the date beside them, and anyone else an organiser puts in. Everyone stays on each round's own card."
+    : `Everyone on the society's cards counts in the table, on every card.${runs ? " Choose Members only to count members alone, each from a date you set." : ""}`;
+  const memberRow = m => {
+    const sub = [ROLE[m.role] || "", m.playsAs && m.playsAs !== m.name ? `on the cards as ${m.playsAs}` : "", counting ? countWords(memberFrom(gid, m.id)) : ""].filter(Boolean).join(" · ");
+    return `<div><a class="lead" href="${m.id === me ? "#me" : `#person/${esc(m.id)}`}">${avatar(m.name || "?", "", F.lookOf(m.id))}<div><div class="name">${esc(m.name || "Somebody")}</div>${sub ? `<div class="muted small">${esc(sub)}</div>` : ""}</div></a>
+      ${runs && memberCan(C, m, R).any ? `<button class="btn small" data-act="member" data-id="${esc(m.id)}">Edit</button>` : ""}</div>`;
+  };
+  const otherRow = ([id, name]) => `<div><span class="lead">${avatar(name)}<div><div class="name">${esc(name)}</div><div class="muted small">${counting.has(id) ? `In the table · ${countWords(counting.get(id))}` : "Not in the table"}</div></div></span>
+    ${runs ? `<button class="btn small" data-act="other" data-id="${esc(id)}" data-name="${esc(name)}">Edit</button>` : ""}</div>`;
+  const mineM = R && R.members && R.members.find(m => m.id === me);
+  const list = !A.signedIn() ? `<p class="muted">Sign in to see the members.</p>`
+    : !R ? `<p class="muted small">Loading…</p>`
+    : R.error ? `<p class="muted small">${esc(R.error)}</p>`
+    : `<div class="list">${R.members.map(memberRow).join("")}</div>
+      ${mineM && mineM.claim === "none" && R.free.length ? `<button class="btn small" data-act="claim-me">Which player on the cards is me?</button>` : ""}`;
+  const joining = `${sect("Joining")}<p class="muted small says">${runs ? "Invite friends to their inbox, or send a link: one that works once, or one link for the whole group." : "Invite friends to their inbox, or send a link that works once."}</p>
     <button class="btn wide" data-act="invite">${ICONS.friend} Invite people</button>
+    ${R && R.free && R.free.length ? `${sect("Not on Hagolf yet")}<div class="list">${R.free.map(c => `<div><span class="lead">${avatar(c.name)}<div><div class="name">${esc(c.name)}</div><div class="muted small">${esc(candidateSub(c, R.free))}</div></div></span><button class="btn small" data-act="send-name" data-pid="${esc(c.id)}" data-name="${esc(c.name)}">Send link</button></div>`).join("")}</div>` : ""}
+    ${runs && A.signedIn() ? `${sect("Invite links")}${!R || !R.invites ? `<p class="muted small">Loading…</p>` : R.invites.length
+      ? `<div class="list">${R.invites.map(i => `<div><div><div class="name">${i.reusable ? "Group link" : i.personal ? "Personal invite" : "One-time link"}</div><div class="muted small">${i.uses || 0} used${i.expires ? ` · expires ${esc(shortDate(String(i.expires).slice(0, 10)))}` : ""}</div></div><button class="btn small" data-act="revoke" data-id="${esc(i.id)}">Revoke</button></div>`).join("")}</div>`
+      : `<p class="muted small">No links made yet. Invite people makes one.</p>`}` : ""}`;
+  const leave = !S.myMembership(gid) && g.owner !== me ? "" : g.owner === me
+    ? (R && R.members && R.members.length > 1 ? `<p class="muted small center lfoot">To leave, first hand the society to another member: Edit beside their name.</p>` : "")
+    : roster ? rosterLeave(roster) : `<div class="center lfoot"><button class="btn ghost quietdanger" data-act="leave">Leave this society</button></div>`;
+  shell(g, g.name, `${sect("The table")}
+    ${runs && A.signedIn() && !roster ? segs3("only", g.membersOnly ? "members" : "everyone", [["everyone", "Everyone on the cards"], ["members", "Members only"]]) : ""}
+    <p class="muted small says">${esc(says)}</p>
+    ${sect("Members", R && R.members ? `<span class="muted small">${R.members.length}</span>` : "")}${list}
+    ${others.length ? `${sect("Others on the cards")}<div class="list">${others.map(otherRow).join("")}</div>` : ""}
+    ${roster ? rosterJoin(g, roster) : joining}
     ${runs && C.members.length > 1 ? `<details class="card fold"><summary>Two spellings of one person?</summary>
       <p class="muted small">Merge them: every round, score and course handicap moves to the kept name, and the old spelling becomes an alias.</p>
       <div class="merge"><select id="mkeep">${C.members.map(m => `<option value="${m}">${esc(nameIn(C, m))}</option>`).join("")}</select><span>←</span><select id="mdrop">${C.members.map((m, i) => `<option value="${m}" ${i === 1 ? "selected" : ""}>${esc(nameIn(C, m))}</option>`).join("")}</select></div>
       <button class="btn small" data-act="merge" style="margin-top:8px">Merge into the first name</button></details>` : ""}
-    ${runs && A.signedIn() ? `${sect("Invite links")}<div class="card" id="invites"><p class="muted small">Loading…</p></div>` : ""}
-    ${S.myMembership(gid) && g.owner !== S.myAccount() ? `<div class="center lfoot"><button class="btn ghost quietdanger" data-act="leave">Leave this society</button></div>` : ""}`, { runs, seg: "members" });
-  wireMembers(C);
+    ${leave}`, { runs, seg: "members", keepScroll: fresh });
+  const again = () => league(gid, "members");
+  bind(async ev => {
+    if (await common(C, ev)) return;
+    if (roster && await rosterAct(ev)) return again();
+    const b = ev.target.closest("[data-act]");
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === "only") { g.membersOnly = b.dataset.v === "members"; S.saveLeague(g); return membersView(ctx(g), true); }
+    if (act === "member") { const m = R.members.find(x => x.id === b.dataset.id); return m && memberSheet(C, m, R); }
+    if (act === "other") return otherSheet(C, b.dataset.id, b.dataset.name);
+    if (act === "merge") {
+      const keep = document.getElementById("mkeep").value, drop = document.getElementById("mdrop").value;
+      if (keep === drop) return toast("Pick two different names");
+      if (!await confirmSheet("Merge these names?", `${nameIn(C, drop)} becomes ${nameIn(C, keep)} on every phone. This cannot be undone.`, { label: "Merge", danger: true })) return;
+      if (!S.mergePlayers(keep, drop)) return toast("Those two cannot be merged on this phone", 5000);
+      toast("Merged"); return again();
+    }
+    if (act === "revoke") { try { await F.revokeInvite(gid, b.dataset.id); toast("Link revoked"); again(); } catch (e) { toast(e.message, 5000); } }
+    if (act === "send-name") {
+      try { const r = await F.inviteLink(gid, false, b.dataset.pid); await shareLink(r.url, `${g.name} on Hagolf`, `Your rounds in ${g.name}, as ${b.dataset.name}`); } catch (e) { toast(e.message, 5000); }
+    }
+    if (act === "claim-me") { try { await claimSheet(gid, (await F.candidatesOf(gid)).candidates); again(); } catch (e) { toast(e.message, 5000); } }
+    if (act === "leave") {
+      const [title, lead] = roster ? resignWords(g) : ["Leave this society?", "Your rounds stay on its cards; you stop seeing the table."];
+      if (!await confirmSheet(title, lead, { label: roster ? "Resign" : "Leave", danger: true })) return;
+      try { await F.leaveLeague(gid); heldMembers.delete(gid); await Y.pull(); toast(roster ? "You resigned" : "You left the society"); go("#leagues"); } catch (e) { toast(e.message, 5000); }
+    }
+  });
+  if (!fresh && A.signedIn()) loadMembers(C).then(() => { if (location.hash === `#league/${gid}/members`) membersView(ctx(g), true); });
 }

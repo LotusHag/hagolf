@@ -171,10 +171,10 @@ const TABLES = {
   leagues: {
     // visibility, token and show_handicaps are read here but never pushed: the Worker owns them and takes
     // them only through /league/<id>/visibility, so a phone editing the name offline cannot undo them.
-    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, season_start: g.seasonStart || null, show_golfers: !!g.showGolfers, created_by: g.createdBy || null,
+    collect: keys => S.state.leagues.filter(g => keys.has(g.id)).map(g => ({ id: g.id, owner_account: g.owner || null, name: g.name, best_n: g.bestN || 0, season_start: g.seasonStart || null, show_golfers: !!g.showGolfers, members_only: !!g.membersOnly, created_by: g.createdBy || null,
       created: g.created || null, formats: S.cleanFormats(g.formats), theme: g.theme || null, icon: g.icon || null, brand: g.brand || null, deleted: !!g.deleted, updated_at: g.updated_at, device_id: dev() })),
     apply: r => lww(S.state.leagues, g => g.id === r.id, { id: r.id, owner: r.owner_account || null, name: r.name, bestN: r.best_n || 0, seasonStart: r.season_start || null, createdBy: r.created_by, created: r.created, formats: S.cleanFormats(r.formats), theme: r.theme || null, icon: r.icon || null, brand: r.brand || null,
-      visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0, showGolfers: !!r.show_golfers,
+      visibility: r.visibility || "private", token: r.token || null, showHandicaps: r.show_handicaps !== false && r.show_handicaps !== 0, showGolfers: !!r.show_golfers, membersOnly: !!r.members_only,
       deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   league_rounds: {
@@ -189,6 +189,13 @@ const TABLES = {
     apply: r => lww(S.state.leagueMembers, x => x.league_id === r.league_id && x.account_id === r.account_id,
       { league_id: r.league_id, account_id: r.account_id, role: r.role, claimed_player: r.claimed_player, claim_state: r.claim_state,
         joined: r.joined, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
+  },
+  // Who a society that chooses counts in its table, and from when. Organisers push it; the Worker writes members' rows.
+  league_table: {
+    collect: keys => S.state.leagueTable.filter(x => keys.has(`${x.league_id}|${x.golfer_id}`)).map(x => ({ league_id: x.league_id, golfer_id: x.golfer_id,
+      counts: !!x.counts, since: x.since || null, counts_from: x.counts_from || null, deleted: !!x.deleted, updated_at: x.updated_at, device_id: dev() })),
+    apply: r => lww(S.state.leagueTable, x => x.league_id === r.league_id && x.golfer_id === r.golfer_id, { league_id: r.league_id, golfer_id: r.golfer_id,
+      counts: !!r.counts, since: r.since || null, counts_from: r.counts_from || null, set_by: r.set_by || null, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
   // A card handed to me. Read only, like membership: the Worker writes it through /round/<id>/share.
   round_shares: {
@@ -215,7 +222,7 @@ const TABLES = {
     apply: r => lww(S.state.pch, x => x.player_id === r.player_id && x.course === r.course && x.tee === r.tee, { player_id: r.player_id, course: r.course, tee: r.tee, ch: r.ch, deleted: !!r.deleted, updated_at: iso(r.updated_at), dev: r.device_id }, r),
   },
 };
-const CONFLICT = { round_members: "round_id,account_id", club_bag: "account_id,club_id", round_shares: "round_id,account_id", league_members: "league_id,account_id", league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", hole_stats: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
+const CONFLICT = { round_members: "round_id,account_id", club_bag: "account_id,club_id", round_shares: "round_id,account_id", league_members: "league_id,account_id", league_table: "league_id,golfer_id", league_rounds: "league_id,round_id", round_entries: "round_id,player_id", scores: "round_id,player_id,hole", hole_stats: "round_id,player_id,hole", courses: "slug", player_course_handicap: "player_id,course,tee" };
 
 function lww(list, match, rec, row) {
   const i = list.findIndex(match);
@@ -258,6 +265,7 @@ function sweep(seen) {
   prune(S.state.leagues, g => seen.leagues.has(g.id) || queued("leagues", g.id));
   prune(S.state.leagueRounds, x => seen.league_rounds.has(`${x.league_id}|${x.round_id}`) || queued("league_rounds", `${x.league_id}|${x.round_id}`));
   prune(S.state.leagueMembers, x => seen.league_members.has(`${x.league_id}|${x.account_id}`));
+  prune(S.state.leagueTable, x => seen.league_table.has(`${x.league_id}|${x.golfer_id}`) || queued("league_table", `${x.league_id}|${x.golfer_id}`));
   prune(S.state.events, x => seen.events.has(x.id) || queued("events", x.id));
   prune(S.state.eventSpots, x => seen.event_spots.has(`${x.event_id}|${x.spot}`));
   prune(S.state.roundShares, x => seen.round_shares.has(`${x.round_id}|${x.account_id}`));
@@ -271,6 +279,7 @@ function sweep(seen) {
 function keyOf(table, row) {
   if (table === "league_rounds") return `${row.league_id}|${row.round_id}`;
   if (table === "league_members") return `${row.league_id}|${row.account_id}`;
+  if (table === "league_table") return `${row.league_id}|${row.golfer_id}`;
   if (table === "event_spots") return `${row.event_id}|${row.spot}`;
   if (table === "round_shares" || table === "round_members") return `${row.round_id}|${row.account_id}`;
   if (table === "club_bag") return `${row.account_id}|${row.club_id}`;

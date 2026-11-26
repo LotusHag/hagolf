@@ -583,6 +583,33 @@ export const matchWith = (matches, seatId) => (matches || []).find(m => m.ids.A.
 /** Everyone who played a card: a match's golfers, a scramble team's members, never the team itself. */
 export const golfersOf = M => (M.matches && M.matches.length ? M.matches.flatMap(m => [...m.players.A, ...m.players.B]) : M.players);
 
+/**
+ * Who a society's table counts: everyone on its cards, or, for a society that chooses, only the golfers in `only`
+ * (golfer id -> the date they count from, null for every card; see tableCounting). The ids come back as a list,
+ * carrying `only` as `since` for memberSet. The app's tables, its posters and the public board all ask here.
+ */
+export function tableMembers(results, only = null) {
+  const ids = [...new Set(results.flatMap(golfersOf).map(p => p.id).filter(Boolean))];
+  return only ? Object.assign(ids.filter(id => only.has(id)), { since: only }) : ids;
+}
+
+/**
+ * The golfers a society that chooses counts, and from when: its owner and members on automatically (a member's
+ * claimed golfer with them), anyone else only once an organiser switched them on. `members` and `table` are
+ * league_members and league_table rows as stored; a golfer's date is their table row's, or every card without one.
+ */
+export function tableCounting(owner, members, table) {
+  const rows = new Map(table.filter(t => !t.deleted).map(t => [t.golfer_id, t]));
+  const from = id => (rows.get(id) || {}).counts_from || null;
+  const out = new Map([...rows.values()].filter(t => t.counts).map(t => [t.golfer_id, t.counts_from || null]));
+  for (const m of members.filter(m => !m.deleted)) {
+    out.set(m.account_id, from(m.account_id));
+    if (m.claim_state === "confirmed" && m.claimed_player) out.set(m.claimed_player, from(m.account_id));
+  }
+  if (owner) out.set(owner, from(owner));
+  return out;
+}
+
 export const groupsOf = entries => [...new Set((entries || []).map(e => e.group || 1))].sort((a, b) => a - b);
 
 /** Every match on a card: each group plays its own, side A against side B. A group not set up as a match is left out. */
@@ -1185,15 +1212,26 @@ function oneCard(key, Ms) {
 
 // ---------------------------------------------------------------- seasons: standings for a group across rounds
 /**
+ * Who a table counts: `memberIds` are golfer ids, or [id, since] pairs that count a golfer only on cards dated
+ * `since` or later (or ids carrying such a map as `.since`, as tableMembers gives them). Shaped like a Set, so
+ * anything that takes one takes this.
+ */
+export function memberSet(memberIds) {
+  const since = new Map(), dated = (memberIds && memberIds.since) || new Map();
+  for (const m of memberIds || []) if (Array.isArray(m)) since.set(m[0], m[1] || ""); else since.set(m, dated.get(m) || "");
+  return { has: (id, date) => since.has(id) && (!since.get(id) || String(date || "") >= since.get(id)) };
+}
+
+/**
  * `results` is a list of computed rounds (M) with `.id`; `memberIds` the roster ids in the group; `bestN` 0 for all.
  * Only members count, so a guest never changes the table. Returns rows sorted by running total then average.
  */
 export function standings(results, memberIds, bestN = 0) {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const rows = new Map();
   const roundsIn = [];
   for (const M of leagueCards(results)) {
-    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id, M.date));
     if (!mine.length) continue;
     roundsIn.push(M);
     const best = Math.max(...mine.map(p => p.pts));
@@ -1225,11 +1263,11 @@ export function standings(results, memberIds, bestN = 0) {
  * A round without a return (pick-up or late start) does not count for that player.
  */
 export function strokeStandings(results, memberIds, bestN = 0) {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const rows = new Map();
   const cards = leagueCards(results);
   for (const M of cards) {
-    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id, M.date));
     if (!mine.length) continue;
     const returned = mine.filter(p => p.topar !== null);
     const best = returned.length ? Math.min(...returned.map(p => p.topar)) : null;
@@ -1292,7 +1330,7 @@ export function matchGames(card, members) {
   for (const m of card.matches || []) {
     const s = m.up > 0 ? 1 : m.up < 0 ? 0 : 0.5;
     for (const a of m.players.A) for (const b of m.players.B) {
-      if (a.id === b.id || !members.has(a.id) || !members.has(b.id)) continue;
+      if (a.id === b.id || !members.has(a.id, card.date) || !members.has(b.id, card.date)) continue;
       out.push({ a, b, s, up: m.up, match: m });
     }
   }
@@ -1301,12 +1339,12 @@ export function matchGames(card, members) {
 
 /** Match play's own record per player, off the match rounds alone: matches and holes won, halved and lost. */
 export function matchRecords(results, memberIds) {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const rows = new Map();
   for (const card of leagueCards(results)) for (const m of card.matches || []) for (const k of ["A", "B"]) {
     const sign = k === "A" ? 1 : -1;
     m.players[k].forEach(({ id, name }) => {
-      if (!members.has(id)) return;
+      if (!members.has(id, card.date)) return;
       if (!rows.has(id)) rows.set(id, { id, name, played: 0, won: 0, halved: 0, lost: 0, holesWon: 0, holesHalved: 0, holesLost: 0 });
       const r = rows.get(id), up = sign * m.up;
       r.played++;
@@ -1325,12 +1363,12 @@ export function matchRecords(results, memberIds) {
  * golf matchplay table (2 and 1) or a football one (3 and 1).
  */
 export function matchStandings(results, memberIds, win = 2, draw = 1, basis = "gross") {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const rows = new Map();
   const row = p => { if (!rows.has(p.id)) rows.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, up: 0 }); const r = rows.get(p.id); r.name = p.name; return r; };
   const cards = leagueCards(results);
   for (const M of cards) {
-    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id, M.date));
     for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) {
       if (mine[i].id === mine[j].id) continue;  // two goes on the same day is not a match against yourself
       const { up, holes } = matchResult(mine[i], mine[j], basis);
@@ -1361,7 +1399,7 @@ export const GP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
  * with the same countback run on net scores, and a player without a card is not in the order at all.
  */
 function gpBoard(M, members, basis) {
-  const mine = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
+  const mine = M.stbl_board.filter(p => p.id !== null && members.has(p.id, M.date));
   if (basis !== "net" && basis !== "gross") return { order: mine, nr: [] };
   // to par, not gross, so a card off a tee with another par is not a stroke or two behind before it starts
   const [total, holes] = basis === "net" ? ["net", "nets"] : ["topar", "scores"];
@@ -1377,7 +1415,7 @@ function gpBoard(M, members, basis) {
  * the Stableford board, "gross" strokes taken, "net" net score. A small turnout still gives the winner full points.
  */
 export function gpStandings(results, memberIds, bestN = 0, table = GP_POINTS, basis = "points") {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const rows = new Map();
   const cards = leagueCards(results);
   const row = p => {
@@ -1448,7 +1486,7 @@ export const eloExpected = (ra, rb) => 1 / (1 + 10 ** ((rb - ra) / ELO.scale));
  * a loss costs nothing.
  */
 export function eloStandings(results, memberIds, basis = "all") {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const weights = basis === "all" ? ELO_WEIGHTS : { [basis]: 1 };
   const rows = new Map();
   const row = p => {
@@ -1468,7 +1506,7 @@ export function eloStandings(results, memberIds, basis = "all") {
   for (const date of [...days.keys()].sort()) {
     const delta = new Map(), parts = new Map();
     for (const M of days.get(date)) {
-      const mine = M.players.filter(p => p.id !== null && members.has(p.id));
+      const mine = M.players.filter(p => p.id !== null && members.has(p.id, M.date));
       const duels = new Map();
       const duel = (me, them, games) => {
         if (!games.length) return;
@@ -1624,13 +1662,13 @@ export function stdev(xs) {
  * left out; a hole counted NO_SCORE is a hole that was walked and belongs in the numbers.
  */
 export function statHoles(results, memberIds) {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const out = [];
   for (const M of leagueCards(results)) {
     const rank = siRanks(M.si);
     const where = M.course.name;
     for (const p of M.players) {
-      if (p.id === null || !members.has(p.id)) continue;
+      if (p.id === null || !members.has(p.id, M.date)) continue;
       for (let h = 0; h < M.n; h++) {
         if (p.scores[h] === null) continue;
         out.push({
@@ -1698,15 +1736,15 @@ function roundLine(M, p, others, place, of) {
  * points. Everything on the Stats screen is read straight off this.
  */
 export function leagueStats(results, memberIds) {
-  const members = new Set(memberIds);
+  const members = memberSet(memberIds);
   const cards = leagueCards(results);
   const holes = statHoles(cards, memberIds);
   const matches = matchRecords(results, memberIds);
   const rounds = [];
   const names = new Map();
   for (const M of cards) {
-    const mine = M.players.filter(p => p.id !== null && members.has(p.id));
-    const board = M.stbl_board.filter(p => p.id !== null && members.has(p.id));
+    const mine = M.players.filter(p => p.id !== null && members.has(p.id, M.date));
+    const board = M.stbl_board.filter(p => p.id !== null && members.has(p.id, M.date));
     for (const p of mine) {
       names.set(p.id, p.name);
       rounds.push(roundLine(M, p, mine.filter(q => q.id !== p.id), board.indexOf(p) + 1, board.length));

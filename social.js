@@ -95,6 +95,9 @@ export const revokeInvite = (leagueId, id) => A.api(`/league/${encodeURIComponen
 export const joinLeague = token => A.api("/league/join", { token });
 export const declineInvite = token => A.api("/league/decline", { token });
 export const leaveLeague = leagueId => A.api(`/league/${encodeURIComponent(leagueId)}/leave`, {});
+export const setRole = (leagueId, accountId, role) => A.api(`/league/${encodeURIComponent(leagueId)}/role`, { accountId, role });
+export const removeMember = (leagueId, accountId) => A.api(`/league/${encodeURIComponent(leagueId)}/remove`, { accountId });
+export const handOver = (leagueId, accountId) => A.api(`/league/${encodeURIComponent(leagueId)}/owner`, { accountId });
 export async function membersOf(leagueId) {
   const r = await A.api(`/league/${encodeURIComponent(leagueId)}/members`);
   r.looksChanged = keepLooks(r.members || []);

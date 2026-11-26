@@ -2,7 +2,7 @@
 // leagues, league-round attachments, courses added on phones, course handicaps from club tables, settings.
 // Every record carries updated_at and deleted; the queue remembers which records changed and when.
 import { DATA } from "./data.js";
-import { STAT_SWITCH_KEYS, emptyStat, blankStat, UNLISTED_TEE, playStart, missedHole } from "./model.js";
+import { STAT_SWITCH_KEYS, emptyStat, blankStat, UNLISTED_TEE, playStart, missedHole, tableCounting } from "./model.js";
 import { mirror } from "./idb.js";
 import { crestOf, crestKey } from "./avatar.js";
 
@@ -30,7 +30,7 @@ function load() {
   }
   s = s || {};
   const st = { players: s.players || [], rounds: s.rounds || [], leagues: s.leagues || [], leagueRounds: s.leagueRounds || [],
-    leagueMembers: s.leagueMembers || [], events: s.events || [], eventSpots: s.eventSpots || [], roundShares: s.roundShares || [], roundMembers: s.roundMembers || [], bag: s.bag || [],
+    leagueMembers: s.leagueMembers || [], leagueTable: s.leagueTable || [], events: s.events || [], eventSpots: s.eventSpots || [], roundShares: s.roundShares || [], roundMembers: s.roundMembers || [], bag: s.bag || [],
     courses: s.courses || [], pch: s.pch || [], orphanScores: s.orphanScores || [], orphanStats: s.orphanStats || [], held: s.held || [], quarantine: s.quarantine || [],
     settings: s.settings || {} };
   st.settings.holes = st.settings.holes || {};  // the hole each round is open at, on this phone only
@@ -857,6 +857,21 @@ export function iPlayed(r) {
   if (!r) return false;
   if (me && r.owner === me) return true;
   return !!mySeat(r) || (!!me && state.roundMembers.some(m => !m.deleted && m.round_id === r.id && m.account_id === me));
+}
+
+/** Who a society that chooses counts in its table, and from when (model.tableCounting). */
+export const tableCountingOf = g => tableCounting(g.owner, state.leagueMembers.filter(m => m.league_id === g.id), tableRows(g.id));
+
+/** A society's table rows: who an organiser switched on, and the date each golfer counts from. */
+export const tableRows = leagueId => state.leagueTable.filter(x => x.league_id === leagueId && !x.deleted);
+
+/** An organiser switching a golfer on or off for the table, or changing the date they count from. */
+export function setTableRow(leagueId, golferId, change) {
+  let x = state.leagueTable.find(y => y.league_id === leagueId && y.golfer_id === golferId);
+  if (!x) { x = { league_id: leagueId, golfer_id: golferId, counts: false, since: null, counts_from: null }; state.leagueTable.push(x); }
+  Object.assign(x, change, { deleted: false, set_by: myAccount() });
+  touch("league_table", x, `${leagueId}|${golferId}`);
+  save();
 }
 
 /** My membership row in one league, which is what says whether I have claimed a player in it. */

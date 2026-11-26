@@ -4,7 +4,7 @@ import * as S from "../store.js";
 import * as A from "../auth.js";
 import * as F from "../social.js";
 import { page, bind, esc, go, ui, plural, courseBy, subtabs, tip, paint, themeNamed, appTheme, fmtDate } from "../ui.js";
-import { compute, fmtToPar, fmtHcp, outcome, NO_SCORE, isMatchFormat, golfersOf } from "../model.js";
+import { compute, fmtToPar, fmtHcp, outcome, NO_SCORE, isMatchFormat, tableMembers } from "../model.js";
 import { FORMAT_NAMES, FORMAT_NOTES, standingsFor, standingsTable, readsMatches, currentSeason, inSeason, seasonName } from "./formats.js";
 
 export const courseOf = (slug, list) => courseBy(slug) || (() => { const k = (list || []).find(x => x.slug === slug); return k && k.data ? { ...k.data, slug } : null; })();
@@ -46,7 +46,7 @@ export async function board(token) {
   paint(themeNamed(g.theme) || appTheme());
   // as leagueResults: a society with no table for match play never sees a match, and a match's golfers are its players
   if (!g.formats.some(readsMatches)) Ms.splice(0, Ms.length, ...Ms.filter(M => !isMatchFormat(M.format)));
-  const members = [...new Set(Ms.flatMap(golfersOf).map(p => p.id))];
+  const members = tableMembers(Ms, P.league.membersOnly ? new Map(P.members || []) : null);
   const pick = g.formats.includes(ui.boardFmt) ? ui.boardFmt : g.formats[0];
   const body = Ms.length ? `
       ${g.formats.length > 1 ? subtabs(g.formats.map(f => `<button data-act="bfmt" data-f="${f}" class="${f === pick ? "on" : ""}">${FORMAT_NAMES[f]}</button>`).join("")) : ""}
